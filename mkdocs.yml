@@ -1,0 +1,68 @@
+site_name: anySeg
+site_url: https://sergeyshk.github.io/anySeg/
+site_description: "Fast segmentation of text into tokens and sentences, written in Rust with a Python API"
+repo_url: https://github.com/SergeyShk/anySeg
+
+nav:
+    - About: index.md
+    - Installation: installation.md
+    - Authors: authors.md
+
+theme:
+  name: material
+  language: en
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/weather-night
+        name: Dark theme
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/weather-sunny
+        name: Light theme
+  font:
+    text: Source Sans Pro
+    code: Source Code Pro
+  features:
+    - navigation.top
+    - content.code.copy
+    - search.highlight
+    - search.suggest
+
+validation:
+  anchors: warn
+
+plugins:
+  - search
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/SergeyShk
+    - icon: fontawesome/brands/linkedin
+      link: https://www.linkedin.com/in/kouki91/
+
+extra_css:
+  - css/extra.css
+
+markdown_extensions:
+  - toc:
+      permalink: True
+  - attr_list
+  - md_in_html
+  - tables
+  - admonition
+  - pymdownx.highlight
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
