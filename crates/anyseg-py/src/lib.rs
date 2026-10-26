@@ -508,9 +508,9 @@ impl Document {
     ///     Unicode NFC, as CoNLL-U requires; the document keeps its text
     ///
     /// Arguments:
-    ///     doc_id (str | None): ID of the document: newdoc gets it and sent_id becomes ID-N, so
-    ///         that sentences of several documents in one file have distinct IDs; a document read
-    ///         from CoNLL-U keeps its comments
+    ///     doc_id (str | None): ID of the document: newdoc gets it and sent_id becomes ID-N (the ID
+    ///         in NFC), so that sentences of several documents in one file have distinct IDs; a
+    ///         document read from CoNLL-U keeps its comments
     ///
     /// Returns:
     ///     str: Sentences in CoNLL-U, each followed by a blank line

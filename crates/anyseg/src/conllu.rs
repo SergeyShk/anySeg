@@ -463,7 +463,8 @@ impl Document {
     }
 
     /// The document in CoNLL-U as [`to_conllu`](Self::to_conllu) writes it, with `# newdoc id = ID` and
-    /// `# sent_id = ID-N`, so that the sentences of several documents in one file have distinct IDs.
+    /// `# sent_id = ID-N` (the ID in NFC), so that the sentences of several documents in one file have distinct
+    /// IDs.
     ///
     /// # Errors
     ///
@@ -474,7 +475,7 @@ impl Document {
                 "document ID {id:?} is empty or holds whitespace"
             )));
         }
-        Ok(self.conllu(Some(id)))
+        Ok(self.conllu(Some(&nfc(id))))
     }
 
     fn conllu(&self, id: Option<&str>) -> String {
@@ -955,6 +956,8 @@ mod tests {
             doc.to_conllu_with_id("d-1").unwrap(),
             "# newdoc id = d-1\n# newpar\n# sent_id = d-1-1\n# text = а\n1\tа\t_\t_\t_\t_\t_\t_\t_\t_\n\n"
         );
+        let decomposed = doc.to_conllu_with_id("е\u{308}ж").unwrap();
+        assert!(decomposed.starts_with("# newdoc id = ёж\n# newpar\n# sent_id = ёж-1\n"));
         for id in ["", "d 1", "d\t1"] {
             assert_eq!(
                 doc.to_conllu_with_id(id).unwrap_err(),

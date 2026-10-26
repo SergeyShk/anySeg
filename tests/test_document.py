@@ -304,6 +304,7 @@ def test_document_id(doc):
         "# sent_id = d1-1",
         "# sent_id = d1-2",
     ]
+    assert doc.to_conllu(doc_id="е\u0308ж").startswith("# newdoc id = ёж\n")
     for doc_id in ["", "d 1"]:
         with pytest.raises(ValueError, match="is empty or holds whitespace"):
             doc.to_conllu(doc_id=doc_id)
