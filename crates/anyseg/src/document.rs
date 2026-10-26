@@ -143,8 +143,8 @@ impl Document {
     /// # Errors
     ///
     /// [`DocumentError`] if a token is empty, out of the text, not on character boundaries, overlaps the token
-    /// before it, starts or ends with whitespace, or runs over a paragraph boundary, or if the sentence starts are
-    /// not increasing token indices.
+    /// before it, starts or ends with whitespace, or runs over a paragraph boundary, if the text between the
+    /// tokens holds anything but whitespace, or if the sentence starts are not increasing token indices.
     pub fn from_tokens(
         text: String,
         tokens: Vec<Span>,
@@ -169,7 +169,15 @@ impl Document {
             if piece.starts_with(is_separator) || piece.ends_with(is_separator) {
                 return error("starts or ends with whitespace");
             }
+            if !text[previous..span.start].chars().all(is_separator) {
+                return error("the text before it holds characters that no token has");
+            }
             previous = span.end;
+        }
+        if !text[previous..].chars().all(is_separator) {
+            return Err(DocumentError(
+                "the text after the last token holds characters that no token has".to_owned(),
+            ));
         }
         if let Some(starts) = sentence_starts {
             for (position, &start) in starts.iter().enumerate() {
@@ -349,8 +357,8 @@ impl Document {
     ///
     /// # Errors
     ///
-    /// [`DocumentError`] if a list has not one value per word, a text value is empty or holds a tab or a line
-    /// break, or a head is not 0 or the ID of a word of its sentence.
+    /// [`DocumentError`] if a list has not one value per word, a value is empty, a lemma holds a tab or a line
+    /// break or another value holds whitespace, or a head is not 0 or the ID of a word of its sentence.
     pub fn set_columns(
         &mut self,
         columns: Vec<(Column, Vec<Option<String>>)>,
@@ -368,12 +376,17 @@ impl Document {
         };
         for (column, values) in &columns {
             length(column.name(), values.len())?;
+            // CoNLL-U allows spaces in lemmas, not in the other columns
+            let (wrong, what): (fn(char) -> bool, &str) = match column {
+                Column::Lemma => (|c| matches!(c, '\t' | '\n' | '\r'), "a tab or a line break"),
+                _ => (char::is_whitespace, "whitespace"),
+            };
             for (word, value) in values.iter().enumerate() {
                 if let Some(value) = value
-                    && (value.is_empty() || value.contains(['\t', '\n', '\r']))
+                    && (value.is_empty() || value.contains(wrong))
                 {
                     return Err(DocumentError(format!(
-                        "{} of word {word} is empty or holds a tab or a line break",
+                        "{} of word {word} is empty or holds {what}",
                         column.name()
                     )));
                 }
@@ -485,21 +498,33 @@ mod tests {
             (vec![span(0, 99)], "token 0: ends after the text"),
             (vec![span(0, 1)], "token 0: is not on character boundaries"),
             (
-                vec![span(5, 13), span(0, 4)],
-                "token 1: overlaps or precedes the token before it",
+                vec![span(0, 4), span(5, 13), span(0, 4)],
+                "token 2: overlaps or precedes the token before it",
             ),
             (vec![span(4, 13)], "token 0: starts or ends with whitespace"),
-            (vec![span(5, 19)], "token 0: runs over a paragraph boundary"),
+            (
+                vec![span(5, 13), span(15, 25)],
+                "token 0: the text before it holds characters that no token has",
+            ),
+            (
+                vec![span(0, 4), span(5, 13)],
+                "the text after the last token holds characters that no token has",
+            ),
+            (
+                vec![span(0, 4), span(5, 25)],
+                "token 1: runs over a paragraph boundary",
+            ),
         ] {
             assert_eq!(
                 Document::from_tokens(text.clone(), tokens, None).unwrap_err(),
                 DocumentError(message.to_owned())
             );
         }
+        let tokens = vec![span(0, 4), span(5, 13), span(15, 25)];
         for starts in [&[0, 0][..], &[1, 0], &[3]] {
-            assert!(
-                Document::from_tokens(text.clone(), vec![span(0, 4), span(5, 13)], Some(starts))
-                    .is_err()
+            assert_eq!(
+                Document::from_tokens(text.clone(), tokens.clone(), Some(starts)).unwrap_err(),
+                DocumentError("sentence starts must be increasing token indices".to_owned())
             );
         }
     }
@@ -521,9 +546,14 @@ mod tests {
                 "lemma has 1 values for 3 words",
             ),
             (
-                vec![(Column::Feats, vec![None, Some("a\tb".to_owned()), None])],
+                vec![(Column::Feats, vec![None, Some("a b".to_owned()), None])],
                 None,
-                "feats of word 1 is empty or holds a tab or a line break",
+                "feats of word 1 is empty or holds whitespace",
+            ),
+            (
+                vec![(Column::Lemma, vec![None, Some("a\nb".to_owned()), None])],
+                None,
+                "lemma of word 1 is empty or holds a tab or a line break",
             ),
             (
                 vec![],

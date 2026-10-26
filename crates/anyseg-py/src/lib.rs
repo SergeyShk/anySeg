@@ -432,14 +432,15 @@ impl Document {
     /// Raises:
     ///     ValueError: If the lists differ in length, a token is empty, out of the text, overlaps
     ///         the token before it, starts or ends with whitespace or runs over a paragraph
-    ///         boundary, or the sentence starts are not increasing token indices
+    ///         boundary, the text between the tokens holds anything but whitespace, or the
+    ///         sentence starts are not increasing token indices
     #[staticmethod]
     #[pyo3(signature = (text, starts, ends, *, sentence_starts=None))]
     fn from_tokens(
         py: Python<'_>,
         text: Bound<'_, PyString>,
-        starts: Vec<usize>,
-        ends: Vec<usize>,
+        starts: Vec<isize>,
+        ends: Vec<isize>,
         sentence_starts: Option<Vec<usize>>,
     ) -> PyResult<Document> {
         if starts.len() != ends.len() {
@@ -450,10 +451,12 @@ impl Document {
             )));
         }
         let string = text.to_str()?;
-        let length = string.chars().count();
+        let length = string.chars().count() as isize;
         let mut previous = 0;
         for (index, (&start, &end)) in starts.iter().zip(&ends).enumerate() {
-            let message = if start >= end {
+            let message = if start < 0 {
+                "starts before the text"
+            } else if start >= end {
                 "is empty"
             } else if end > length {
                 "ends after the text"
@@ -481,8 +484,8 @@ impl Document {
             .iter()
             .zip(&ends)
             .map(|(&start, &end)| anyseg::Span {
-                start: to_byte(start),
-                end: to_byte(end),
+                start: to_byte(start as usize),
+                end: to_byte(end as usize),
             })
             .collect();
         let inner =
@@ -495,15 +498,32 @@ impl Document {
     ///
     /// Description:
     ///     A document read from CoNLL-U is written as it was read, with the columns set since.
-    ///     Otherwise every sentence gets the comments sent_id and text (line breaks turned into
-    ///     spaces), the first one newdoc and every paragraph newpar, and the space after a token
-    ///     inside a paragraph goes to MISC: SpaceAfter=No when there is none and SpacesAfter when
-    ///     it is not one space
+    ///     Otherwise every sentence gets the comments sent_id and text, the first one newdoc and
+    ///     every paragraph newpar, and the space after a token inside a paragraph goes to MISC:
+    ///     SpaceAfter=No when there is none and SpacesAfter when it is not one space. There the
+    ///     invisible separators are left out, line breaks other than CR and LF become LF and
+    ///     whitespace other than tabs becomes a space; the comment text is the tokens with these
+    ///     spaces, line breaks turned into spaces
+    ///
+    /// Arguments:
+    ///     doc_id (str | None): ID of the document: newdoc gets it and sent_id becomes ID-N, so
+    ///         that sentences of several documents in one file have distinct IDs; a document read
+    ///         from CoNLL-U keeps its comments
     ///
     /// Returns:
     ///     str: Sentences in CoNLL-U, each followed by a blank line
-    fn to_conllu(&self) -> String {
-        self.read().to_conllu()
+    ///
+    /// Raises:
+    ///     ValueError: If the ID is empty or holds whitespace
+    #[pyo3(signature = (*, doc_id=None))]
+    fn to_conllu(&self, doc_id: Option<&str>) -> PyResult<String> {
+        let inner = self.read();
+        match doc_id {
+            None => Ok(inner.to_conllu()),
+            Some(id) => inner
+                .to_conllu_with_id(id)
+                .map_err(|error| PyValueError::new_err(error.to_string())),
+        }
     }
 
     fn __repr__(&self) -> String {
@@ -541,7 +561,7 @@ macro_rules! view {
 macro_rules! sequence {
     ($name:ident, $view:ident, $what:literal) => {
         #[doc = concat!("Sequence of the ", $what, " of a document or of a part of it")]
-        #[pyclass(frozen, module = "anyseg")]
+        #[pyclass(frozen, sequence, module = "anyseg")]
         struct $name {
             doc: Py<Document>,
             start: usize,
@@ -595,12 +615,59 @@ macro_rules! sequence {
                 self.list(py)?.try_iter()
             }
 
+            fn __contains__(&self, value: &Bound<'_, PyAny>) -> bool {
+                self.position(value).is_some()
+            }
+
+            /// Position of a view in the sequence
+            #[pyo3(signature = (value, start=0, stop=isize::MAX, /))]
+            fn index(
+                &self,
+                value: &Bound<'_, PyAny>,
+                start: isize,
+                stop: isize,
+            ) -> PyResult<usize> {
+                let length = (self.end - self.start) as isize;
+                let bound = |index: isize| {
+                    if index < 0 {
+                        (index + length).max(0)
+                    } else {
+                        index.min(length)
+                    }
+                };
+                match self.position(value) {
+                    Some(position)
+                        if (bound(start)..bound(stop)).contains(&(position as isize)) =>
+                    {
+                        Ok(position)
+                    }
+                    _ => Err(PyValueError::new_err(concat!(
+                        "the value is not among the ",
+                        $what
+                    ))),
+                }
+            }
+
+            /// Number of times a view is in the sequence: 0 or 1
+            #[pyo3(signature = (value, /))]
+            fn count(&self, value: &Bound<'_, PyAny>) -> usize {
+                usize::from(self.position(value).is_some())
+            }
+
             fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
                 Ok(format!("{}({})", stringify!($name), self.list(py)?.repr()?))
             }
         }
 
         impl $name {
+            /// The position of a view of the same document in the sequence
+            fn position(&self, value: &Bound<'_, PyAny>) -> Option<usize> {
+                let view = value.cast::<$view>().ok()?.get();
+                (view.doc.as_ptr() == self.doc.as_ptr()
+                    && (self.start..self.end).contains(&view.index))
+                .then(|| view.index - self.start)
+            }
+
             fn list<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyList>> {
                 PyList::new(
                     py,

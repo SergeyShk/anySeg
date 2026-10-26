@@ -1,5 +1,6 @@
 """Fast segmentation of text into tokens and sentences with positions in the source text"""
 
+from collections.abc import Sequence
 from functools import cache
 
 from ._anyseg import (
@@ -40,6 +41,9 @@ __all__ = [
     "sentenize",
     "tokenize",
 ]
+
+for _sequence in (Tokens, Words, Sentences, Paragraphs, Lines):
+    Sequence.register(_sequence)
 
 
 @cache

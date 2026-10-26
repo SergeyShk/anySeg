@@ -1,12 +1,13 @@
 //! Reading and writing CoNLL-U
 
+use std::borrow::Cow;
 use std::error::Error;
 use std::fmt;
 use std::fmt::Write as _;
 
 use crate::Span;
-use crate::document::{Column, Document, Line, Verbatim};
-use crate::layout::{is_separator, one_line};
+use crate::document::{Column, Document, DocumentError, Line, LineBreak, Sentence, Verbatim};
+use crate::layout::{self, is_separator, one_line};
 
 /// A line of CoNLL-U that cannot be read
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -37,21 +38,24 @@ struct Token<'a> {
     multiword: Option<&'a str>,
     misc: Option<&'a str>,
     words: usize,
+    /// The number of its line
+    line: usize,
 }
 
+/// A sentence as its lines give it
 #[derive(Default)]
-struct Sentence<'a> {
+struct Block<'a> {
     comments: Vec<&'a str>,
     tokens: Vec<Token<'a>>,
     words: Vec<Word<'a>>,
     empty: Vec<(usize, String)>,
     /// The number of multiword token and word lines so far
     lines: usize,
-    /// The number of the first line
+    /// The number of the first line, 0 before it
     line: usize,
 }
 
-impl Sentence<'_> {
+impl Block<'_> {
     fn has_comment(&self, name: &str) -> bool {
         self.comments.iter().any(|comment| {
             comment[1..]
@@ -78,6 +82,7 @@ fn misc_has(misc: Option<&str>, item: &str) -> bool {
     misc.is_some_and(|misc| misc.split('|').any(|value| value == item))
 }
 
+/// The value of `SpacesAfter`, if it holds only whitespace
 fn spaces_after(misc: Option<&str>) -> Option<String> {
     let value = misc?
         .split('|')
@@ -99,7 +104,7 @@ fn spaces_after(misc: Option<&str>) -> Option<String> {
             None => out.push('\\'),
         }
     }
-    Some(out)
+    out.chars().all(is_separator).then_some(out)
 }
 
 fn escape_spaces(spaces: &str) -> String {
@@ -119,7 +124,7 @@ fn escape_spaces(spaces: &str) -> String {
 }
 
 fn parse<'a>(
-    sentence: &mut Sentence<'a>,
+    sentence: &mut Block<'a>,
     number: usize,
     line: &'a str,
     multiword: &mut Option<(usize, usize)>,
@@ -159,6 +164,7 @@ fn parse<'a>(
             multiword: Some(rest),
             misc: field(fields[9]),
             words: 0,
+            line: number,
         });
         return Ok(());
     }
@@ -199,6 +205,7 @@ fn parse<'a>(
             multiword: None,
             misc: field(fields[9]),
             words: 1,
+            line: number,
         }),
     }
     Ok(())
@@ -216,12 +223,12 @@ fn parse<'a>(
 /// or on forms that do not match the `# text` of their sentence.
 pub fn read_conllu(input: &str) -> Result<Vec<Document>, ConlluError> {
     let mut sentences = Vec::new();
-    let mut sentence = Sentence::default();
+    let mut sentence = Block::default();
     let mut multiword = None;
     for (index, line) in input.lines().enumerate() {
         let number = index + 1;
         if line.is_empty() {
-            if !sentence.words.is_empty() || !sentence.comments.is_empty() {
+            if sentence.line > 0 {
                 if sentence.words.is_empty() {
                     return Err(ConlluError {
                         line: number,
@@ -236,25 +243,23 @@ pub fn read_conllu(input: &str) -> Result<Vec<Document>, ConlluError> {
                 }
                 sentences.push(std::mem::take(&mut sentence));
             }
-        } else if line.starts_with('#') {
-            if !sentence.words.is_empty() || !sentence.tokens.is_empty() {
+        } else {
+            if sentence.line == 0 {
+                sentence.line = number;
+            }
+            if !line.starts_with('#') {
+                parse(&mut sentence, number, line, &mut multiword)?;
+            } else if sentence.lines > 0 || !sentence.empty.is_empty() {
                 return Err(ConlluError {
                     line: number,
                     message: "a comment after token lines".to_owned(),
                 });
+            } else {
+                sentence.comments.push(line);
             }
-            if sentence.comments.is_empty() {
-                sentence.line = number;
-            }
-            sentence.comments.push(line);
-        } else {
-            if sentence.comments.is_empty() && sentence.words.is_empty() {
-                sentence.line = number;
-            }
-            parse(&mut sentence, number, line, &mut multiword)?;
         }
     }
-    if !sentence.words.is_empty() || !sentence.comments.is_empty() {
+    if sentence.line > 0 {
         return Err(ConlluError {
             line: input.lines().count(),
             message: "the text does not end with a blank line".to_owned(),
@@ -291,7 +296,16 @@ fn align(text: &str, position: usize, form: &str) -> Option<Span> {
     span
 }
 
-fn document(sentences: &[Sentence<'_>]) -> Result<Document, ConlluError> {
+/// The space after a token as its MISC gives it: `SpacesAfter`, none after `SpaceAfter=No`, else `default`
+fn space_after<'a>(misc: Option<&str>, default: &'a str) -> Cow<'a, str> {
+    match spaces_after(misc) {
+        Some(spaces) => Cow::Owned(spaces),
+        None if misc_has(misc, "SpaceAfter=No") => Cow::Borrowed(""),
+        None => Cow::Borrowed(default),
+    }
+}
+
+fn document(sentences: &[Block<'_>]) -> Result<Document, ConlluError> {
     let mut text = String::new();
     let mut tokens = Vec::new();
     let mut token_words = vec![0];
@@ -304,50 +318,59 @@ fn document(sentences: &[Sentence<'_>]) -> Result<Document, ConlluError> {
     let mut verbatim = Verbatim::default();
     for (index, sentence) in sentences.iter().enumerate() {
         let new_paragraph = index == 0 || sentence.has_comment("newpar");
-        if index > 0 {
-            if new_paragraph {
-                text.push_str("\n\n");
-            } else if !misc_has(
-                sentences[index - 1]
-                    .tokens
-                    .last()
-                    .and_then(|token| token.misc),
-                "SpaceAfter=No",
-            ) {
-                text.push(' ');
-            }
-        }
         if new_paragraph {
             paragraph_sentences.push(index);
-        }
-        let start = text.len();
-        match sentence.text() {
-            Some(sentence_text) => text.push_str(sentence_text),
-            None => {
-                for (position, token) in sentence.tokens.iter().enumerate() {
-                    text.push_str(token.form);
-                    if position + 1 < sentence.tokens.len() {
-                        match spaces_after(token.misc) {
-                            Some(spaces) => text.push_str(&spaces),
-                            None if misc_has(token.misc, "SpaceAfter=No") => {}
-                            None => text.push(' '),
-                        }
-                    }
-                }
+            if index > 0 {
+                text.push_str("\n\n");
             }
+        } else {
+            let last = sentences[index - 1]
+                .tokens
+                .last()
+                .and_then(|token| token.misc);
+            text.push_str(&space_after(last, " "));
         }
+        let source: Cow<'_, str> = match sentence.text() {
+            Some(sentence_text) => Cow::Borrowed(sentence_text),
+            None => {
+                let mut built = String::new();
+                for (position, token) in sentence.tokens.iter().enumerate() {
+                    if position > 0 {
+                        built.push_str(&space_after(sentence.tokens[position - 1].misc, " "));
+                    }
+                    built.push_str(token.form);
+                }
+                Cow::Owned(built)
+            }
+        };
         sentence_tokens.push(tokens.len());
-        let mut position = start;
+        let mut cursor = 0;
         let mut words = sentence.words.iter();
-        for token in &sentence.tokens {
-            let span = align(&text, position, token.form).ok_or_else(|| ConlluError {
-                line: sentence.line,
+        for (position, token) in sentence.tokens.iter().enumerate() {
+            let found = align(&source, cursor, token.form).ok_or_else(|| ConlluError {
+                line: token.line,
                 message: format!(
                     "the form {:?} does not match the text of the sentence",
                     token.form
                 ),
             })?;
-            position = span.end;
+            // The space between tokens comes from SpacesAfter when MISC has it, else from the text
+            let gap = &source[cursor..found.start];
+            match position {
+                0 => text.push_str(gap),
+                _ => text.push_str(&space_after(
+                    sentence.tokens[position - 1]
+                        .misc
+                        .filter(|misc| misc.contains("SpacesAfter=")),
+                    gap,
+                )),
+            }
+            let span = Span {
+                start: text.len(),
+                end: text.len() + found.end - found.start,
+            };
+            text.push_str(found.slice(&source));
+            cursor = found.end;
             let token_index = tokens.len();
             tokens.push(span);
             if let Some(line) = token.multiword {
@@ -365,12 +388,14 @@ fn document(sentences: &[Sentence<'_>]) -> Result<Document, ConlluError> {
             }
             token_words.push(word_tokens.len());
         }
-        if !text[position..].trim().is_empty() {
+        let rest = &source[cursor..];
+        if !rest.chars().all(is_separator) {
             return Err(ConlluError {
                 line: sentence.line,
                 message: "the text of the sentence holds characters that no token has".to_owned(),
             });
         }
+        text.push_str(rest);
         verbatim.comments.push(
             sentence
                 .comments
@@ -382,15 +407,21 @@ fn document(sentences: &[Sentence<'_>]) -> Result<Document, ConlluError> {
     }
     sentence_tokens.push(tokens.len());
     paragraph_sentences.push(sentences.len());
-    let lines = (0..paragraph_sentences.len() - 1)
-        .map(|paragraph| Line {
-            span: Span {
-                start: tokens[sentence_tokens[paragraph_sentences[paragraph]]].start,
-                end: tokens[sentence_tokens[paragraph_sentences[paragraph + 1]] - 1].end,
-            },
-            break_before: None,
-        })
-        .collect();
+    let mut lines = Vec::new();
+    for paragraph in paragraph_sentences.windows(2) {
+        let start = tokens[sentence_tokens[paragraph[0]]].start;
+        let end = tokens[sentence_tokens[paragraph[1]] - 1].end;
+        let parts = layout::paragraphs(&text[start..end]);
+        for (position, line) in parts.iter().flatten().enumerate() {
+            lines.push(Line {
+                span: Span {
+                    start: start + line.start,
+                    end: start + line.end,
+                },
+                break_before: (position > 0).then_some(LineBreak::Author),
+            });
+        }
+    }
     let sparse = |values: Vec<Option<String>>| {
         if values.iter().all(Option::is_none) {
             Vec::new()
@@ -419,18 +450,53 @@ fn document(sentences: &[Sentence<'_>]) -> Result<Document, ConlluError> {
 
 impl Document {
     /// The document in CoNLL-U. A document read from CoNLL-U is written as it was read, with the columns set
-    /// since. Otherwise every sentence gets `# sent_id` and `# text` (line breaks turned into spaces), the first one
-    /// `# newdoc`, every paragraph `# newpar`, and the space after a token inside a paragraph is `SpaceAfter=No`
-    /// when there is none and `SpacesAfter` when it is not one space.
+    /// since. Otherwise every sentence gets `# sent_id` (its number from 1) and `# text`, the first one
+    /// `# newdoc`, every paragraph `# newpar`, and the space after a token inside a paragraph goes to MISC:
+    /// `SpaceAfter=No` when there is none and `SpacesAfter` when it is not one space. In `SpacesAfter` the
+    /// invisible separators are left out, line breaks other than CR and LF become LF and whitespace other than
+    /// tabs becomes a space; `# text` is the tokens with these spaces, line breaks turned into spaces.
     pub fn to_conllu(&self) -> String {
+        self.conllu(None)
+    }
+
+    /// The document in CoNLL-U as [`to_conllu`](Self::to_conllu) writes it, with `# newdoc id = ID` and
+    /// `# sent_id = ID-N`, so that the sentences of several documents in one file have distinct IDs.
+    ///
+    /// # Errors
+    ///
+    /// [`DocumentError`] if the ID is empty or holds whitespace.
+    pub fn to_conllu_with_id(&self, id: &str) -> Result<String, DocumentError> {
+        if id.is_empty() || id.contains(char::is_whitespace) {
+            return Err(DocumentError(format!(
+                "document ID {id:?} is empty or holds whitespace"
+            )));
+        }
+        Ok(self.conllu(Some(id)))
+    }
+
+    fn conllu(&self, id: Option<&str>) -> String {
         let mut out = String::new();
         for sentence in 0..self.sentence_count() {
-            self.write_sentence(sentence, &mut out);
+            self.write_sentence(sentence, id, &mut out);
         }
         out
     }
 
-    fn write_sentence(&self, index: usize, out: &mut String) {
+    /// `# text` of a sentence: its tokens with the spaces between them as MISC gives them, line breaks turned
+    /// into spaces
+    fn sentence_text(&self, sentence: &Sentence) -> String {
+        let mut out = String::new();
+        for token in sentence.tokens.clone() {
+            if token > sentence.tokens.start {
+                let gap = &self.text[self.tokens[token - 1].end..self.tokens[token].start];
+                out.push_str(&one_line(&normalize(gap)));
+            }
+            out.push_str(&clean(&one_line(self.tokens[token].slice(&self.text))));
+        }
+        out
+    }
+
+    fn write_sentence(&self, index: usize, id: Option<&str>, out: &mut String) {
         let sentence = self.sentence(index);
         let verbatim = self.verbatim.as_deref();
         match verbatim {
@@ -443,17 +509,25 @@ impl Document {
             None => {
                 let paragraph = self.sentence_paragraph(index);
                 if index == 0 {
-                    out.push_str("# newdoc\n");
+                    match id {
+                        Some(id) => {
+                            let _ = writeln!(out, "# newdoc id = {id}");
+                        }
+                        None => out.push_str("# newdoc\n"),
+                    }
                 }
                 if self.paragraph_sentences[paragraph] == index {
                     out.push_str("# newpar\n");
                 }
-                let _ = writeln!(out, "# sent_id = {}", index + 1);
-                let _ = writeln!(
-                    out,
-                    "# text = {}",
-                    one_line(sentence.span.slice(&self.text))
-                );
+                match id {
+                    Some(id) => {
+                        let _ = writeln!(out, "# sent_id = {id}-{}", index + 1);
+                    }
+                    None => {
+                        let _ = writeln!(out, "# sent_id = {}", index + 1);
+                    }
+                }
+                let _ = writeln!(out, "# text = {}", self.sentence_text(&sentence));
             }
         }
         let empty: &[(usize, String)] = verbatim.map_or(&[], |verbatim| &verbatim.empty[index]);
@@ -538,12 +612,25 @@ impl Document {
                 return None;
             }
         }
-        match &self.text[self.tokens[token].end..next.start] {
+        match normalize(&self.text[self.tokens[token].end..next.start]).as_str() {
             "" => Some("SpaceAfter=No".to_owned()),
             " " => None,
             spaces => Some(format!("SpacesAfter={}", escape_spaces(spaces))),
         }
     }
+}
+
+/// The space between two tokens as CoNLL-U keeps it: tabs, CR and LF as they are, the other line breaks as LF,
+/// the other whitespace as a space, the invisible separators left out
+fn normalize(gap: &str) -> String {
+    gap.chars()
+        .filter_map(|character| match character {
+            '\u{200b}' | '\u{2060}' | '\u{feff}' => None,
+            '\t' | '\r' | '\n' => Some(character),
+            '\u{b}' | '\u{c}' | '\u{85}' | '\u{2028}' | '\u{2029}' => Some('\n'),
+            _ => Some(' '),
+        })
+        .collect()
 }
 
 /// MISC of a word with the space after it, unless it already says
@@ -562,7 +649,7 @@ fn merge(misc: Option<&str>, layout: &str) -> String {
 }
 
 /// A form fit for a column of CoNLL-U: tabs and line breaks turned into spaces
-fn clean(form: &str) -> std::borrow::Cow<'_, str> {
+fn clean(form: &str) -> Cow<'_, str> {
     if form.contains(['\t', '\n', '\r']) {
         form.replace(['\t', '\n', '\r'], " ").into()
     } else {
@@ -721,6 +808,111 @@ mod tests {
     }
 
     #[test]
+    fn blocks_without_words() {
+        let multiword = "1-2\tаб\t_\t_\t_\t_\t_\t_\t_\t_\n";
+        let empty = "1.1\tа\t_\t_\t_\t_\t_\t_\t_\t_\n";
+        let word = "1\tв\t_\t_\t_\t_\t_\t_\t_\t_\n";
+        for (input, line, message) in [
+            (format!("{multiword}\n"), 2, "a sentence without words"),
+            (format!("{empty}\n{word}\n"), 2, "a sentence without words"),
+            (
+                format!("{word}\n{multiword}"),
+                3,
+                "the text does not end with a blank line",
+            ),
+            (
+                format!("{empty}# x\n{word}\n"),
+                2,
+                "a comment after token lines",
+            ),
+        ] {
+            assert_eq!(
+                read_conllu(&input).unwrap_err(),
+                ConlluError {
+                    line,
+                    message: message.to_owned()
+                },
+                "{input:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn spaces_after_lines() {
+        let input = "# text = Ёж идёт.\n1\tЁж\t_\t_\t_\t_\t_\t_\t_\tSpacesAfter=\\n\n\
+                     2\tидёт\t_\t_\t_\t_\t_\t_\t_\tSpaceAfter=No\n3\t.\t_\t_\t_\t_\t_\t_\t_\tSpacesAfter=\\n\n\n\
+                     # text = Кот\n1\tКот\t_\t_\t_\t_\t_\t_\t_\tSpacesAfter=x\n\n";
+        let doc = &read_conllu(input).unwrap()[0];
+        assert_eq!(doc.text(), "Ёж\nидёт.\nКот");
+        let lines: Vec<(&str, Option<LineBreak>)> = doc
+            .lines()
+            .iter()
+            .map(|line| (line.span.slice(doc.text()), line.break_before))
+            .collect();
+        assert_eq!(
+            lines,
+            [
+                ("Ёж", None),
+                ("идёт.", Some(LineBreak::Author)),
+                ("Кот", Some(LineBreak::Author))
+            ]
+        );
+        assert_eq!(doc.to_conllu(), input);
+    }
+
+    #[test]
+    #[cfg(feature = "ru")]
+    fn generated_spaces() {
+        let text = "а\u{a0}б\u{200b}в\u{2028}г \u{feff}\u{3000}д\r\nе\tж\u{a0}\u{a0}з.\nИ";
+        let mut doc = crate::Segmenter::new("ru").unwrap().segment(text);
+        let tokens: Vec<&str> = doc.tokens().iter().map(|span| span.slice(text)).collect();
+        assert_eq!(tokens, ["а", "б", "в", "г", "д", "е", "ж", "з.", "И"]);
+        doc = Document::from_tokens(text.to_owned(), doc.tokens().to_vec(), Some(&[8])).unwrap();
+        let misc: Vec<String> = doc
+            .to_conllu()
+            .lines()
+            .filter(|line| !line.starts_with('#') && !line.is_empty())
+            .map(|line| line.rsplit('\t').next().unwrap_or_default().to_owned())
+            .collect();
+        assert_eq!(
+            misc,
+            [
+                "_",
+                "SpaceAfter=No",
+                "SpacesAfter=\\n",
+                "SpacesAfter=\\s\\s",
+                "SpacesAfter=\\r\\n",
+                "SpacesAfter=\\t",
+                "SpacesAfter=\\s\\s",
+                "SpacesAfter=\\n",
+                "_"
+            ]
+        );
+        assert!(doc.to_conllu().contains("# text = а бв г  д е\tж  з.\n"));
+        let back = &read_conllu(&doc.to_conllu()).unwrap()[0];
+        assert_eq!((back.sentence_count(), back.lines().len()), (2, 4));
+    }
+
+    #[test]
+    fn document_ids() {
+        let doc = read_conllu("1\tа\t_\t_\t_\t_\t_\t_\t_\t_\n\n")
+            .unwrap()
+            .remove(0);
+        let doc =
+            Document::from_tokens(doc.text().to_owned(), doc.tokens().to_vec(), None).unwrap();
+        assert_eq!(
+            doc.to_conllu_with_id("d-1").unwrap(),
+            "# newdoc id = d-1\n# newpar\n# sent_id = d-1-1\n# text = а\n1\tа\t_\t_\t_\t_\t_\t_\t_\t_\n\n"
+        );
+        for id in ["", "d 1", "d\t1"] {
+            assert_eq!(
+                doc.to_conllu_with_id(id).unwrap_err(),
+                DocumentError(format!("document ID {id:?} is empty or holds whitespace"))
+            );
+        }
+    }
+
+    #[test]
     fn errors() {
         for (input, line, message) in [
             ("1\tа\n\n", 1, "expected 10 tab-separated columns, got 2"),
@@ -741,7 +933,7 @@ mod tests {
             ),
             (
                 "# text = а\n1\tб\t_\t_\t_\t_\t_\t_\t_\t_\n\n",
-                1,
+                2,
                 "the form \"б\" does not match the text of the sentence",
             ),
             (

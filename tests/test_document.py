@@ -1,5 +1,6 @@
 import pickle
 import random
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -147,6 +148,19 @@ def test_sequences(doc):
     assert [token.index for token in tokens[::3]] == [0, 3, 6]
     assert [token.index for token in tokens[::-2]] == [7, 5, 3, 1]
     assert len(tokens[5:2]) == 0
+    assert isinstance(tokens, Sequence)
+    assert [token.index for token in reversed(middle)] == [4, 3, 2]
+    assert tokens.index(tokens[3]) == 3
+    assert middle.index(tokens[3]) == 1
+    assert tokens.index(tokens[3], -5, -4) == 3
+    assert (tokens.count(tokens[0]), middle.count(tokens[0])) == (1, 0)
+    assert tokens[0] in tokens
+    assert tokens[0] not in middle
+    assert "Ёж" not in tokens
+    assert Segmenter("ru").segment(TEXT).tokens[0] not in tokens
+    for args in [(tokens[0], 1), (tokens[5], 0, 5), (doc.words[0],)]:
+        with pytest.raises(ValueError, match="the value is not among the tokens"):
+            tokens.index(*args)
     assert repr(doc.sentences[1].tokens) == (
         "Tokens([Token(start=28, end=33, text='Утро.'), Token(start=35, end=39, text='Ночь')])"
     )
@@ -188,15 +202,13 @@ def test_columns(doc):
     ("columns", "error", "message"),
     [
         ({"upos": ["X"]}, ValueError, "upos has 1 values for 8 words"),
+        ({"feats": [""] * 8}, ValueError, "feats of word 0 is empty or holds whitespace"),
+        ({"misc": ["a\tb"] * 8}, ValueError, "misc of word 0 is empty or holds whitespace"),
+        ({"upos": ["NO UN"] * 8}, ValueError, "upos of word 0 is empty or holds whitespace"),
         (
-            {"feats": [""] * 8},
+            {"lemma": ["a\nb"] * 8},
             ValueError,
-            "feats of word 0 is empty or holds a tab or a line break",
-        ),
-        (
-            {"misc": ["a\tb"] * 8},
-            ValueError,
-            "misc of word 0 is empty or holds a tab or a line break",
+            "lemma of word 0 is empty or holds a tab or a line break",
         ),
         ({"head": [7] * 8}, ValueError, "head of word 0 is 7, but its sentence has 6 words"),
         ({"head": [-1] * 8}, ValueError, "head of word 0 is -1, not 0 or a word ID"),
@@ -233,6 +245,15 @@ def test_from_tokens():
         ("ab", [0, 0], [1, 2], None, "token 1: overlaps or precedes the token before it"),
         (" ab", [0], [2], None, "token 0: starts or ends with whitespace"),
         ("a\n\nb", [0], [4], None, "token 0: runs over a paragraph boundary"),
+        ("ab", [-1], [1], None, "token 0: starts before the text"),
+        ("a b", [2], [3], None, "token 0: the text before it holds characters that no token has"),
+        (
+            "a b",
+            [0],
+            [1],
+            None,
+            "the text after the last token holds characters that no token has",
+        ),
         ("a b", [0, 2], [1, 3], [2], "sentence starts must be increasing token indices"),
         ("a b", [0, 2], [1, 3], [1, 1], "sentence starts must be increasing token indices"),
     ],
@@ -271,6 +292,40 @@ def test_generated_conllu(doc):
     assert [len(paragraph.sentences) for paragraph in back.paragraphs] == [1, 1]
 
 
+def test_document_id(doc):
+    lines = doc.to_conllu(doc_id="d1").splitlines()
+    assert [line for line in lines if line.startswith(("# newdoc", "# sent_id"))] == [
+        "# newdoc id = d1",
+        "# sent_id = d1-1",
+        "# sent_id = d1-2",
+    ]
+    for doc_id in ["", "d 1"]:
+        with pytest.raises(ValueError, match="is empty or holds whitespace"):
+            doc.to_conllu(doc_id=doc_id)
+    (read,) = read_conllu(UD.split("# newdoc\n")[0])
+    assert read.to_conllu(doc_id="x") == read.to_conllu()
+
+
+def test_spaces_in_conllu():
+    written = segment("а\u00a0б\u200bв\u2028г", lang="ru").to_conllu()
+    assert "# text = а бв г\n" in written
+    assert [line.split("\t")[9] for line in written.splitlines() if line[:1].isdigit()] == [
+        "_",
+        "SpaceAfter=No",
+        "SpacesAfter=\\n",
+        "_",
+    ]
+    doc = Document.from_tokens(
+        "Ёж идёт.\nКот спит.", [0, 3, 9, 13], [2, 8, 12, 18], sentence_starts=[2]
+    )
+    (back,) = read_conllu(doc.to_conllu())
+    assert back.text == doc.text
+    assert [(line.text, line.break_before) for line in back.lines] == [
+        ("Ёж идёт.", None),
+        ("Кот спит.", "author"),
+    ]
+
+
 def test_read_conllu():
     docs = read_conllu(UD)
     assert len(docs) == 2
@@ -306,7 +361,8 @@ def test_read_conllu():
     [
         ("1\ta\n\n", "line 1: expected 10 tab-separated columns, got 2"),
         (conllu([("2", "a", *["_"] * 8)]), "line 1: expected word 1, got '2'"),
-        (conllu(["# text = a", ("1", "b", *["_"] * 8)]), "line 1: the form 'b' does not match"),
+        (conllu(["# text = a", ("1", "b", *["_"] * 8)]), "line 2: the form 'b' does not match"),
+        (conllu([("1-2", "ab", *["_"] * 8)]), "line 2: a sentence without words"),
         ("1\ta\t_\t_\t_\t_\t_\t_\t_\t_\n", "line 1: the text does not end with a blank line"),
     ],
 )
