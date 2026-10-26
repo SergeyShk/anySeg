@@ -357,8 +357,8 @@ impl Document {
     ///
     /// # Errors
     ///
-    /// [`DocumentError`] if a list has not one value per word, a value is empty, a lemma holds a tab or a line
-    /// break or another value holds whitespace, or a head is not 0 or the ID of a word of its sentence.
+    /// [`DocumentError`] if a list has not one value per word, a value is empty, a lemma or MISC holds a tab or
+    /// a line break or another value holds whitespace, or a head is not 0 or the ID of a word of its sentence.
     pub fn set_columns(
         &mut self,
         columns: Vec<(Column, Vec<Option<String>>)>,
@@ -376,9 +376,11 @@ impl Document {
         };
         for (column, values) in &columns {
             length(column.name(), values.len())?;
-            // CoNLL-U allows spaces in lemmas, not in the other columns
+            // CoNLL-U allows spaces in lemmas and MISC, not in the other columns
             let (wrong, what): (fn(char) -> bool, &str) = match column {
-                Column::Lemma => (|c| matches!(c, '\t' | '\n' | '\r'), "a tab or a line break"),
+                Column::Lemma | Column::Misc => {
+                    (|c| matches!(c, '\t' | '\n' | '\r'), "a tab or a line break")
+                }
                 _ => (char::is_whitespace, "whitespace"),
             };
             for (word, value) in values.iter().enumerate() {

@@ -5,6 +5,8 @@ use std::error::Error;
 use std::fmt;
 use std::fmt::Write as _;
 
+use unicode_normalization::{UnicodeNormalization, is_nfc};
+
 use crate::Span;
 use crate::document::{Column, Document, DocumentError, Line, LineBreak, Sentence, Verbatim};
 use crate::layout::{self, is_separator, one_line};
@@ -454,7 +456,8 @@ impl Document {
     /// `# newdoc`, every paragraph `# newpar`, and the space after a token inside a paragraph goes to MISC:
     /// `SpaceAfter=No` when there is none and `SpacesAfter` when it is not one space. In `SpacesAfter` the
     /// invisible separators are left out, line breaks other than CR and LF become LF and whitespace other than
-    /// tabs becomes a space; `# text` is the tokens with these spaces, line breaks turned into spaces.
+    /// tabs becomes a space; `# text` is the tokens with these spaces, line breaks turned into spaces. Forms,
+    /// `# text` and column values are in Unicode NFC, as CoNLL-U requires; the document keeps its text.
     pub fn to_conllu(&self) -> String {
         self.conllu(None)
     }
@@ -491,7 +494,7 @@ impl Document {
                 let gap = &self.text[self.tokens[token - 1].end..self.tokens[token].start];
                 out.push_str(&one_line(&normalize(gap)));
             }
-            out.push_str(&clean(&one_line(self.tokens[token].slice(&self.text))));
+            out.push_str(&nfc(&clean(self.tokens[token].slice(&self.text))));
         }
         out
     }
@@ -562,7 +565,7 @@ impl Document {
                         let _ = write!(
                             out,
                             "{}\t_\t_\t_\t_\t_\t_\t_\t{}",
-                            clean(form),
+                            nfc(&clean(form)),
                             layout.as_deref().unwrap_or("_")
                         );
                     }
@@ -572,12 +575,16 @@ impl Document {
             }
             for word in words.clone() {
                 flush(lines, out);
-                let misc = self.column(Column::Misc, word);
+                // A document read from CoNLL-U is written as it was, a segmented one in NFC
+                let generated = verbatim.is_none();
+                let misc = self
+                    .column(Column::Misc, word)
+                    .map(|misc| written(generated, misc));
                 let misc = match (&layout, words.len()) {
-                    (Some(layout), 1) => Some(merge(misc, layout)),
-                    _ => misc.map(str::to_owned),
+                    (Some(layout), 1) => Some(merge(misc.as_deref(), layout)),
+                    _ => misc.map(Cow::into_owned),
                 };
-                let value = |column| self.column(column, word).unwrap_or("_");
+                let value = |column| written(generated, self.column(column, word).unwrap_or("_"));
                 let head = self
                     .head(word)
                     .map_or_else(|| "_".to_owned(), |head| head.to_string());
@@ -585,7 +592,7 @@ impl Document {
                     out,
                     "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
                     word - sentence.words.start + 1,
-                    clean(self.form(word)),
+                    written(generated, &clean(self.form(word))),
                     value(Column::Lemma),
                     value(Column::Upos),
                     value(Column::Xpos),
@@ -648,10 +655,30 @@ fn merge(misc: Option<&str>, layout: &str) -> String {
     }
 }
 
+/// A text in Unicode NFC
+fn nfc(text: &str) -> Cow<'_, str> {
+    if is_nfc(text) {
+        Cow::Borrowed(text)
+    } else {
+        Cow::Owned(text.nfc().collect())
+    }
+}
+
+/// A value of a segmented document as CoNLL-U writes it: in NFC
+fn written(generated: bool, value: &str) -> Cow<'_, str> {
+    match generated {
+        true => nfc(value),
+        false => Cow::Borrowed(value),
+    }
+}
+
 /// A form fit for a column of CoNLL-U: tabs and line breaks turned into spaces
 fn clean(form: &str) -> Cow<'_, str> {
-    if form.contains(['\t', '\n', '\r']) {
-        form.replace(['\t', '\n', '\r'], " ").into()
+    const BREAKS: [char; 8] = [
+        '\t', '\n', '\r', '\u{b}', '\u{c}', '\u{85}', '\u{2028}', '\u{2029}',
+    ];
+    if form.contains(BREAKS) {
+        one_line(form).replace('\t', " ").into()
     } else {
         form.into()
     }
@@ -891,6 +918,30 @@ mod tests {
         assert!(doc.to_conllu().contains("# text = а бв г  д е\tж  з.\n"));
         let back = &read_conllu(&doc.to_conllu()).unwrap()[0];
         assert_eq!((back.sentence_count(), back.lines().len()), (2, 4));
+    }
+
+    #[test]
+    fn generated_nfc() {
+        let text = "Мои\u{306} е\u{308}ж\u{2028}при-\u{2028}мер";
+        let tokens = vec![
+            Span { start: 0, end: 8 },
+            Span { start: 9, end: 15 },
+            Span { start: 18, end: 34 },
+        ];
+        let mut doc = Document::from_tokens(text.to_owned(), tokens, None).unwrap();
+        doc.set_columns(
+            vec![(
+                Column::Lemma,
+                vec![Some("мои\u{306}".to_owned()), None, None],
+            )],
+            None,
+        )
+        .unwrap();
+        let written = doc.to_conllu();
+        assert!(written.contains("# text = Мой ёж при- мер\n"), "{written}");
+        assert!(written.contains("1\tМой\tмой\t"), "{written}");
+        assert!(written.contains("3\tпри- мер\t"), "{written}");
+        assert_eq!(doc.text(), text);
     }
 
     #[test]

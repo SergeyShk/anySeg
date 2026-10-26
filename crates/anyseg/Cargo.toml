@@ -17,5 +17,8 @@ default = ["ru"]
 # Russian
 ru = []
 
+[dependencies]
+unicode-normalization = "0.1.26"
+
 [package.metadata.docs.rs]
 all-features = true

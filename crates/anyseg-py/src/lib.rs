@@ -372,7 +372,8 @@ impl Document {
     ///
     /// Raises:
     ///     ValueError: If there is no such column, a list has not one value per word, a value is
-    ///         empty or holds a tab or a line break, or a head is out of its sentence
+    ///         empty, a lemma or MISC holds a tab or a line break or another value holds
+    ///         whitespace, or a head is out of its sentence
     ///     TypeError: If a value is neither a string nor None, or a head is not an integer
     #[pyo3(signature = (**columns))]
     fn set_columns(&self, py: Python<'_>, columns: Option<&Bound<'_, PyDict>>) -> PyResult<()> {
@@ -503,7 +504,8 @@ impl Document {
     ///     SpaceAfter=No when there is none and SpacesAfter when it is not one space. There the
     ///     invisible separators are left out, line breaks other than CR and LF become LF and
     ///     whitespace other than tabs becomes a space; the comment text is the tokens with these
-    ///     spaces, line breaks turned into spaces
+    ///     spaces, line breaks turned into spaces. Forms, the comment text and column values are in
+    ///     Unicode NFC, as CoNLL-U requires; the document keeps its text
     ///
     /// Arguments:
     ///     doc_id (str | None): ID of the document: newdoc gets it and sent_id becomes ID-N, so

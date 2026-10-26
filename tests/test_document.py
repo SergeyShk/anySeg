@@ -1,5 +1,6 @@
 import pickle
 import random
+import unicodedata
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 
@@ -203,7 +204,11 @@ def test_columns(doc):
     [
         ({"upos": ["X"]}, ValueError, "upos has 1 values for 8 words"),
         ({"feats": [""] * 8}, ValueError, "feats of word 0 is empty or holds whitespace"),
-        ({"misc": ["a\tb"] * 8}, ValueError, "misc of word 0 is empty or holds whitespace"),
+        (
+            {"misc": ["a\tb"] * 8},
+            ValueError,
+            "misc of word 0 is empty or holds a tab or a line break",
+        ),
         ({"upos": ["NO UN"] * 8}, ValueError, "upos of word 0 is empty or holds whitespace"),
         (
             {"lemma": ["a\nb"] * 8},
@@ -306,6 +311,19 @@ def test_document_id(doc):
     assert read.to_conllu(doc_id="x") == read.to_conllu()
 
 
+def test_conllu_in_nfc():
+    text = "Мои\u0306 е\u0308ж"
+    doc = segment(text, lang="ru")
+    doc.set_columns(lemma=["мои\u0306", None], misc=["Gloss=my own", None])
+    written = doc.to_conllu()
+    assert "# text = Мой ёж\n" in written
+    assert "1\tМой\tмой\t_\t_\t_\t_\t_\t_\tGloss=my own\n" in written
+    assert doc.text is text
+    (read,) = read_conllu(UD.split("# newdoc\n")[0])
+    read.set_columns(misc=["MWE=a b", *read.column("misc")[1:]])
+    assert read.words[0].misc == "MWE=a b"
+
+
 def test_spaces_in_conllu():
     written = segment("а\u00a0б\u200bв\u2028г", lang="ru").to_conllu()
     assert "# text = а бв г\n" in written
@@ -392,7 +410,8 @@ def test_random_texts():
             assert any(line.start <= token.start and token.end <= line.end for line in doc.lines)
         if doc.tokens:
             (back,) = read_conllu(doc.to_conllu())
-            assert [token.text for token in back.tokens] == [token.text for token in doc.tokens]
+            forms = [unicodedata.normalize("NFC", token.text) for token in doc.tokens]
+            assert [token.text for token in back.tokens] == forms
 
 
 def test_threads():
