@@ -35,4 +35,4 @@ Positions are offsets in the characters of a Python string: `text[span.start:spa
 
 ## License
 
-MIT, see [LICENSE.txt](LICENSE.txt).
+MIT, see [LICENSE.txt](https://github.com/SergeyShk/anySeg/blob/master/LICENSE.txt).

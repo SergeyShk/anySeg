@@ -54,6 +54,13 @@ repos:
         types: [rust]
         pass_filenames: false
 
+      - id: clippy-no-features
+        name: cargo clippy without language features
+        language: system
+        entry: cargo clippy -p anyseg --no-default-features --all-targets -- -D warnings
+        types: [rust]
+        pass_filenames: false
+
       - id: pytest
         name: pytest
         stages: [pre-push]
@@ -67,5 +74,13 @@ repos:
         stages: [pre-push]
         language: system
         entry: cargo test -p anyseg
+        pass_filenames: false
+        always_run: true
+
+      - id: cargo-test-no-features
+        name: cargo test without language features
+        stages: [pre-push]
+        language: system
+        entry: cargo test -p anyseg --no-default-features
         pass_filenames: false
         always_run: true

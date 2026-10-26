@@ -89,7 +89,7 @@ impl fmt::Display for UnknownLanguage {
 impl Error for UnknownLanguage {}
 
 /// Segmenter of texts in one language
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Segmenter {
     language: Language,
 }

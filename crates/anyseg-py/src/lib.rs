@@ -2,7 +2,7 @@
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::PyString;
+use pyo3::types::{PyString, PyType};
 
 /// Piece of a text with its position
 ///
@@ -47,8 +47,9 @@ impl Span {
         ))
     }
 
-    fn __getnewargs__(&self) -> (usize, usize, String) {
-        (self.start, self.end, self.text.clone())
+    fn __reduce__<'py>(slf: &Bound<'py, Self>) -> (Bound<'py, PyType>, (usize, usize, String)) {
+        let span = slf.get();
+        (slf.get_type(), (span.start, span.end, span.text.clone()))
     }
 }
 
@@ -87,7 +88,8 @@ fn spans(text: &str, spans: Vec<anyseg::Span>) -> Vec<Span> {
 ///
 /// Description:
 ///     Tokens and sentences are spans of the text, which is never changed. A segmenter is
-///     immutable and can be shared between threads and pickled
+///     immutable, can be shared between threads and pickled, and equals the segmenters of the
+///     same language
 ///
 /// Arguments:
 ///     lang (str): ISO 639-1 code of the language: "ru"
@@ -98,7 +100,8 @@ fn spans(text: &str, spans: Vec<anyseg::Span>) -> Vec<Span> {
 ///
 /// Raises:
 ///     ValueError: If the language is not supported
-#[pyclass(frozen, module = "anyseg")]
+#[pyclass(frozen, eq, hash, module = "anyseg")]
+#[derive(PartialEq, Eq, Hash)]
 struct Segmenter {
     inner: anyseg::Segmenter,
 }
@@ -167,8 +170,8 @@ impl Segmenter {
         format!("Segmenter('{}')", self.lang())
     }
 
-    fn __getnewargs__(&self) -> (&'static str,) {
-        (self.lang(),)
+    fn __reduce__<'py>(slf: &Bound<'py, Self>) -> (Bound<'py, PyType>, (&'static str,)) {
+        (slf.get_type(), (slf.get().lang(),))
     }
 }
 

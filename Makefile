@@ -54,14 +54,17 @@ else
 	cargo fmt --all
 endif
 	cargo clippy --workspace --all-targets -- -D warnings
+	cargo clippy -p $(PACKAGE) --no-default-features --all-targets -- -D warnings
 
 test: deps ## Run the tests
 	uv run pytest
 	cargo test -p $(PACKAGE)
+	cargo test -p $(PACKAGE) --no-default-features
 
 test-cov: deps ## Run the tests with the coverage check
 	uv run pytest --cov $(PACKAGE)
 	cargo test -p $(PACKAGE)
+	cargo test -p $(PACKAGE) --no-default-features
 
 clean: clean-build clean-pyc clean-test ## Remove all artifacts except the Rust build
 	rm -f .coverage coverage.xml

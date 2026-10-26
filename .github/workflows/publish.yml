@@ -287,6 +287,13 @@ jobs:
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: stable
+      # crates.io accepts the upload only with at most 5 keywords of at most 20 characters, which
+      # cargo package does not check
+      - name: Check crate keywords
+        run: |
+          cargo metadata --no-deps --format-version 1 \
+            | jq -e '.packages[] | select(.name == "anyseg") | .keywords | length <= 5 and all(.[]; length <= 20)' \
+            || { echo "The keywords of anyseg break the limits of crates.io"; exit 1; }
       - name: Package crate
         run: cargo package --locked -p anyseg
 

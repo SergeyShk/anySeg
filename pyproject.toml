@@ -58,8 +58,7 @@ cache-keys = [
     { file = "pyproject.toml" },
     { file = "Cargo.toml" },
     { file = "Cargo.lock" },
-    { file = "crates/**/Cargo.toml" },
-    { file = "crates/**/*.rs" },
+    { file = "crates/**/*" },
 ]
 
 [dependency-groups]

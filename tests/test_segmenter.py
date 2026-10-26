@@ -23,6 +23,9 @@ def segmenter():
 def test_language(segmenter):
     assert segmenter.lang == "ru"
     assert repr(segmenter) == "Segmenter('ru')"
+    assert segmenter == Segmenter("ru")
+    assert segmenter != "ru"
+    assert len({segmenter, Segmenter("ru")}) == 1
 
 
 @pytest.mark.parametrize("lang", ["xx", "RU", "", "ru "])
@@ -106,14 +109,20 @@ def test_span():
         span.start = 0
 
 
-@pytest.mark.parametrize("dump", [pickle.dumps, copy.copy, copy.deepcopy])
-def test_copy(segmenter, dump):
+@pytest.mark.parametrize("protocol", range(pickle.HIGHEST_PROTOCOL + 1))
+def test_pickle(segmenter, protocol):
     span = segmenter.tokenize("Ёж идёт")[1]
-    restored = pickle.loads(dump(span)) if dump is pickle.dumps else dump(span)
-    assert restored == span
-    restored = pickle.loads(dump(segmenter)) if dump is pickle.dumps else dump(segmenter)
-    assert restored.lang == "ru"
+    assert pickle.loads(pickle.dumps(span, protocol)) == span
+    restored = pickle.loads(pickle.dumps(segmenter, protocol))
+    assert restored == segmenter
     assert restored.tokenize(TEXT) == segmenter.tokenize(TEXT)
+
+
+@pytest.mark.parametrize("function", [copy.copy, copy.deepcopy])
+def test_copy(segmenter, function):
+    span = segmenter.tokenize("Ёж идёт")[1]
+    assert function(span) == span
+    assert function(segmenter) == segmenter
 
 
 def test_functions(segmenter):
