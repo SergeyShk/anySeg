@@ -2,9 +2,44 @@
 
 from functools import cache
 
-from ._anyseg import Segmenter, Span, __version__
+from ._anyseg import (
+    Document,
+    Line,
+    Lines,
+    Paragraph,
+    Paragraphs,
+    Segmenter,
+    Sentence,
+    Sentences,
+    Span,
+    Token,
+    Tokens,
+    Word,
+    Words,
+    __version__,
+    read_conllu,
+)
 
-__all__ = ["Segmenter", "Span", "__version__", "sentenize", "tokenize"]
+__all__ = [
+    "Document",
+    "Line",
+    "Lines",
+    "Paragraph",
+    "Paragraphs",
+    "Segmenter",
+    "Sentence",
+    "Sentences",
+    "Span",
+    "Token",
+    "Tokens",
+    "Word",
+    "Words",
+    "__version__",
+    "read_conllu",
+    "segment",
+    "sentenize",
+    "tokenize",
+]
 
 
 @cache
@@ -62,3 +97,30 @@ def sentenize(text: str, *, lang: str) -> list[Span]:
         UnicodeEncodeError: If the text contains a lone surrogate
     """
     return _segmenter(lang).sentenize(text)
+
+
+def segment(text: str, *, lang: str) -> Document:
+    """
+    Document of a text
+
+    Example:
+        >>> from anyseg import segment
+        >>> doc = segment("Мама мыла раму", lang="ru")
+        >>> [word.form for word in doc.words]
+        ['Мама', 'мыла', 'раму']
+
+    Description:
+        The same as Segmenter(lang).segment(text), with one segmenter per language
+
+    Arguments:
+        text (str): Text
+        lang (str): ISO 639-1 code of the language: "ru"
+
+    Returns:
+        Document: Segmented text
+
+    Raises:
+        ValueError: If the language is not supported
+        UnicodeEncodeError: If the text contains a lone surrogate
+    """
+    return _segmenter(lang).segment(text)

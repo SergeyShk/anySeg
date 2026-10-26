@@ -9,7 +9,12 @@ let segmenter = Segmenter::new("ru").unwrap();
 let text = "Ёж идёт домой";
 let tokens: Vec<&str> = segmenter.tokenize(text).iter().map(|span| span.slice(text)).collect();
 assert_eq!(tokens, ["Ёж", "идёт", "домой"]);
+
+let doc = segmenter.segment("Ёж идёт домой\n\nКот спит");
+assert_eq!(doc.sentence(1).span.slice(doc.text()), "Кот спит");
 ```
+
+A `Document` holds the tokens, the words with the columns of CoNLL-U, the sentences, the paragraphs and their lines; `Document::to_conllu` and `read_conllu` write and read CoNLL-U, and a document read from CoNLL-U is written back unchanged.
 
 The Python package with the same segmenter is [`anyseg`](https://github.com/SergeyShk/anySeg) on PyPI.
 

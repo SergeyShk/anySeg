@@ -33,7 +33,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Install dependencies
-        run: uv sync --locked --no-default-groups --group lint --no-install-project
+        run: uv sync --locked --no-default-groups --group lint
       - name: Ruff
         run: |
           uv run --no-sync ruff check python scripts tests
@@ -42,6 +42,8 @@ jobs:
         run: git ls-files -z '*.md' | xargs -0 uv run --no-sync ruff format --check
       - name: Mypy
         run: uv run --no-sync mypy
+      - name: Stubtest
+        run: uv run --no-sync python -m mypy.stubtest anyseg._anyseg
       - name: Rustfmt
         run: cargo fmt --all --check
       - name: Clippy

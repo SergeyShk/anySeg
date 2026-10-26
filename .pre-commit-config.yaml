@@ -40,6 +40,13 @@ repos:
         types_or: [python, pyi]
         pass_filenames: false
 
+      - id: stubtest
+        name: stubtest
+        language: system
+        entry: uv run python -m mypy.stubtest anyseg._anyseg
+        types_or: [pyi, rust]
+        pass_filenames: false
+
       - id: cargo-fmt
         name: cargo fmt
         language: system

@@ -10,8 +10,9 @@ import pytest
 import anyseg
 from anyseg import Segmenter, Span, sentenize, tokenize
 
-# Letters with a stress mark, a supplementary-plane emoji, a no-break space, a line separator,
-# CRLF and a tab: offsets in characters differ from offsets in UTF-8 bytes and UTF-16 units
+# Letters with a stress mark, a supplementary-plane emoji, a byte order mark, a no-break space, a
+# line separator, CRLF and a tab: offsets in characters differ from offsets in UTF-8 bytes and
+# UTF-16 units
 TEXT = "\ufeffЁж\u00a0иду\u0301т\t😀\r\nдомо\u0301й\u2028end"
 
 
@@ -39,9 +40,9 @@ def test_unsupported_language(lang):
 
 def test_tokens_in_characters(segmenter):
     spans = segmenter.tokenize(TEXT)
-    assert [span.text for span in spans] == ["\ufeffЁж", "иду\u0301т", "😀", "домо\u0301й", "end"]
+    assert [span.text for span in spans] == ["Ёж", "иду\u0301т", "😀", "домо\u0301й", "end"]
     assert [(span.start, span.end) for span in spans] == [
-        (0, 3),
+        (1, 3),
         (4, 9),
         (10, 11),
         (13, 19),
@@ -61,12 +62,18 @@ def test_ascii_text(segmenter):
     ]
 
 
-def test_sentence_is_trimmed_text(segmenter):
+def test_sentence_is_paragraph(segmenter):
     (span,) = segmenter.sentenize("\n " + TEXT + " \u3000")
-    assert (span.start, span.end, span.text) == (2, 2 + len(TEXT), TEXT)
+    assert (span.start, span.end, span.text) == (3, 2 + len(TEXT), TEXT[1:])
+    text = "Ёж идёт.\nКот спит.\n \u200b\n\nУтро\u2029Ночь"
+    assert [span.text for span in segmenter.sentenize(text)] == [
+        "Ёж идёт.\nКот спит.",
+        "Утро",
+        "Ночь",
+    ]
 
 
-@pytest.mark.parametrize("text", ["", " ", "\n\r\n\t\u00a0\u2028\u3000"])
+@pytest.mark.parametrize("text", ["", " ", "\n\r\n\t\u00a0\u2028\u3000", "\ufeff\u200b\u2060"])
 def test_blank_text(segmenter, text):
     assert segmenter.tokenize(text) == []
     assert segmenter.sentenize(text) == []
@@ -81,13 +88,14 @@ def test_lone_surrogate(segmenter):
 
 def test_random_texts(segmenter):
     rng = random.Random(0)
-    alphabet = "ab Ёж\u0301\u00ad😀👍🏽\u200d.,-—\n\r\t\u00a0\u2028\u3000\ufeff\u200b"
+    alphabet = "ab Ёж\u0301\u00ad😀👍🏽\u200d.,-—\n\r\t\u00a0\u2028\u3000\ufeff\u200b\u2060"
     for _ in range(300):
         text = "".join(rng.choices(alphabet, k=rng.randrange(40)))
         spans = segmenter.tokenize(text)
         assert all(text[span.start : span.end] == span.text for span in spans)
         assert all(a.end < b.start for a, b in pairwise(spans))
-        assert "".join(span.text for span in spans) == "".join(text.split())
+        kept = (char for char in text if not char.isspace() and char not in "\ufeff\u200b\u2060")
+        assert "".join(span.text for span in spans) == "".join(kept)
 
 
 def test_threads(segmenter):

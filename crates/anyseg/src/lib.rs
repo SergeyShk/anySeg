@@ -1,7 +1,9 @@
 //! Segmentation of text into tokens and sentences with positions in the source text.
 //!
 //! The text is never changed: a token or a sentence is a [`Span`] of byte offsets into the text
-//! it was cut from. Every language is a Cargo feature: `ru` (Russian, on by default).
+//! it was cut from. [`Segmenter::segment`] gives a [`Document`]: tokens, words with the columns of
+//! CoNLL-U, sentences, paragraphs and lines, read from and written to CoNLL-U by [`read_conllu`]
+//! and [`Document::to_conllu`]. Every language is a Cargo feature: `ru` (Russian, on by default).
 //!
 //! ```
 //! # #[cfg(feature = "ru")] {
@@ -11,11 +13,20 @@
 //! let text = "Мама мыла раму";
 //! let tokens: Vec<&str> = segmenter.tokenize(text).iter().map(|span| span.slice(text)).collect();
 //! assert_eq!(tokens, ["Мама", "мыла", "раму"]);
+//! let doc = segmenter.segment(text);
+//! assert_eq!(doc.sentence(0).span.slice(doc.text()), "Мама мыла раму");
 //! # }
 //! ```
 
 use std::error::Error;
 use std::fmt;
+
+mod conllu;
+mod document;
+mod layout;
+
+pub use conllu::{ConlluError, read_conllu};
+pub use document::{Column, Document, DocumentError, Line, LineBreak, Paragraph, Sentence};
 
 /// A piece of a text: `&text[start..end]`, in bytes
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -110,38 +121,38 @@ impl Segmenter {
         self.language
     }
 
-    /// The tokens of a text in order: the runs of characters between whitespace
+    /// The tokens of a text in order: the runs of characters between whitespace and the invisible
+    /// separators (zero width space, word joiner, byte order mark)
     pub fn tokenize(&self, text: &str) -> Vec<Span> {
         let mut spans = Vec::new();
-        let mut start = None;
-        for (index, character) in text.char_indices() {
-            if character.is_whitespace() {
-                if let Some(start) = start.take() {
-                    spans.push(Span { start, end: index });
-                }
-            } else if start.is_none() {
-                start = Some(index);
-            }
-        }
-        if let Some(start) = start {
-            spans.push(Span {
-                start,
+        layout::runs(
+            text,
+            Span {
+                start: 0,
                 end: text.len(),
-            });
-        }
+            },
+            &mut spans,
+        );
         spans
     }
 
-    /// The sentences of a text in order: the text without the whitespace around it, none for a
-    /// blank text
+    /// The sentences of a text in order: every paragraph, the part of the text between blank lines,
+    /// without the separators around it
     pub fn sentenize(&self, text: &str) -> Vec<Span> {
-        let start = text.len() - text.trim_start().len();
-        let end = text.trim_end().len();
-        if start < end {
-            vec![Span { start, end }]
-        } else {
-            Vec::new()
-        }
+        layout::paragraphs(text)
+            .iter()
+            .map(|lines| Span {
+                start: lines[0].start,
+                end: lines[lines.len() - 1].end,
+            })
+            .collect()
+    }
+
+    /// The document of a text: its tokens, one word per token, its sentences as
+    /// [`sentenize`](Self::sentenize) gives them, its paragraphs and their lines
+    pub fn segment(&self, text: &str) -> Document {
+        Document::assemble(text.to_owned(), self.tokenize(text), None)
+            .expect("tokens of the segmenter lie inside paragraphs")
     }
 }
 
@@ -197,9 +208,20 @@ mod tests {
     }
 
     #[test]
-    fn sentence_is_trimmed_text() {
-        let text = "\n Мама мыла раму. Рама чистая.\u{a0}";
-        let spans = Segmenter::new("ru").unwrap().sentenize(text);
-        assert_eq!(pieces(text, &spans), ["Мама мыла раму. Рама чистая."]);
+    fn sentence_is_paragraph() {
+        let text = "\n Мама мыла раму.\nРама чистая.\u{a0}\n \n\u{feff}Утро";
+        let segmenter = Segmenter::new("ru").unwrap();
+        let spans = segmenter.sentenize(text);
+        assert_eq!(
+            pieces(text, &spans),
+            ["Мама мыла раму.\nРама чистая.", "Утро"]
+        );
+        let doc = segmenter.segment(text);
+        assert_eq!(doc.tokens(), segmenter.tokenize(text));
+        let sentences: Vec<Span> = (0..doc.sentence_count())
+            .map(|index| doc.sentence(index).span)
+            .collect();
+        assert_eq!(sentences, spans);
+        assert_eq!((doc.paragraph_count(), doc.lines().len()), (2, 3));
     }
 }
