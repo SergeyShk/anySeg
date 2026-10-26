@@ -1,0 +1,21 @@
+[package]
+name = "anyseg"
+description = "Fast segmentation of text into tokens and sentences with positions in the source text"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage = "https://sergeyshk.github.io/anySeg/"
+readme = "README.md"
+keywords = ["tokenizer", "sentence-splitter", "segmentation", "nlp", "russian"]
+categories = ["text-processing"]
+
+[features]
+default = ["ru"]
+# Russian
+ru = []
+
+[package.metadata.docs.rs]
+all-features = true

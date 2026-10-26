@@ -1,0 +1,86 @@
+default_install_hook_types: [pre-commit, pre-push]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        exclude: ^mkdocs\.yml$
+      - id: check-toml
+      - id: check-added-large-files
+      - id: check-merge-conflict
+
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.13.5
+    hooks:
+      - id: uv-lock
+
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        language: system
+        entry: uv run ruff check --force-exclude --fix
+        types_or: [python, pyi]
+        require_serial: true
+
+      - id: ruff-format
+        name: ruff format
+        language: system
+        entry: uv run ruff format --force-exclude
+        types_or: [python, pyi, markdown]
+        require_serial: true
+
+      - id: mypy
+        name: mypy
+        language: system
+        entry: uv run mypy
+        types_or: [python, pyi]
+        pass_filenames: false
+
+      - id: cargo-fmt
+        name: cargo fmt
+        language: system
+        entry: cargo fmt --all
+        types: [rust]
+        pass_filenames: false
+
+      - id: clippy
+        name: cargo clippy
+        language: system
+        entry: cargo clippy --workspace --all-targets -- -D warnings
+        types: [rust]
+        pass_filenames: false
+
+      - id: clippy-no-features
+        name: cargo clippy without language features
+        language: system
+        entry: cargo clippy -p anyseg --no-default-features --all-targets -- -D warnings
+        types: [rust]
+        pass_filenames: false
+
+      - id: pytest
+        name: pytest
+        stages: [pre-push]
+        language: system
+        entry: uv run pytest --cov anyseg
+        pass_filenames: false
+        always_run: true
+
+      - id: cargo-test
+        name: cargo test
+        stages: [pre-push]
+        language: system
+        entry: cargo test -p anyseg
+        pass_filenames: false
+        always_run: true
+
+      - id: cargo-test-no-features
+        name: cargo test without language features
+        stages: [pre-push]
+        language: system
+        entry: cargo test -p anyseg --no-default-features
+        pass_filenames: false
+        always_run: true

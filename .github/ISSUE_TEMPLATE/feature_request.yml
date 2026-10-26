@@ -1,0 +1,27 @@
+name: Feature request
+description: A new language, a convention or an improvement of the API
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does it solve
+      description: What you want to segment or do and why the current features are not enough
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How it could look in the API or what tokens and sentences you expect, with examples
+  - type: textarea
+    id: sources
+    attributes:
+      label: Sources
+      description: The Universal Dependencies guidelines or the treebank whose conventions the request follows
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I am willing to submit a pull request
