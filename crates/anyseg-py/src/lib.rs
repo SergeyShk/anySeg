@@ -219,13 +219,16 @@ impl Segmenter {
 /// Segmented text: tokens, words, sentences, paragraphs and lines
 ///
 /// Example:
-///     >>> from anyseg import Segmenter
+///     >>> from anyseg import Document, Segmenter
 ///     >>> doc = Segmenter("ru").segment("Ёж идёт домой\n\nКот спит")
 ///     >>> doc.tokens[1], doc.sentences[1].text
 ///     (Token(start=3, end=7, text='идёт'), 'Кот спит')
 ///     >>> doc.set_columns(upos=["NOUN", "VERB", "ADV", "NOUN", "VERB"], head=[2, 0, 2, 2, 0])
 ///     >>> doc.words[1]
 ///     Word(id=2, form='идёт', upos='VERB', head=0)
+///     >>> doc = Document.from_tokens("Ёж идёт\n\nдомой", [0, 3, 9], [2, 7, 14])
+///     >>> [sentence.text for sentence in doc.sentences]
+///     ['Ёж идёт', 'домой']
 ///
 /// Description:
 ///     The text is never changed: tokens are its spans, and positions are offsets in the
@@ -412,12 +415,6 @@ impl Document {
     }
 
     /// Document of the tokens of a text
-    ///
-    /// Example:
-    ///     >>> from anyseg import Document
-    ///     >>> doc = Document.from_tokens("Ёж идёт\n\nдомой", [0, 3, 9], [2, 7, 14])
-    ///     >>> [sentence.text for sentence in doc.sentences]
-    ///     ['Ёж идёт', 'домой']
     ///
     /// Description:
     ///     A token holds one word. Paragraphs are the parts of the text between blank lines, and
@@ -1068,31 +1065,7 @@ impl Line {
     }
 }
 
-/// Documents of a text in CoNLL-U
-///
-/// Example:
-///     >>> from anyseg import read_conllu
-///     >>> conllu = "# text = Ёж идёт\n1\tЁж\t_\t_\t_\t_\t_\t_\t_\t_\n2\tидёт\t_\t_\t_\t_\t_\t_\t_\t_\n\n"
-///     >>> docs = read_conllu(conllu)
-///     >>> docs[0].tokens, docs[0].to_conllu() == conllu
-///     (Tokens([Token(start=0, end=2, text='Ёж'), Token(start=3, end=7, text='идёт')]), True)
-///
-/// Description:
-///     The comment newdoc starts a document and newpar a paragraph. The text of a sentence is
-///     its comment text or, without it, the forms of its tokens with the spaces of SpaceAfter and
-///     SpacesAfter; sentences of a paragraph are joined by a space (none after SpaceAfter=No),
-///     paragraphs by a blank line. Comments, multiword token lines and empty nodes are kept, so
-///     that to_conllu writes the text back as it was
-///
-/// Arguments:
-///     text (str): Text in CoNLL-U
-///
-/// Returns:
-///     list[Document]: Documents in order
-///
-/// Raises:
-///     ValueError: If a line is neither a comment, a blank line nor a token line of 10 columns
-///         with IDs in order, or forms do not match the text of their sentence
+/// Documents of a text in CoNLL-U, described by `anyseg.read_conllu`
 #[pyfunction]
 fn read_conllu(py: Python<'_>, text: &str) -> PyResult<Vec<Document>> {
     let documents =

@@ -17,7 +17,7 @@ from ._anyseg import (
     Word,
     Words,
     __version__,
-    read_conllu,
+    read_conllu as _read_conllu,
 )
 
 __all__ = [
@@ -124,3 +124,34 @@ def segment(text: str, *, lang: str) -> Document:
         UnicodeEncodeError: If the text contains a lone surrogate
     """
     return _segmenter(lang).segment(text)
+
+
+def read_conllu(text: str) -> list[Document]:
+    r"""
+    Documents of a text in CoNLL-U
+
+    Example:
+        >>> from anyseg import read_conllu
+        >>> conllu = "# text = Ёж идёт\n1\tЁж\t_\t_\t_\t_\t_\t_\t_\t_\n2\tидёт\t_\t_\t_\t_\t_\t_\t_\t_\n\n"
+        >>> docs = read_conllu(conllu)
+        >>> list(docs[0].tokens), docs[0].to_conllu() == conllu
+        ([Token(start=0, end=2, text='Ёж'), Token(start=3, end=7, text='идёт')], True)
+
+    Description:
+        The comment newdoc starts a document and newpar a paragraph. The text of a sentence is its
+        comment text or, without it, the forms of its tokens with the spaces of SpaceAfter and
+        SpacesAfter; sentences of a paragraph are joined by a space (none after SpaceAfter=No),
+        paragraphs by a blank line. Comments, multiword token lines and empty nodes are kept, so
+        that to_conllu writes the text back as it was
+
+    Arguments:
+        text (str): Text in CoNLL-U
+
+    Returns:
+        list[Document]: Documents in order
+
+    Raises:
+        ValueError: If a line is neither a comment, a blank line nor a token line of 10 columns
+            with IDs in order, or forms do not match the text of their sentence
+    """
+    return _read_conllu(text)
