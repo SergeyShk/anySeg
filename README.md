@@ -29,9 +29,19 @@ segmenter.tokenize("Ёж идёт домой")
 
 [span.text for span in tokenize("Ёж идёт домой", lang="ru")]
 # ['Ёж', 'идёт', 'домой']
+
+doc = segmenter.segment("Ёж идёт домой\n\nКот спит")
+[sentence.text for sentence in doc.sentences]
+# ['Ёж идёт домой', 'Кот спит']
+
+doc.set_columns(upos=["NOUN", "VERB", "ADV", "NOUN", "VERB"])
+doc.words[1]
+# Word(id=2, form='идёт', upos='VERB')
 ```
 
 Positions are offsets in the characters of a Python string: `text[span.start:span.end] == span.text`. The Rust crate gives them in bytes.
+
+A document holds the tokens, the words with the columns of [CoNLL-U](https://universaldependencies.org/format.html), the sentences, the paragraphs (the parts of the text between blank lines) and their lines. `doc.to_conllu()` writes it in CoNLL-U and `read_conllu(text)` reads documents from it; a document read from CoNLL-U is written back unchanged.
 
 ## License
 

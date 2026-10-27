@@ -25,3 +25,21 @@ Requires Python 3.11 or newer. Until the first release, the package is built fro
     ```
 
 Positions are offsets in the characters of a Python string: `text[span.start:span.end] == span.text`.
+
+A document holds the tokens, the words with the columns of [CoNLL-U](https://universaldependencies.org/format.html), the sentences, the paragraphs (the parts of the text between blank lines) and their lines:
+
+=== "Code"
+
+    ``` python
+    doc = Segmenter("ru").segment("Ёж идёт домой\n\nКот спит")
+    doc.set_columns(upos=["NOUN", "VERB", "ADV", "NOUN", "VERB"])
+    [sentence.text for sentence in doc.sentences], doc.words[1]
+    ```
+
+=== "Result"
+
+    ```
+    (['Ёж идёт домой', 'Кот спит'], Word(id=2, form='идёт', upos='VERB'))
+    ```
+
+`doc.to_conllu()` writes a document in CoNLL-U and `read_conllu(text)` reads documents from it; a document read from CoNLL-U is written back unchanged.

@@ -44,8 +44,9 @@ format: deps ## Format the code
 	uv run ruff format $(SRC_PATH) $(SCRIPTS_PATH) $(TESTS_PATH)
 	cargo fmt --all
 
-mypy: deps ## Check the types with mypy
+mypy: deps ## Check the types with mypy and the type stub of the Rust module with stubtest
 	uv run mypy
+	uv run python -m mypy.stubtest anyseg._anyseg
 
 rust-lint: uv ## Check the Rust code with rustfmt and clippy
 ifeq ($(MODE), ci)

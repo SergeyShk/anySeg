@@ -25,7 +25,7 @@ The Rust module is built when the package is installed into the environment; `uv
 Before submitting a pull request, these must pass:
 
 ```bash
-make lint        # ruff check, ruff format, mypy, cargo fmt, cargo clippy
+make lint        # ruff check, ruff format, mypy, stubtest, cargo fmt, cargo clippy
 make test-cov    # pytest with the docstring examples (doctest) and the coverage threshold, cargo test
 make docs-build  # mkdocs build --strict, if the documentation changed
 ```
