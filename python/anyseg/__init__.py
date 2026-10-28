@@ -83,8 +83,8 @@ def sentenize(text: str, *, lang: str) -> list[Span]:
 
     Example:
         >>> from anyseg import sentenize
-        >>> [span.text for span in sentenize(" Мама мыла раму ", lang="ru")]
-        ['Мама мыла раму']
+        >>> [span.text for span in sentenize(" Мама мыла раму. Кот спит ", lang="ru")]
+        ['Мама мыла раму.', 'Кот спит']
 
     Description:
         The same as Segmenter(lang).sentenize(text), with one segmenter per language

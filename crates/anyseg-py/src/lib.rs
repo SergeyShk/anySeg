@@ -102,8 +102,8 @@ fn spans(text: &str, spans: Vec<anyseg::Span>) -> Vec<Span> {
 ///     >>> segmenter = Segmenter("ru")
 ///     >>> segmenter.tokenize("Ёж идёт")
 ///     [Span(start=0, end=2, text='Ёж'), Span(start=3, end=7, text='идёт')]
-///     >>> segmenter.sentenize(" Ёж идёт ")
-///     [Span(start=1, end=8, text='Ёж идёт')]
+///     >>> [span.text for span in segmenter.sentenize("Ёж идёт. Кот спит в 1914 г. Затем")]
+///     ['Ёж идёт.', 'Кот спит в 1914 г.', 'Затем']
 ///     >>> segmenter = Segmenter("ru", abbreviations=["сущ."], tokens=["C++"])
 ///     >>> [span.text for span in segmenter.tokenize("сущ. C++")]
 ///     ['сущ.', 'C++']
@@ -218,7 +218,7 @@ impl Segmenter {
     ///     numbers with decimal commas and points, dates, times and digit groups, URLs, e-mail
     ///     addresses, file names, mentions, hashtags, emoticons and runs of emoji are one token
     ///     each, as are runs of final marks ("?!", "..."). Abbreviations and initials keep their
-    ///     period, except at the end of a paragraph. Particles after a hyphen ("Вася-то"), ranges
+    ///     period, except at the end of a sentence. Particles after a hyphen ("Вася-то"), ranges
     ///     ("2-3"), approximate numbers ("два-три") and compounds whose first part inflects
     ///     ("Ростова-на-Дону", "Формулы-1", "учеными-энтузиастами") split at the hyphen
     ///
@@ -237,8 +237,14 @@ impl Segmenter {
     /// Sentences of a text
     ///
     /// Description:
-    ///     A sentence is a paragraph, the part of the text between blank lines, without the
-    ///     whitespace around it
+    ///     A sentence runs from the start of its first token to the end of its last. A paragraph,
+    ///     the part of the text between blank lines, starts a sentence; inside it a sentence ends
+    ///     at final marks (".", "?!", "...") with the closing quotes and brackets after them, when
+    ///     a capital letter, a digit, or a dash or an opening quote before a capital letter follows.
+    ///     An abbreviation ends a sentence before a capital letter when the language lists it
+    ///     ("и т. д.") or it follows a number ("в 1914 г."); initials do not. A line break starts a
+    ///     sentence before a list item or a line of dialogue, at a line without words and after a
+    ///     line without final punctuation before a capital letter, except in verse
     ///
     /// Arguments:
     ///     text (str): Text
@@ -256,7 +262,8 @@ impl Segmenter {
     ///
     /// Description:
     ///     Tokens as tokenize gives them, one word per token, sentences as sentenize gives them,
-    ///     paragraphs and their lines
+    ///     paragraphs and their lines. A line that goes on with a lowercase letter outside verse
+    ///     is a wrap at the width of the page ("typeset"), other lines are breaks of the author
     ///
     /// Arguments:
     ///     text (str): Text

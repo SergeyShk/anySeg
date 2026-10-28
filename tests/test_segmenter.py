@@ -122,15 +122,18 @@ def test_ascii_text(segmenter):
     ]
 
 
-def test_sentence_is_paragraph(segmenter):
+def test_sentences(segmenter):
     (span,) = segmenter.sentenize("\n " + TEXT + " \u3000")
     assert (span.start, span.end, span.text) == (3, 2 + len(TEXT), TEXT[1:])
-    text = "Ёж идёт.\nКот спит.\n \u200b\n\nУтро\u2029Ночь"
+    text = "Ёж идёт.\nКот спит в 1914 г. Затем\n \u200b\n\nУтро\u2029Ночь"
     assert [span.text for span in segmenter.sentenize(text)] == [
-        "Ёж идёт.\nКот спит.",
+        "Ёж идёт.",
+        "Кот спит в 1914 г.",
+        "Затем",
         "Утро",
         "Ночь",
     ]
+    assert [span.text for span in segmenter.tokenize(text)][6:9] == ["1914", "г", "."]
 
 
 @pytest.mark.parametrize("text", ["", " ", "\n\r\n\t\u00a0\u2028\u3000", "\ufeff\u200b\u2060"])

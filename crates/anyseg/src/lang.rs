@@ -30,6 +30,8 @@ pub(crate) struct Tables {
     pub(crate) endings: HashSet<String>,
     /// Words between two hyphens that split a name at both: «Ростова-на-Дону»
     pub(crate) linkers: HashSet<String>,
+    /// Abbreviations, as the keys of their words joined by spaces, that end a sentence before a capital letter
+    pub(crate) final_abbreviations: HashSet<String>,
     /// Latin letters that stand for letters of the language in its words
     homoglyphs: HashMap<char, char>,
 }
@@ -54,7 +56,7 @@ fn lines(text: &str) -> impl Iterator<Item = &str> {
 }
 
 impl Tables {
-    fn new(files: [&str; 10]) -> Self {
+    fn new(files: [&str; 11]) -> Self {
         let [
             abbreviations,
             not_abbreviations,
@@ -65,6 +67,7 @@ impl Tables {
             prefixes,
             endings,
             linkers,
+            final_abbreviations,
             homoglyphs,
         ] = files;
         Tables {
@@ -77,6 +80,15 @@ impl Tables {
             prefixes: list(prefixes),
             endings: list(endings),
             linkers: list(linkers),
+            final_abbreviations: lines(final_abbreviations)
+                .map(|line| {
+                    line.split(|c: char| c == '.' || c.is_whitespace())
+                        .filter(|word| !word.is_empty())
+                        .map(fold)
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                })
+                .collect(),
             homoglyphs: lines(homoglyphs)
                 .filter_map(|line| {
                     let mut chars = line
@@ -123,6 +135,7 @@ pub(crate) fn tables(language: Language) -> &'static Tables {
                     include_str!("../data/ru/hyphen_prefixes.txt"),
                     include_str!("../data/ru/inflection_endings.txt"),
                     include_str!("../data/ru/hyphen_linkers.txt"),
+                    include_str!("../data/ru/final_abbreviations.txt"),
                     include_str!("../data/ru/homoglyphs.txt"),
                 ])
             })
@@ -141,5 +154,6 @@ mod tests {
         assert_eq!(tables.key("Ку\u{301}\u{ad}рица"), "курица");
         assert_eq!(tables.key("Ёлка й"), "ёлка й");
         assert_eq!(tables.key("Com"), "com");
+        assert!(tables.final_abbreviations.contains("т д"));
     }
 }

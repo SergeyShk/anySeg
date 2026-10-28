@@ -1,0 +1,8 @@
+# Abbreviations that end a sentence before a word with a capital letter: «и т. д. Потом». Other abbreviations do
+# not («г. Москва», «проф. Иванов»), unless they follow a number: «в 1914 г. Затем», «15 000 р. Пишите».
+т. д.
+т. п.
+др.
+пр.
+проч.
+н. э.

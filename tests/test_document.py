@@ -19,12 +19,12 @@ from anyseg import (
 )
 
 # Two paragraphs, a line break inside the first one, an emoji, a byte order mark and two spaces
-TEXT = "Ёж идёт домой\nКот спит 😀\n\n\ufeffУтро  Ночь"
+TEXT = "Ёж идёт домой\nкот спит 😀\n\n\ufeffУтро  Ночь"
 TOKENS = [
     (0, 2, "Ёж"),
     (3, 7, "идёт"),
     (8, 13, "домой"),
-    (14, 17, "Кот"),
+    (14, 17, "кот"),
     (18, 22, "спит"),
     (23, 24, "😀"),
     (27, 31, "Утро"),
@@ -106,7 +106,7 @@ def test_words(doc):
 
 def test_sentences_and_paragraphs(doc):
     assert [(s.start, s.end, s.text) for s in doc.sentences] == [
-        (0, 24, "Ёж идёт домой\nКот спит 😀"),
+        (0, 24, "Ёж идёт домой\nкот спит 😀"),
         (27, 37, "Утро  Ночь"),
     ]
     sentence = doc.sentences[1]
@@ -124,11 +124,11 @@ def test_sentences_and_paragraphs(doc):
 def test_lines(doc):
     assert [(line.start, line.end, line.text, line.break_before) for line in doc.lines] == [
         (0, 13, "Ёж идёт домой", None),
-        (14, 24, "Кот спит 😀", "author"),
+        (14, 24, "кот спит 😀", "typeset"),
         (27, 37, "Утро  Ночь", None),
     ]
     assert (
-        repr(doc.lines[1]) == "Line(start=14, end=24, text='Кот спит 😀', break_before='author')"
+        repr(doc.lines[1]) == "Line(start=14, end=24, text='кот спит 😀', break_before='typeset')"
     )
 
 
@@ -143,8 +143,8 @@ def test_sequences(doc):
     assert tokens[-1] == tokens[7]
     middle = tokens[2:5]
     assert isinstance(middle, Tokens)
-    assert [token.text for token in middle] == ["домой", "Кот", "спит"]
-    assert [token.text for token in middle[1:]] == ["Кот", "спит"]
+    assert [token.text for token in middle] == ["домой", "кот", "спит"]
+    assert [token.text for token in middle[1:]] == ["кот", "спит"]
     assert middle[-1] == tokens[4]
     assert [token.index for token in tokens[::3]] == [0, 3, 6]
     assert [token.index for token in tokens[::-2]] == [7, 5, 3, 1]
@@ -275,11 +275,11 @@ def test_generated_conllu(doc):
             "# newdoc",
             "# newpar",
             "# sent_id = 1",
-            "# text = Ёж идёт домой Кот спит 😀",
+            "# text = Ёж идёт домой кот спит 😀",
             ("1", "Ёж", "_", "NOUN", "_", "_", "_", "_", "_", "_"),
             ("2", "идёт", "_", "VERB", "_", "_", "_", "_", "_", "_"),
             ("3", "домой", "_", "ADV", "_", "_", "_", "_", "_", "SpacesAfter=\\n"),
-            ("4", "Кот", "_", "NOUN", "_", "_", "_", "_", "_", "_"),
+            ("4", "кот", "_", "NOUN", "_", "_", "_", "_", "_", "_"),
             ("5", "спит", "_", "VERB", "_", "_", "_", "_", "_", "_"),
             ("6", "😀", "_", "SYM", "_", "_", "_", "_", "_", "_"),
         ],
@@ -406,7 +406,7 @@ def test_random_texts():
             lines = [line for line in doc.lines if paragraph.start <= line.start < paragraph.end]
             assert lines[0].break_before is None
             assert (lines[0].start, lines[-1].end) == (paragraph.start, paragraph.end)
-            assert all(line.break_before == "author" for line in lines[1:])
+            assert all(line.break_before in ("author", "typeset") for line in lines[1:])
         for token in doc.tokens:
             assert any(line.start <= token.start and token.end <= line.end for line in doc.lines)
         if doc.tokens:

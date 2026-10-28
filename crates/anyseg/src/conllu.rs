@@ -802,14 +802,15 @@ mod tests {
         .unwrap();
         assert_eq!(
             doc.to_conllu(),
-            "# newdoc\n# newpar\n# sent_id = 1\n# text = Ёж идёт, домой.  Утро\n\
+            "# newdoc\n# newpar\n# sent_id = 1\n# text = Ёж идёт, домой.\n\
              1\tЁж\t_\t_\t_\t_\t_\t_\t_\t_\n\
              2\tидёт\t_\t_\t_\t_\t_\t_\t_\tGloss=go|SpaceAfter=No\n\
              3\t,\t_\t_\t_\t_\t_\t_\t_\tSpacesAfter=\\n\n\
              4\tдомой\t_\t_\t_\t_\t_\t_\t_\tSpaceAfter=No\n\
-             5\t.\t_\t_\t_\t_\t_\t_\t_\tSpacesAfter=\\s\\s\n\
-             6\tУтро\t_\t_\t_\t_\t_\t_\t_\t_\n\n\
-             # newpar\n# sent_id = 2\n# text = «Кот»\n\
+             5\t.\t_\t_\t_\t_\t_\t_\t_\tSpacesAfter=\\s\\s\n\n\
+             # sent_id = 2\n# text = Утро\n\
+             1\tУтро\t_\t_\t_\t_\t_\t_\t_\t_\n\n\
+             # newpar\n# sent_id = 3\n# text = «Кот»\n\
              1\t«\t_\t_\t_\t_\t_\t_\t_\tSpaceAfter=No\n\
              2\tКот\t_\t_\t_\t_\t_\t_\t_\tSpaceAfter=No\n\
              3\t»\t_\t_\t_\t_\t_\t_\t_\t_\n\n"
@@ -822,7 +823,7 @@ mod tests {
                 .collect()
         };
         assert_eq!(tokens(back), tokens(&doc));
-        assert_eq!((back.sentence_count(), back.paragraph_count()), (2, 2));
+        assert_eq!((back.sentence_count(), back.paragraph_count()), (3, 2));
     }
 
     #[test]

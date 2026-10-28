@@ -191,6 +191,33 @@ impl Document {
         Self::assemble(text, tokens, sentence_starts)
     }
 
+    /// The document of a text as the segmenter splits it: tokens, the first token of every sentence, the first
+    /// sentence of every paragraph and the lines
+    pub(crate) fn segmented(
+        text: String,
+        tokens: Vec<Span>,
+        mut sentence_tokens: Vec<usize>,
+        mut paragraph_sentences: Vec<usize>,
+        lines: Vec<Line>,
+    ) -> Self {
+        let count = tokens.len();
+        paragraph_sentences.push(sentence_tokens.len());
+        sentence_tokens.push(count);
+        Document {
+            text,
+            tokens,
+            token_words: (0..=count).collect(),
+            word_tokens: (0..count).collect(),
+            forms: Vec::new(),
+            columns: Default::default(),
+            heads: Vec::new(),
+            sentence_tokens,
+            paragraph_sentences,
+            lines,
+            verbatim: None,
+        }
+    }
+
     /// The document of valid tokens; fails only on a token that runs over a paragraph boundary
     pub(crate) fn assemble(
         text: String,
