@@ -216,12 +216,14 @@ impl Segmenter {
     }
 
     /// The tokens of a text in order. Whitespace and the invisible separators (zero width space,
-    /// word joiner, byte order mark, a soft hyphen outside a word) separate tokens and are in none.
-    /// Words keep their combining marks and soft hyphens; hyphenated words, numbers with decimal
-    /// commas and points, dates, times and digit groups, URLs, e-mail addresses, mentions,
-    /// hashtags, emoticons and runs of emoji are one token each, as are runs of final marks
-    /// («?!», «...»). Abbreviations and initials keep their period, except at the end of a
-    /// paragraph; particles after a hyphen, ranges and approximate numbers split at the hyphen.
+    /// word joiner, byte order mark, and a soft hyphen and zero width (non-)joiner outside a word)
+    /// separate tokens and are in none. Words keep their combining marks and soft hyphens;
+    /// hyphenated words, numbers with decimal commas and points, dates, times and digit groups,
+    /// URLs, e-mail addresses, file names, mentions, hashtags, emoticons and runs of emoji are one
+    /// token each, as are runs of final marks («?!», «...»). Abbreviations and initials keep their
+    /// period, except at the end of a paragraph. Particles after a hyphen («Вася-то»), ranges
+    /// («2-3»), approximate numbers («два-три») and compounds whose first part inflects
+    /// («Ростова-на-Дону», «Формулы-1», «учеными-энтузиастами») split at the hyphen.
     /// The lists of the language decide which words are abbreviations, particles and numerals;
     /// the lists of the segmenter add abbreviations and strings that are one token each.
     pub fn tokenize(&self, text: &str) -> Vec<Span> {

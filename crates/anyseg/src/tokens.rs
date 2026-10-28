@@ -82,6 +82,12 @@ enum Joint {
     Thousands,
 }
 
+impl Joint {
+    fn bit(self) -> u8 {
+        1 << self as u8
+    }
+}
+
 /// The lists of the user: more abbreviations and strings that are one token each
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub(crate) struct Exceptions {
@@ -99,6 +105,10 @@ struct Scanner<'a> {
     out: &'a mut Vec<Span>,
     /// Round brackets opened and not closed yet in the paragraph
     open: usize,
+    /// The labels last read for an e-mail address or a domain: their end and their last period
+    chain: (usize, Option<usize>),
+    /// The end of the labels where no token can start an e-mail address or a domain
+    not_web: usize,
 }
 
 /// The tokens of a paragraph, appended to `out`
@@ -117,6 +127,8 @@ pub(crate) fn tokenize(
         exceptions,
         out,
         open: 0,
+        chain: (0, None),
+        not_web: 0,
     };
     let mut index = span.start;
     while let Some(character) = scanner.get(index) {
@@ -184,7 +196,7 @@ impl Scanner<'_> {
             let end = self.url(index);
             return self.push(index, end);
         }
-        if character.is_alphanumeric() {
+        if character.is_alphanumeric() || (is_mark(character) && self.marks_start_word(index)) {
             // Only a word followed by «@» or by a dot or a dash before a letter or a digit can start an e-mail
             // address or a domain
             let run = self.run(index);
@@ -195,18 +207,30 @@ impl Scanner<'_> {
                     .is_some_and(char::is_alphanumeric),
                 _ => false,
             };
-            if !web {
+            if !web || index < self.not_web {
                 return self.compound(index, run);
             }
-            let labels = self.labels(index, ".-_+%");
+            // Every start inside the same labels reads them to the same end: read them once
+            if index >= self.chain.0 {
+                let end = self.labels(index, ".-_+%");
+                let period = self.text[index..end]
+                    .rfind('.')
+                    .map(|offset| index + offset);
+                self.chain = (end, period);
+            }
+            let (labels, period) = self.chain;
             let end = match self.get(labels) {
-                Some('@') => self.email(index),
-                _ if self.text[index..labels].contains('.') => self.domain(index),
-                _ => None,
+                Some('@') => self.email(labels).ok_or(labels),
+                _ if period.is_some_and(|period| period > index) => self.domain(index),
+                _ => Err(labels),
             };
             return match end {
-                Some(end) => self.push(index, end),
-                None => self.compound(index, run),
+                Ok(end) => self.push(index, end),
+                // The later starts in the labels that failed see a part of them and fail as well
+                Err(failed) => {
+                    self.not_web = failed;
+                    self.compound(index, run)
+                }
             };
         }
         if let Some(end) = self.emoticon(index) {
@@ -239,8 +263,42 @@ impl Scanner<'_> {
                 let end = self.emoji(index);
                 self.push(index, end)
             }
-            _ => self.punctuation(index, character),
+            _ => {
+                // Variation selectors and the keycap belong to the symbol before them («▶️», «#️⃣»), and so
+                // do combining marks unless a word follows them: «[͡ие]»
+                let mut end = self.punctuation(index, character);
+                let joined = end;
+                while let Some(c) = self.get(end) {
+                    if c != '\u{200d}' && is_emoji_part(c) {
+                        end += c.len_utf8();
+                    } else if is_mark(c) && !self.marks_start_word(end) {
+                        end = self.marks_end(end);
+                    } else {
+                        break;
+                    }
+                }
+                if end > joined
+                    && let Some(last) = self.out.last_mut()
+                {
+                    last.end = end;
+                }
+                end
+            }
         }
+    }
+
+    fn marks_end(&self, start: usize) -> usize {
+        let mut end = start;
+        while let Some(c) = self.get(end).filter(|&c| is_mark(c)) {
+            end += c.len_utf8();
+        }
+        end
+    }
+
+    /// Whether the combining marks at `start` come before a letter or a digit and so begin a word
+    fn marks_start_word(&self, start: usize) -> bool {
+        self.get(self.marks_end(start))
+            .is_some_and(char::is_alphanumeric)
     }
 
     /// The end of the longest token of the user at `index` that no letter or digit adjoins
@@ -266,26 +324,32 @@ impl Scanner<'_> {
     /// closing bracket it did not open
     fn url(&self, start: usize) -> usize {
         let mut end = start;
+        // Brackets in the URL: «(», «)», «[», «]»
+        let mut brackets = [0usize; 4];
         while let Some(character) = self.get(end) {
             if is_separator(character) || "\"«»<>".contains(character) {
                 break;
             }
+            if let Some(kind) = "()[]".find(character) {
+                brackets[kind] += 1;
+            }
             end += character.len_utf8();
         }
-        loop {
-            let piece = &self.text[start..end];
-            let Some(last) = piece.chars().next_back() else {
-                return end;
+        while let Some(last) = self.text[start..end].chars().next_back() {
+            let unbalanced = match last {
+                ')' => brackets[1] > brackets[0],
+                ']' => brackets[3] > brackets[2],
+                _ => false,
             };
-            let unbalanced = |open: char, close: char| {
-                last == close && piece.matches(close).count() > piece.matches(open).count()
-            };
-            if ".,;:!?'’".contains(last) || unbalanced('(', ')') || unbalanced('[', ']') {
-                end -= last.len_utf8();
-            } else {
-                return end;
+            if !(unbalanced || ".,;:!?'’".contains(last)) {
+                break;
             }
+            if unbalanced {
+                brackets[if last == ')' { 1 } else { 3 }] -= 1;
+            }
+            end -= last.len_utf8();
         }
+        end
     }
 
     /// A run of letters, digits and dots, dashes and underscores between them, as in domains and e-mail
@@ -329,23 +393,23 @@ impl Scanner<'_> {
         None
     }
 
-    fn email(&self, start: usize) -> Option<usize> {
-        let at = self.labels(start, ".-_+%");
-        if self.get(at) != Some('@') {
-            return None;
-        }
+    /// The end of an e-mail address whose «@» is at `at`
+    fn email(&self, at: usize) -> Option<usize> {
         let end = self.labels(at + 1, ".-");
         self.host(at + 1, end, |top| {
             top.chars().count() >= 2 && top.chars().all(char::is_alphabetic)
         })
     }
 
-    /// A bare domain («example.ru», «Газета.ru») with its port and path, or a file name («robots.txt»)
-    fn domain(&self, start: usize) -> Option<usize> {
-        let end = self.labels(start, ".-");
-        let mut end = self.host(start, end, |top| {
-            SUFFIXES.contains(&self.tables.key(top).as_str())
-        })?;
+    /// A bare domain («example.ru», «Газета.ru») with its port and path, or a file name («robots.txt»);
+    /// otherwise the end of the labels read
+    fn domain(&self, start: usize) -> Result<usize, usize> {
+        let labels = self.labels(start, ".-_");
+        let mut end = self
+            .host(start, labels, |top| {
+                SUFFIXES.contains(&self.tables.key(top).as_str())
+            })
+            .ok_or(labels)?;
         if self.get(end) == Some(':') && self.get(end + 1).is_some_and(|c| c.is_ascii_digit()) {
             end += 1;
             while self.get(end).is_some_and(|c| c.is_ascii_digit()) {
@@ -355,7 +419,7 @@ impl Scanner<'_> {
         if self.get(end) == Some('/') {
             end = self.url(end);
         }
-        Some(end)
+        Ok(end)
     }
 
     /// A mention after «@» or a hashtag after «#»
@@ -392,6 +456,15 @@ impl Scanner<'_> {
             index += 1;
         }
         let mouth = self.get(index).filter(|c| ")(DPpOo*|/3][".contains(*c))?;
+        // After a number or a word a digit is a score or an equation: «2:3», «n=3»
+        if mouth.is_ascii_digit()
+            && self.text[..start]
+                .chars()
+                .next_back()
+                .is_some_and(char::is_alphanumeric)
+        {
+            return None;
+        }
         while self.get(index) == Some(mouth) {
             index += 1;
         }
@@ -478,28 +551,22 @@ impl Scanner<'_> {
         self.end
     }
 
-    /// The joint after a run, if the text goes on with the next run of the same word or number
-    fn joint(&self, runs: &[Span], joints: &[Joint]) -> Option<(Joint, usize)> {
-        let last = runs[runs.len() - 1];
+    /// The joint after the run `last`, if the text goes on with the next run of the same word or number;
+    /// `kinds` are the bits of the joints since the last hyphen, those of the current number
+    fn joint(&self, last: Span, kinds: u8) -> Option<(Joint, usize)> {
         let piece = last.slice(self.text);
         let character = self.get(last.end)?;
         let next = last.end + character.len_utf8();
         let after = self.get(next)?;
         let digits = is_digits(piece);
-        let numbers = |kinds: &[Joint]| joints.iter().all(|joint| kinds.contains(joint));
+        let only = |kind: Joint| kinds & !kind.bit() == 0;
         let joint = match character {
             '-' | '\u{2010}' | '\u{2011}' if after.is_alphanumeric() => Joint::Hyphen,
             '\'' | '\u{2019}' if after.is_alphabetic() && !digits => Joint::Apostrophe,
             '_' if after.is_alphanumeric() => Joint::Underscore,
-            '.' if digits && after.is_ascii_digit() && numbers(&[Joint::Point]) => Joint::Point,
-            ',' if digits
-                && after.is_ascii_digit()
-                && numbers(&[Joint::Thousands])
-                && !joints.contains(&Joint::Comma) =>
-            {
-                Joint::Comma
-            }
-            ':' if digits && piece.len() <= 2 && numbers(&[Joint::Colon]) => {
+            '.' if digits && after.is_ascii_digit() && only(Joint::Point) => Joint::Point,
+            ',' if digits && after.is_ascii_digit() && only(Joint::Thousands) => Joint::Comma,
+            ':' if digits && piece.len() <= 2 && only(Joint::Colon) => {
                 let end = self.digits_end(next);
                 if end - next != 2 || self.get(end).is_some_and(char::is_alphanumeric) {
                     return None;
@@ -508,8 +575,8 @@ impl Scanner<'_> {
             }
             ' ' | '\u{a0}' | '\u{202f}' | '\u{2009}'
                 if digits
-                    && numbers(&[Joint::Thousands])
-                    && (if joints.is_empty() {
+                    && only(Joint::Thousands)
+                    && (if kinds == 0 {
                         piece.len() <= 3
                     } else {
                         piece.len() == 3
@@ -534,27 +601,14 @@ impl Scanner<'_> {
         end
     }
 
-    /// Whether a hyphen between two runs is a token of its own
-    fn splits(&self, runs: &[Span], joints: &[Joint], index: usize) -> bool {
+    /// Whether a hyphen between two runs is a token of its own; `chains` are the numbers of groups in the
+    /// chains of digits joined by hyphens that the runs belong to
+    fn splits(&self, runs: &[Span], joints: &[Joint], chains: &[usize], index: usize) -> bool {
         let left = runs[index].slice(self.text);
         let right = runs[index + 1].slice(self.text);
         if is_digits(left) && is_digits(right) {
             // A range «2-3», but not a chain of three groups or more: a phone number, an ISO date
-            let mut first = index;
-            while first > 0
-                && joints[first - 1] == Joint::Hyphen
-                && is_digits(runs[first - 1].slice(self.text))
-            {
-                first -= 1;
-            }
-            let mut last = index + 1;
-            while last < joints.len()
-                && joints[last] == Joint::Hyphen
-                && is_digits(runs[last + 1].slice(self.text))
-            {
-                last += 1;
-            }
-            return last - first < 2;
+            return chains[index] < 3;
         }
         if is_roman(left) && is_roman(right) {
             return true;
@@ -575,7 +629,9 @@ impl Scanner<'_> {
         if tables.whole.contains(&format!("{left_key}-{right_key}")) {
             return false;
         }
-        if tables.particles.contains(&right_key) {
+        // A particle closes the word: «де» inside «Рио-де-Жанейро» is not one
+        let closes = index + 1 == joints.len() || joints[index + 1] != Joint::Hyphen;
+        if closes && tables.particles.contains(&right_key) {
             return !(right_key == "то" && tables.indefinite.contains(&left_key));
         }
         if !is_letters(left) {
@@ -628,16 +684,34 @@ impl Scanner<'_> {
         }
         let mut runs = vec![Span { start, end }];
         let mut joints = Vec::new();
-        while let Some((joint, next)) = self.joint(&runs, &joints) {
+        let mut kinds = 0;
+        while let Some((joint, next)) = self.joint(runs[runs.len() - 1], kinds) {
+            kinds = if joint == Joint::Hyphen {
+                0
+            } else {
+                kinds | joint.bit()
+            };
             joints.push(joint);
             runs.push(Span {
                 start: next,
                 end: self.run(next),
             });
         }
+        let mut chains = vec![1; runs.len()];
+        let mut chain = 0;
+        for index in 1..=runs.len() {
+            let joined = index < runs.len()
+                && joints[index - 1] == Joint::Hyphen
+                && is_digits(runs[index - 1].slice(self.text))
+                && is_digits(runs[index].slice(self.text));
+            if !joined {
+                chains[chain..index].fill(index - chain);
+                chain = index;
+            }
+        }
         let mut first = start;
         for index in 0..joints.len() {
-            if joints[index] == Joint::Hyphen && self.splits(&runs, &joints, index) {
+            if joints[index] == Joint::Hyphen && self.splits(&runs, &joints, &chains, index) {
                 self.push(first, runs[index].end);
                 self.push(runs[index].end, runs[index + 1].start);
                 first = runs[index + 1].start;
@@ -694,30 +768,39 @@ impl Scanner<'_> {
             '(' | ')' => {
                 let end = run_of(&character.to_string());
                 let length = end - start;
-                let emoticon = length >= 2
-                    && match character {
-                        ')' => self.open == 0,
-                        _ => !self
-                            .get(end)
-                            .is_some_and(|c| c.is_alphanumeric() || c == '('),
-                    };
-                if emoticon {
-                    return self.push(start, end);
+                // A run of «(» opens brackets before a word and is an emoticon otherwise; a run of «)» closes
+                // the open brackets one by one, and the rest of it is an emoticon
+                let singles = if character == '(' {
+                    if length >= 2 && !self.get(end).is_some_and(char::is_alphanumeric) {
+                        0
+                    } else {
+                        length
+                    }
+                } else if length <= self.open + 1 {
+                    length
+                } else {
+                    self.open
+                };
+                for offset in 0..singles {
+                    self.push(start + offset, start + offset + 1);
                 }
                 if character == '(' {
-                    self.open += 1;
+                    self.open += singles;
                 } else {
-                    self.open = self.open.saturating_sub(1);
+                    self.open = self.open.saturating_sub(singles);
                 }
-                self.push(start, next)
+                if singles < length {
+                    self.push(start + singles, end);
+                }
+                end
             }
-            '°' if self.get(next).is_some_and(|c| matches!(c, 'C' | 'С' | 'F'))
-                && !self
-                    .get(next + 'С'.len_utf8().min(2))
-                    .is_some_and(char::is_alphanumeric) =>
-            {
-                let letter = self.get(next).map_or(0, char::len_utf8);
-                self.push(start, next + letter)
+            '°' if self.get(next).is_some_and(|c| matches!(c, 'C' | 'С' | 'F')) => {
+                let letter = next + self.get(next).map_or(0, char::len_utf8);
+                if self.get(letter).is_some_and(char::is_alphanumeric) {
+                    self.push(start, next)
+                } else {
+                    self.push(start, letter)
+                }
             }
             _ => self.push(start, next),
         }
@@ -1124,5 +1207,158 @@ mod tests {
             ["Это", "было", "в", "1914", "г", "."]
         );
         assert_eq!(tokens("Пушкин А.С."), ["Пушкин", "А.", "С", "."]);
+    }
+
+    #[test]
+    fn numbers_after_a_hyphen() {
+        assert_eq!(
+            tokens("2,5-3,5 млн, 1.5-2.5, с 10:00-18:00, 10.10.2026-12.10.2026, 1 000-2 000 руб"),
+            [
+                "2,5",
+                "-",
+                "3,5",
+                "млн",
+                ",",
+                "1.5",
+                "-",
+                "2.5",
+                ",",
+                "с",
+                "10:00",
+                "-",
+                "18:00",
+                ",",
+                "10.10.2026",
+                "-",
+                "12.10.2026",
+                ",",
+                "1 000",
+                "-",
+                "2 000",
+                "руб"
+            ]
+        );
+    }
+
+    #[test]
+    fn found_by_the_review() {
+        assert_eq!(
+            tokens("со счётом 2:3, n=3, Спасибо :3"),
+            [
+                "со",
+                "счётом",
+                "2",
+                ":",
+                "3",
+                ",",
+                "n",
+                "=",
+                "3",
+                ",",
+                "Спасибо",
+                ":3"
+            ]
+        );
+        assert_eq!(
+            tokens("Файл IMG_1234.jpg, report_2026.pdf и my-file.txt"),
+            [
+                "Файл",
+                "IMG_1234.jpg",
+                ",",
+                "report_2026.pdf",
+                "и",
+                "my-file.txt"
+            ]
+        );
+        assert_eq!(
+            tokens("при 20°C тепла, 20°C. При 20°F в тени, 20°С тепла"),
+            [
+                "при",
+                "20",
+                "°C",
+                "тепла",
+                ",",
+                "20",
+                "°C",
+                ".",
+                "При",
+                "20",
+                "°F",
+                "в",
+                "тени",
+                ",",
+                "20",
+                "°С",
+                "тепла"
+            ]
+        );
+        assert_eq!(
+            tokens("▶\u{fe0f} Смотрите ©\u{fe0f} 2026 #\u{fe0f}\u{20e3}"),
+            [
+                "▶\u{fe0f}",
+                "Смотрите",
+                "©\u{fe0f}",
+                "2026",
+                "#\u{fe0f}\u{20e3}"
+            ]
+        );
+        assert_eq!(
+            tokens("Рио-де-Жанейро, Па-де-Кале, Вася-то, мол-де, Отчего-то"),
+            [
+                "Рио-де-Жанейро",
+                ",",
+                "Па-де-Кале",
+                ",",
+                "Вася",
+                "-",
+                "то",
+                ",",
+                "мол",
+                "-",
+                "де",
+                ",",
+                "Отчего-то"
+            ]
+        );
+        assert_eq!(
+            tokens("гласный [\u{361}ие], ▶\u{fe0f}Смотрите"),
+            [
+                "гласный",
+                "[",
+                "\u{361}ие",
+                "]",
+                ",",
+                "▶\u{fe0f}",
+                "Смотрите"
+            ]
+        );
+        assert_eq!(
+            tokens("((а)) (да))) Ок)))"),
+            ["(", "(", "а", ")", ")", "(", "да", ")", "))", "Ок", ")))"]
+        );
+    }
+
+    #[test]
+    fn long_chains() {
+        // Linear scans: a quadratic one takes seconds on each of these
+        for text in [
+            "a.".repeat(40_000),
+            "а.".repeat(20_000),
+            "a+".repeat(40_000),
+            "a+b.".repeat(20_000),
+            format!("http://x.ru/{}", ")".repeat(40_000)),
+            format!("{}1", "1.".repeat(40_000)),
+            format!("1{}", " 000".repeat(40_000)),
+            format!("{}1", "1-".repeat(40_000)),
+            format!("{}a", "(".repeat(40_000)),
+            format!("{}a{}", "(".repeat(20_000), ")".repeat(40_000)),
+            format!("[{}a", "\u{361}".repeat(40_000)),
+            "\u{301}".repeat(40_000),
+        ] {
+            assert_eq!(
+                tokens(&text).concat().replace(' ', ""),
+                text.replace(' ', "")
+            );
+        }
     }
 }

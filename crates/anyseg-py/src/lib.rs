@@ -213,12 +213,14 @@ impl Segmenter {
     ///
     /// Description:
     ///     Whitespace and the invisible separators (zero width space, word joiner, byte order
-    ///     mark, a soft hyphen outside a word) separate tokens and are in none. Words keep their
-    ///     combining marks and soft hyphens; hyphenated words, numbers with decimal commas and
-    ///     points, dates, times and digit groups, URLs, e-mail addresses, mentions, hashtags,
-    ///     emoticons and runs of emoji are one token each, as are runs of final marks ("?!",
-    ///     "..."). Abbreviations and initials keep their period, except at the end of a paragraph;
-    ///     particles after a hyphen, ranges and approximate numbers split at the hyphen
+    ///     mark, and a soft hyphen and zero width (non-)joiner outside a word) separate tokens and
+    ///     are in none. Words keep their combining marks and soft hyphens; hyphenated words,
+    ///     numbers with decimal commas and points, dates, times and digit groups, URLs, e-mail
+    ///     addresses, file names, mentions, hashtags, emoticons and runs of emoji are one token
+    ///     each, as are runs of final marks ("?!", "..."). Abbreviations and initials keep their
+    ///     period, except at the end of a paragraph. Particles after a hyphen ("Вася-то"), ranges
+    ///     ("2-3"), approximate numbers ("два-три") and compounds whose first part inflects
+    ///     ("Ростова-на-Дону", "Формулы-1", "учеными-энтузиастами") split at the hyphen
     ///
     /// Arguments:
     ///     text (str): Text
