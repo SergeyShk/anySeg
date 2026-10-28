@@ -8,7 +8,7 @@ resolution-markers = [
 
 [[package]]
 name = "anyseg"
-version = "0.1.0.dev3"
+version = "0.1.0.dev4"
 source = { editable = "." }
 
 [package.dev-dependencies]
