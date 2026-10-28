@@ -633,7 +633,7 @@ impl Document {
 fn normalize(gap: &str) -> String {
     gap.chars()
         .filter_map(|character| match character {
-            '\u{200b}' | '\u{2060}' | '\u{feff}' => None,
+            '\u{200b}' | '\u{2060}' | '\u{feff}' | '\u{ad}' | '\u{200c}' | '\u{200d}' => None,
             '\t' | '\r' | '\n' => Some(character),
             '\u{b}' | '\u{c}' | '\u{85}' | '\u{2028}' | '\u{2029}' => Some('\n'),
             _ => Some(' '),
@@ -785,7 +785,17 @@ mod tests {
         doc.set_columns(
             vec![(
                 Column::Misc,
-                vec![None, Some("Gloss=go".to_owned()), None, None, None],
+                vec![
+                    None,
+                    Some("Gloss=go".to_owned()),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                ],
             )],
             None,
         )
@@ -794,11 +804,15 @@ mod tests {
             doc.to_conllu(),
             "# newdoc\n# newpar\n# sent_id = 1\n# text = Ёж идёт, домой.  Утро\n\
              1\tЁж\t_\t_\t_\t_\t_\t_\t_\t_\n\
-             2\tидёт,\t_\t_\t_\t_\t_\t_\t_\tGloss=go|SpacesAfter=\\n\n\
-             3\tдомой.\t_\t_\t_\t_\t_\t_\t_\tSpacesAfter=\\s\\s\n\
-             4\tУтро\t_\t_\t_\t_\t_\t_\t_\t_\n\n\
+             2\tидёт\t_\t_\t_\t_\t_\t_\t_\tGloss=go|SpaceAfter=No\n\
+             3\t,\t_\t_\t_\t_\t_\t_\t_\tSpacesAfter=\\n\n\
+             4\tдомой\t_\t_\t_\t_\t_\t_\t_\tSpaceAfter=No\n\
+             5\t.\t_\t_\t_\t_\t_\t_\t_\tSpacesAfter=\\s\\s\n\
+             6\tУтро\t_\t_\t_\t_\t_\t_\t_\t_\n\n\
              # newpar\n# sent_id = 2\n# text = «Кот»\n\
-             1\t«Кот»\t_\t_\t_\t_\t_\t_\t_\t_\n\n"
+             1\t«\t_\t_\t_\t_\t_\t_\t_\tSpaceAfter=No\n\
+             2\tКот\t_\t_\t_\t_\t_\t_\t_\tSpaceAfter=No\n\
+             3\t»\t_\t_\t_\t_\t_\t_\t_\t_\n\n"
         );
         let back = &read_conllu(&doc.to_conllu()).unwrap()[0];
         let tokens = |doc: &Document| -> Vec<String> {

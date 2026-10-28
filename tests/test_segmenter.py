@@ -15,6 +15,13 @@ from anyseg import Segmenter, Span, sentenize, tokenize
 # UTF-16 units
 TEXT = "\ufeffЁж\u00a0иду\u0301т\t😀\r\nдомо\u0301й\u2028end"
 
+# Whitespace in the alphabet of the random texts and the invisible separators
+SEPARATORS = " \n\r\t\u00a0\u2028\u3000\ufeff\u200b\u2060\u00ad\u200c\u200d"
+
+
+# A segmenter with lists of the user
+CUSTOM = Segmenter("ru", abbreviations={"Сущ.", "прил"}, tokens=("C++", "т.н."))
+
 
 @pytest.fixture(scope="module")
 def segmenter():
@@ -27,6 +34,58 @@ def test_language(segmenter):
     assert segmenter == Segmenter("ru")
     assert segmenter != "ru"
     assert len({segmenter, Segmenter("ru")}) == 1
+
+
+def test_lists(segmenter):
+    text = "сущ. и прил. на C++, т.н.\n\nТаков т.н."
+    assert [span.text for span in segmenter.tokenize(text)] == [
+        *("сущ", ".", "и", "прил", ".", "на", "C", "++", ",", "т.", "н", "."),
+        *("Таков", "т.", "н", "."),
+    ]
+    assert [span.text for span in CUSTOM.tokenize(text)] == [
+        *("сущ.", "и", "прил.", "на", "C++", ",", "т.н.", "Таков", "т.н."),
+    ]
+    assert [token.text for token in CUSTOM.segment(text).tokens] == [
+        span.text for span in CUSTOM.tokenize(text)
+    ]
+    assert (CUSTOM.abbreviations, CUSTOM.tokens) == (("прил", "сущ"), ("C++", "т.н."))
+    assert (segmenter.abbreviations, segmenter.tokens) == ((), ())
+    assert repr(CUSTOM) == "Segmenter('ru', abbreviations=('прил', 'сущ'), tokens=('C++', 'т.н.'))"
+    assert repr(Segmenter("ru", tokens=["C++"])) == "Segmenter('ru', tokens=('C++',))"
+    same = Segmenter("ru", abbreviations=iter(["прил.", "СУЩ"]), tokens=["т.н.", "C++", "C++"])
+    assert same == CUSTOM
+    assert len({CUSTOM, same, segmenter}) == 2
+    assert Segmenter("ru", abbreviations=None, tokens=[]) == segmenter
+
+
+@pytest.mark.parametrize(
+    ("lists", "error", "message"),
+    [
+        (
+            {"abbreviations": "сущ"},
+            TypeError,
+            "abbreviations must be an iterable of strings, not a string",
+        ),
+        ({"tokens": "C++"}, TypeError, "tokens must be an iterable of strings, not a string"),
+        ({"tokens": ["C++", 1]}, TypeError, None),
+        ({"abbreviations": 1}, TypeError, None),
+        (
+            {"abbreviations": ["т.н"]},
+            ValueError,
+            "abbreviation 'т.н' is not a word of letters with an optional final period",
+        ),
+        (
+            {"tokens": ["a b"]},
+            ValueError,
+            "token 'a b' is empty, has whitespace or starts or ends with an invisible separator",
+        ),
+        ({"tokens": [""]}, ValueError, "token '' is empty"),
+        ({"tokens": ["\u200ba"]}, ValueError, "token '\\u200ba' is empty"),
+    ],
+)
+def test_invalid_lists(lists, error, message):
+    with pytest.raises(error, match=None if message is None else f"^{re.escape(message)}"):
+        Segmenter("ru", **lists)
 
 
 @pytest.mark.parametrize("lang", ["xx", "RU", "", "ru "])
@@ -58,7 +117,8 @@ def test_ascii_text(segmenter):
         (2, 5, "Mom"),
         (6, 12, "washed"),
         (13, 16, "the"),
-        (17, 23, "frame."),
+        (17, 22, "frame"),
+        (22, 23, "."),
     ]
 
 
@@ -93,9 +153,12 @@ def test_random_texts(segmenter):
         text = "".join(rng.choices(alphabet, k=rng.randrange(40)))
         spans = segmenter.tokenize(text)
         assert all(text[span.start : span.end] == span.text for span in spans)
-        assert all(a.end < b.start for a, b in pairwise(spans))
-        kept = (char for char in text if not char.isspace() and char not in "\ufeff\u200b\u2060")
-        assert "".join(span.text for span in spans) == "".join(kept)
+        assert all(a.end <= b.start for a, b in pairwise(spans))
+        visible = lambda piece: "".join(char for char in piece if char not in SEPARATORS)  # noqa: E731
+        assert visible("".join(span.text for span in spans)) == visible(text)
+        assert all(
+            span.text[0] not in SEPARATORS and span.text[-1] not in SEPARATORS for span in spans
+        )
 
 
 def test_threads(segmenter):
@@ -121,9 +184,10 @@ def test_span():
 def test_pickle(segmenter, protocol):
     span = segmenter.tokenize("Ёж идёт")[1]
     assert pickle.loads(pickle.dumps(span, protocol)) == span
-    restored = pickle.loads(pickle.dumps(segmenter, protocol))
-    assert restored == segmenter
-    assert restored.tokenize(TEXT) == segmenter.tokenize(TEXT)
+    for value in (segmenter, CUSTOM):
+        restored = pickle.loads(pickle.dumps(value, protocol))
+        assert restored == value
+        assert restored.tokenize(TEXT) == value.tokenize(TEXT)
 
 
 @pytest.mark.parametrize("function", [copy.copy, copy.deepcopy])
@@ -131,6 +195,7 @@ def test_copy(segmenter, function):
     span = segmenter.tokenize("Ёж идёт")[1]
     assert function(span) == span
     assert function(segmenter) == segmenter
+    assert function(CUSTOM) == CUSTOM
 
 
 def test_functions(segmenter):

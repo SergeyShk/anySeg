@@ -26,6 +26,8 @@ Requires Python 3.11 or newer. Until the first release, the package is built fro
 
 Positions are offsets in the characters of a Python string: `text[span.start:span.end] == span.text`.
 
+A segmenter takes more abbreviations and strings that are one token each: `Segmenter("ru", abbreviations=["сущ"], tokens=["C++"])`.
+
 A document holds the tokens, the words with the columns of [CoNLL-U](https://universaldependencies.org/format.html), the sentences, the paragraphs (the parts of the text between blank lines) and their lines:
 
 === "Code"

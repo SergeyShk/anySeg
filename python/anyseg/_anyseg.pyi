@@ -1,4 +1,4 @@
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from typing import Literal, Self, final, overload
 
 __all__ = [
@@ -34,9 +34,19 @@ class Span:
 
 @final
 class Segmenter:
-    def __new__(cls, lang: str) -> Self: ...
+    def __new__(
+        cls,
+        lang: str,
+        *,
+        abbreviations: Iterable[str] | None = None,
+        tokens: Iterable[str] | None = None,
+    ) -> Self: ...
     @property
     def lang(self) -> str: ...
+    @property
+    def abbreviations(self) -> tuple[str, ...]: ...
+    @property
+    def tokens(self) -> tuple[str, ...]: ...
     def tokenize(self, text: str) -> list[Span]: ...
     def sentenize(self, text: str) -> list[Span]: ...
     def segment(self, text: str) -> Document: ...

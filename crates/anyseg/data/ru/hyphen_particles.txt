@@ -1,0 +1,8 @@
+# Particles after a hyphen that are tokens of their own, with the hyphen between: «Вася-то» = «Вася», «-», «то»
+# (Universal Dependencies guidelines for Russian). «-то» stays inside indefinite pronouns (indefinite.txt),
+# the words of hyphen_whole.txt stay whole.
+то
+ка
+таки
+с
+де

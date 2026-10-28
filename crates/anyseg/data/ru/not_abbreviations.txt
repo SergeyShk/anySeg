@@ -1,0 +1,2 @@
+# Single letters that are words of their own and never take a period as an abbreviation or an initial
+я

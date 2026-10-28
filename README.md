@@ -41,6 +41,8 @@ doc.words[1]
 
 Positions are offsets in the characters of a Python string: `text[span.start:span.end] == span.text`. The Rust crate gives them in bytes.
 
+A segmenter takes more abbreviations and strings that are one token each: `Segmenter("ru", abbreviations=["сущ"], tokens=["C++"])`.
+
 A document holds the tokens, the words with the columns of [CoNLL-U](https://universaldependencies.org/format.html), the sentences, the paragraphs (the parts of the text between blank lines) and their lines. `doc.to_conllu()` writes it in CoNLL-U and `read_conllu(text)` reads documents from it; a document read from CoNLL-U is written back unchanged.
 
 ## License

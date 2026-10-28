@@ -3,9 +3,14 @@
 use crate::Span;
 
 /// Whitespace and the invisible characters that separate tokens without being tokens: zero width space,
-/// word joiner and byte order mark
+/// word joiner, byte order mark, and a soft hyphen and zero width (non-)joiner, which inside a word or an
+/// emoji belong to it
 pub(crate) fn is_separator(character: char) -> bool {
-    character.is_whitespace() || matches!(character, '\u{200b}' | '\u{2060}' | '\u{feff}')
+    character.is_whitespace()
+        || matches!(
+            character,
+            '\u{200b}' | '\u{2060}' | '\u{feff}' | '\u{ad}' | '\u{200c}' | '\u{200d}'
+        )
 }
 
 /// A span without the separators at its edges, if anything is left
@@ -18,6 +23,7 @@ pub(crate) fn trim(text: &str, span: Span) -> Option<Span> {
 }
 
 /// The runs of characters between separators inside a span
+#[cfg(test)]
 pub(crate) fn runs(text: &str, span: Span, out: &mut Vec<Span>) {
     let mut start = None;
     for (index, character) in span.slice(text).char_indices() {

@@ -1,0 +1,14 @@
+# Hyphenated words that stay one token although a particle follows the hyphen
+всё-таки
+все-таки
+опять-таки
+так-таки
+довольно-таки
+ну-ка
+на-ка
+нате-ка
+то-то
+прямо-таки
+ноу-хау
+туда-сюда
+папье-маше
