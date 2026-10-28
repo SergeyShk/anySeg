@@ -23,7 +23,11 @@ use std::fmt;
 
 mod conllu;
 mod document;
+mod lang;
 mod layout;
+mod tokens;
+
+use tokens::Exceptions;
 
 pub use conllu::{ConlluError, read_conllu};
 pub use document::{Column, Document, DocumentError, Line, LineBreak, Paragraph, Sentence};
@@ -99,10 +103,38 @@ impl fmt::Display for UnknownLanguage {
 
 impl Error for UnknownLanguage {}
 
+/// A string that a list of the user cannot take
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum InvalidEntry {
+    /// Not a word of letters, with a period after it or without
+    Abbreviation(String),
+    /// Empty, with whitespace, or with an invisible separator at an edge
+    Token(String),
+}
+
+impl fmt::Display for InvalidEntry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            InvalidEntry::Abbreviation(word) => write!(
+                f,
+                "abbreviation {word:?} is not a word of letters with an optional final period"
+            ),
+            InvalidEntry::Token(token) => write!(
+                f,
+                "token {token:?} is empty, has whitespace or starts or ends with an invisible separator"
+            ),
+        }
+    }
+}
+
+impl Error for InvalidEntry {}
+
 /// Segmenter of texts in one language
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Segmenter {
     language: Language,
+    exceptions: Exceptions,
 }
 
 impl Segmenter {
@@ -113,26 +145,97 @@ impl Segmenter {
     /// [`UnknownLanguage`] if the build does not support the language.
     pub fn new(code: &str) -> Result<Self, UnknownLanguage> {
         Language::from_code(code)
-            .map(|language| Segmenter { language })
+            .map(|language| Segmenter {
+                language,
+                exceptions: Exceptions::default(),
+            })
             .ok_or_else(|| UnknownLanguage(code.to_owned()))
+    }
+
+    /// The segmenter with more abbreviations: words that keep a period after them, given with the period
+    /// or without it, in any case.
+    ///
+    /// # Errors
+    ///
+    /// [`InvalidEntry::Abbreviation`] if a word has characters other than letters.
+    pub fn with_abbreviations<I>(mut self, words: I) -> Result<Self, InvalidEntry>
+    where
+        I: IntoIterator,
+        I::Item: AsRef<str>,
+    {
+        let tables = lang::tables(self.language);
+        for word in words {
+            let word = word.as_ref();
+            let letters = word.strip_suffix('.').unwrap_or(word);
+            if !tokens::is_letters(letters) {
+                return Err(InvalidEntry::Abbreviation(word.to_owned()));
+            }
+            self.exceptions.abbreviations.insert(tables.key(letters));
+        }
+        Ok(self)
+    }
+
+    /// The segmenter with strings that are one token each: «C++», «т.н.». A string matches as
+    /// written where a token would start and no letter or digit adjoins it; of several, the longest.
+    ///
+    /// # Errors
+    ///
+    /// [`InvalidEntry::Token`] if a string is empty, has whitespace or starts or ends with an
+    /// invisible separator.
+    pub fn with_tokens<I>(mut self, strings: I) -> Result<Self, InvalidEntry>
+    where
+        I: IntoIterator,
+        I::Item: AsRef<str>,
+    {
+        for string in strings {
+            let string = string.as_ref();
+            if string.is_empty()
+                || string.chars().any(char::is_whitespace)
+                || string.starts_with(layout::is_separator)
+                || string.ends_with(layout::is_separator)
+            {
+                return Err(InvalidEntry::Token(string.to_owned()));
+            }
+            self.exceptions.tokens.insert(string.to_owned());
+        }
+        Ok(self)
     }
 
     pub fn language(&self) -> Language {
         self.language
     }
 
-    /// The tokens of a text in order: the runs of characters between whitespace and the invisible
-    /// separators (zero width space, word joiner, byte order mark)
+    /// The abbreviations added to the language, in order: lowercase, without the period and stress marks
+    pub fn abbreviations(&self) -> impl ExactSizeIterator<Item = &str> {
+        self.exceptions.abbreviations.iter().map(String::as_str)
+    }
+
+    /// The strings that are one token each, in order
+    pub fn tokens(&self) -> impl ExactSizeIterator<Item = &str> {
+        self.exceptions.tokens.iter().map(String::as_str)
+    }
+
+    /// The tokens of a text in order. Whitespace and the invisible separators (zero width space,
+    /// word joiner, byte order mark, and a soft hyphen and zero width (non-)joiner outside a word)
+    /// separate tokens and are in none. Words keep their combining marks and soft hyphens;
+    /// hyphenated words, numbers with decimal commas and points, dates, times and digit groups,
+    /// URLs, e-mail addresses, file names, mentions, hashtags, emoticons and runs of emoji are one
+    /// token each, as are runs of final marks («?!», «...»). Abbreviations and initials keep their
+    /// period, except at the end of a paragraph. Particles after a hyphen («Вася-то»), ranges
+    /// («2-3»), approximate numbers («два-три») and compounds whose first part inflects
+    /// («Ростова-на-Дону», «Формулы-1», «учеными-энтузиастами») split at the hyphen.
+    /// The lists of the language decide which words are abbreviations, particles and numerals;
+    /// the lists of the segmenter add abbreviations and strings that are one token each.
     pub fn tokenize(&self, text: &str) -> Vec<Span> {
-        let mut spans = Vec::new();
-        layout::runs(
-            text,
-            Span {
-                start: 0,
-                end: text.len(),
-            },
-            &mut spans,
-        );
+        let tables = lang::tables(self.language);
+        let mut spans = Vec::with_capacity(text.len() / 8);
+        for lines in layout::paragraphs(text) {
+            let span = Span {
+                start: lines[0].start,
+                end: lines[lines.len() - 1].end,
+            };
+            tokens::tokenize(text, span, tables, &self.exceptions, &mut spans);
+        }
         spans
     }
 
@@ -223,5 +326,93 @@ mod tests {
             .collect();
         assert_eq!(sentences, spans);
         assert_eq!((doc.paragraph_count(), doc.lines().len()), (2, 3));
+    }
+
+    #[test]
+    fn lists_of_the_user() {
+        let text = "На C++, C++11 и aC++ сущ. и прил. т.н.\n\nТаков т.н.";
+        let default = Segmenter::new("ru").unwrap();
+        assert_eq!(
+            pieces(text, &default.tokenize(text)),
+            [
+                "На",
+                "C",
+                "++",
+                ",",
+                "C",
+                "++",
+                "11",
+                "и",
+                "aC",
+                "++",
+                "сущ",
+                ".",
+                "и",
+                "прил",
+                ".",
+                "т.",
+                "н",
+                ".",
+                "Таков",
+                "т.",
+                "н",
+                "."
+            ]
+        );
+        let segmenter = default
+            .with_abbreviations(["Сущ.", "прил", "сущ"])
+            .unwrap()
+            .with_tokens(["C+", "C++", "т.н."])
+            .unwrap();
+        assert_eq!(
+            pieces(text, &segmenter.tokenize(text)),
+            [
+                "На",
+                "C++",
+                ",",
+                "C+",
+                "+",
+                "11",
+                "и",
+                "aC",
+                "++",
+                "сущ.",
+                "и",
+                "прил.",
+                "т.н.",
+                "Таков",
+                "т.н."
+            ]
+        );
+        assert_eq!(
+            segmenter.abbreviations().collect::<Vec<_>>(),
+            ["прил", "сущ"]
+        );
+        assert_eq!(
+            segmenter.tokens().collect::<Vec<_>>(),
+            ["C+", "C++", "т.н."]
+        );
+        assert_ne!(segmenter, Segmenter::new("ru").unwrap());
+    }
+
+    #[test]
+    fn invalid_entries() {
+        let segmenter = Segmenter::new("ru").unwrap();
+        for word in ["", ".", "т.н", "г-н", "2-й", "с "] {
+            assert_eq!(
+                segmenter.clone().with_abbreviations([word]),
+                Err(InvalidEntry::Abbreviation(word.to_owned()))
+            );
+        }
+        for token in ["", "a b", " a", "\u{ad}a", "a\u{200b}"] {
+            assert_eq!(
+                segmenter.clone().with_tokens([token]),
+                Err(InvalidEntry::Token(token.to_owned()))
+            );
+        }
+        assert_eq!(
+            InvalidEntry::Abbreviation("т.н".to_owned()).to_string(),
+            "abbreviation \"т.н\" is not a word of letters with an optional final period"
+        );
     }
 }

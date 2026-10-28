@@ -1,0 +1,9 @@
+# Latin letters that stand for Cyrillic ones in Russian words, often with a stress mark («чтó-то», «Домá»):
+# a word with Cyrillic letters is looked up in the lists with them replaced
+a а
+e е
+o о
+p р
+c с
+x х
+y у

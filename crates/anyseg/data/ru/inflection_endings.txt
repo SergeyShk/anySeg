@@ -1,0 +1,13 @@
+# Letters that end inflected forms: two parts of a hyphenated word that end with the same one both inflect
+# («учеными-энтузиастами», «языку-предку»), and the word splits at the hyphen (Universal Dependencies guidelines
+# for Russian: a compound is one token only if its first part does not inflect). «о» is left out: it ends the
+# first part of adjective compounds («северо-западный»).
+а
+е
+и
+у
+ы
+э
+ю
+я
+ё

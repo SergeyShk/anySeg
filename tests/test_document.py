@@ -19,16 +19,16 @@ from anyseg import (
 )
 
 # Two paragraphs, a line break inside the first one, an emoji, a byte order mark and two spaces
-TEXT = "Ёж идёт домой.\nКот спит 😀\n\n﻿Утро.  Ночь"
+TEXT = "Ёж идёт домой\nКот спит 😀\n\n\ufeffУтро  Ночь"
 TOKENS = [
     (0, 2, "Ёж"),
     (3, 7, "идёт"),
-    (8, 14, "домой."),
-    (15, 18, "Кот"),
-    (19, 23, "спит"),
-    (24, 25, "😀"),
-    (28, 33, "Утро."),
-    (35, 39, "Ночь"),
+    (8, 13, "домой"),
+    (14, 17, "Кот"),
+    (18, 22, "спит"),
+    (23, 24, "😀"),
+    (27, 31, "Утро"),
+    (33, 37, "Ночь"),
 ]
 
 
@@ -84,7 +84,7 @@ def test_tokens(doc):
         "\n",
         " ",
         " ",
-        "\n\n﻿",
+        "\n\n\ufeff",
         "  ",
         "",
     ]
@@ -101,34 +101,34 @@ def test_words(doc):
     assert word.sentence == doc.sentences[1] == doc.tokens[6].sentence
     assert (word.lemma, word.upos, word.xpos, word.feats, word.head) == (None,) * 5
     assert (word.deprel, word.deps, word.misc) == (None,) * 3
-    assert repr(word) == "Word(id=1, form='Утро.')"
+    assert repr(word) == "Word(id=1, form='Утро')"
 
 
 def test_sentences_and_paragraphs(doc):
     assert [(s.start, s.end, s.text) for s in doc.sentences] == [
-        (0, 25, "Ёж идёт домой.\nКот спит 😀"),
-        (28, 39, "Утро.  Ночь"),
+        (0, 24, "Ёж идёт домой\nКот спит 😀"),
+        (27, 37, "Утро  Ночь"),
     ]
     sentence = doc.sentences[1]
     assert list(sentence.tokens) == list(doc.tokens[6:])
     assert list(sentence.words) == list(doc.words[6:])
     assert sentence.paragraph == doc.paragraphs[1]
-    assert repr(sentence) == "Sentence(start=28, end=39, text='Утро.  Ночь')"
+    assert repr(sentence) == "Sentence(start=27, end=37, text='Утро  Ночь')"
     paragraph = doc.paragraphs[0]
-    assert (paragraph.start, paragraph.end, paragraph.index) == (0, 25, 0)
+    assert (paragraph.start, paragraph.end, paragraph.index) == (0, 24, 0)
     assert list(paragraph.sentences) == [doc.sentences[0]]
     assert len(paragraph.tokens) == 6
-    assert repr(doc.paragraphs[1]) == "Paragraph(start=28, end=39, text='Утро.  Ночь')"
+    assert repr(doc.paragraphs[1]) == "Paragraph(start=27, end=37, text='Утро  Ночь')"
 
 
 def test_lines(doc):
     assert [(line.start, line.end, line.text, line.break_before) for line in doc.lines] == [
-        (0, 14, "Ёж идёт домой.", None),
-        (15, 25, "Кот спит 😀", "author"),
-        (28, 39, "Утро.  Ночь", None),
+        (0, 13, "Ёж идёт домой", None),
+        (14, 24, "Кот спит 😀", "author"),
+        (27, 37, "Утро  Ночь", None),
     ]
     assert (
-        repr(doc.lines[1]) == "Line(start=15, end=25, text='Кот спит 😀', break_before='author')"
+        repr(doc.lines[1]) == "Line(start=14, end=24, text='Кот спит 😀', break_before='author')"
     )
 
 
@@ -143,7 +143,7 @@ def test_sequences(doc):
     assert tokens[-1] == tokens[7]
     middle = tokens[2:5]
     assert isinstance(middle, Tokens)
-    assert [token.text for token in middle] == ["домой.", "Кот", "спит"]
+    assert [token.text for token in middle] == ["домой", "Кот", "спит"]
     assert [token.text for token in middle[1:]] == ["Кот", "спит"]
     assert middle[-1] == tokens[4]
     assert [token.index for token in tokens[::3]] == [0, 3, 6]
@@ -163,7 +163,7 @@ def test_sequences(doc):
         with pytest.raises(ValueError, match="the value is not among the tokens"):
             tokens.index(*args)
     assert repr(doc.sentences[1].tokens) == (
-        "Tokens([Token(start=28, end=33, text='Утро.'), Token(start=35, end=39, text='Ночь')])"
+        "Tokens([Token(start=27, end=31, text='Утро'), Token(start=33, end=37, text='Ночь')])"
     )
     for index in (8, -9):
         with pytest.raises(IndexError, match="tokens index out of range"):
@@ -275,10 +275,10 @@ def test_generated_conllu(doc):
             "# newdoc",
             "# newpar",
             "# sent_id = 1",
-            "# text = Ёж идёт домой. Кот спит 😀",
+            "# text = Ёж идёт домой Кот спит 😀",
             ("1", "Ёж", "_", "NOUN", "_", "_", "_", "_", "_", "_"),
             ("2", "идёт", "_", "VERB", "_", "_", "_", "_", "_", "_"),
-            ("3", "домой.", "_", "ADV", "_", "_", "_", "_", "_", "SpacesAfter=\\n"),
+            ("3", "домой", "_", "ADV", "_", "_", "_", "_", "_", "SpacesAfter=\\n"),
             ("4", "Кот", "_", "NOUN", "_", "_", "_", "_", "_", "_"),
             ("5", "спит", "_", "VERB", "_", "_", "_", "_", "_", "_"),
             ("6", "😀", "_", "SYM", "_", "_", "_", "_", "_", "_"),
@@ -286,8 +286,8 @@ def test_generated_conllu(doc):
         [
             "# newpar",
             "# sent_id = 2",
-            "# text = Утро.  Ночь",
-            ("1", "Утро.", "_", "NOUN", "_", "_", "_", "_", "_", "SpacesAfter=\\s\\s"),
+            "# text = Утро  Ночь",
+            ("1", "Утро", "_", "NOUN", "_", "_", "_", "_", "_", "SpacesAfter=\\s\\s"),
             ("2", "Ночь", "_", "NOUN", "_", "_", "_", "_", "_", "_"),
         ],
     )
@@ -393,7 +393,7 @@ def test_wrong_conllu(text, message):
 def test_random_texts():
     segmenter = Segmenter("ru")
     rng = random.Random(1)
-    alphabet = "ab Ёж́😀.\n\n\r\t   ﻿​"
+    alphabet = "ab Ёж\u0301😀.\n\n\r\t\u00a0\u2028\u2029\ufeff\u200b"
     for _ in range(300):
         text = "".join(rng.choices(alphabet, k=rng.randrange(60)))
         doc = segmenter.segment(text)

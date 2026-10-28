@@ -1,0 +1,20 @@
+# First parts that do not inflect: a hyphenated word that starts with one stays whole even when its parts end
+# alike («мини-саунами», «кое-какие»)
+кое
+кой
+мини
+макси
+супер
+экс
+вице
+медиа
+видео
+аудио
+фото
+радио
+теле
+кино
+авиа
+евро
+ноу
+папье

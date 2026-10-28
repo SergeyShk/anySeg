@@ -4,9 +4,9 @@ use std::hash::{Hash, Hasher};
 use std::sync::{PoisonError, RwLock, RwLockReadGuard};
 
 use anyseg::Column;
-use pyo3::exceptions::{PyIndexError, PyValueError};
+use pyo3::exceptions::{PyIndexError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyIterator, PyList, PySlice, PyString, PyType};
+use pyo3::types::{PyDict, PyIterator, PyList, PySlice, PyString, PyTuple, PyType};
 
 const COLUMNS: &str = "form, lemma, upos, xpos, feats, head, deprel, deps, misc";
 
@@ -104,14 +104,21 @@ fn spans(text: &str, spans: Vec<anyseg::Span>) -> Vec<Span> {
 ///     [Span(start=0, end=2, text='Ёж'), Span(start=3, end=7, text='идёт')]
 ///     >>> segmenter.sentenize(" Ёж идёт ")
 ///     [Span(start=1, end=8, text='Ёж идёт')]
+///     >>> segmenter = Segmenter("ru", abbreviations=["сущ."], tokens=["C++"])
+///     >>> [span.text for span in segmenter.tokenize("сущ. C++")]
+///     ['сущ.', 'C++']
 ///
 /// Description:
 ///     Tokens and sentences are spans of the text, which is never changed. A segmenter is
 ///     immutable, can be shared between threads and pickled, and equals the segmenters of the
-///     same language
+///     same language and lists
 ///
 /// Arguments:
 ///     lang (str): ISO 639-1 code of the language: "ru"
+///     abbreviations (Iterable[str] | None): More words that keep a period after them, given with
+///         the period or without it, in any case
+///     tokens (Iterable[str] | None): Strings that are one token each: they match as written where
+///         a token would start and no letter or digit adjoins them; of several, the longest
 ///
 /// Methods:
 ///     tokenize: Tokens of a text
@@ -119,30 +126,68 @@ fn spans(text: &str, spans: Vec<anyseg::Span>) -> Vec<Span> {
 ///     segment: Document of a text
 ///
 /// Raises:
-///     ValueError: If the language is not supported
+///     ValueError: If the language is not supported, an abbreviation is not a word of letters or a
+///         token is empty, has whitespace or starts or ends with an invisible separator
+///     TypeError: If abbreviations or tokens is a string or holds something else
 #[pyclass(frozen, eq, hash, module = "anyseg")]
 #[derive(PartialEq, Eq, Hash)]
 struct Segmenter {
     inner: anyseg::Segmenter,
 }
 
+/// The strings of an iterable that is not a string itself
+fn strings(value: Option<&Bound<'_, PyAny>>, name: &str) -> PyResult<Vec<String>> {
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
+    if value.is_instance_of::<PyString>() {
+        return Err(PyTypeError::new_err(format!(
+            "{name} must be an iterable of strings, not a string"
+        )));
+    }
+    value
+        .try_iter()?
+        .map(|item| item?.extract::<String>())
+        .collect()
+}
+
 #[pymethods]
 impl Segmenter {
     #[new]
-    fn new(py: Python<'_>, lang: &str) -> PyResult<Self> {
-        match anyseg::Segmenter::new(lang) {
+    #[pyo3(signature = (lang, *, abbreviations = None, tokens = None))]
+    fn new(
+        py: Python<'_>,
+        lang: &str,
+        abbreviations: Option<Bound<'_, PyAny>>,
+        tokens: Option<Bound<'_, PyAny>>,
+    ) -> PyResult<Self> {
+        let Ok(inner) = anyseg::Segmenter::new(lang) else {
+            let codes: Vec<&str> = anyseg::Language::ALL
+                .iter()
+                .map(|language| language.code())
+                .collect();
+            return Err(PyValueError::new_err(format!(
+                "unsupported language {}, expected one of: {}",
+                repr(py, lang)?,
+                codes.join(", ")
+            )));
+        };
+        let abbreviations = strings(abbreviations.as_ref(), "abbreviations")?;
+        let tokens = strings(tokens.as_ref(), "tokens")?;
+        let inner = inner
+            .with_abbreviations(abbreviations)
+            .and_then(|inner| inner.with_tokens(tokens));
+        match inner {
             Ok(inner) => Ok(Segmenter { inner }),
-            Err(_) => {
-                let codes: Vec<&str> = anyseg::Language::ALL
-                    .iter()
-                    .map(|language| language.code())
-                    .collect();
-                Err(PyValueError::new_err(format!(
-                    "unsupported language {}, expected one of: {}",
-                    repr(py, lang)?,
-                    codes.join(", ")
-                )))
-            }
+            Err(anyseg::InvalidEntry::Abbreviation(word)) => Err(PyValueError::new_err(format!(
+                "abbreviation {} is not a word of letters with an optional final period",
+                repr(py, &word)?
+            ))),
+            Err(anyseg::InvalidEntry::Token(token)) => Err(PyValueError::new_err(format!(
+                "token {} is empty, has whitespace or starts or ends with an invisible separator",
+                repr(py, &token)?
+            ))),
+            Err(error) => Err(PyValueError::new_err(error.to_string())),
         }
     }
 
@@ -152,11 +197,30 @@ impl Segmenter {
         self.inner.language().code()
     }
 
+    /// Abbreviations added to the language, sorted: lowercase, without the period and stress marks
+    #[getter]
+    fn abbreviations<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
+        PyTuple::new(py, self.inner.abbreviations())
+    }
+
+    /// Strings that are one token each, sorted
+    #[getter]
+    fn tokens<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
+        PyTuple::new(py, self.inner.tokens())
+    }
+
     /// Tokens of a text
     ///
     /// Description:
-    ///     Tokens are the runs of characters between whitespace and the invisible separators
-    ///     (zero width space, word joiner, byte order mark)
+    ///     Whitespace and the invisible separators (zero width space, word joiner, byte order
+    ///     mark, and a soft hyphen and zero width (non-)joiner outside a word) separate tokens and
+    ///     are in none. Words keep their combining marks and soft hyphens; hyphenated words,
+    ///     numbers with decimal commas and points, dates, times and digit groups, URLs, e-mail
+    ///     addresses, file names, mentions, hashtags, emoticons and runs of emoji are one token
+    ///     each, as are runs of final marks ("?!", "..."). Abbreviations and initials keep their
+    ///     period, except at the end of a paragraph. Particles after a hyphen ("Вася-то"), ranges
+    ///     ("2-3"), approximate numbers ("два-три") and compounds whose first part inflects
+    ///     ("Ростова-на-Дону", "Формулы-1", "учеными-энтузиастами") split at the hyphen
     ///
     /// Arguments:
     ///     text (str): Text
@@ -207,12 +271,31 @@ impl Segmenter {
         Ok(Document::new(py, inner, Some(text.unbind())))
     }
 
-    fn __repr__(&self) -> String {
-        format!("Segmenter('{}')", self.lang())
+    fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
+        let mut out = format!("Segmenter({}", repr(py, self.lang())?);
+        for (name, list) in [
+            ("abbreviations", self.abbreviations(py)?),
+            ("tokens", self.tokens(py)?),
+        ] {
+            if !list.is_empty() {
+                out.push_str(&format!(", {name}={}", list.repr()?));
+            }
+        }
+        out.push(')');
+        Ok(out)
     }
 
-    fn __reduce__<'py>(slf: &Bound<'py, Self>) -> (Bound<'py, PyType>, (&'static str,)) {
-        (slf.get_type(), (slf.get().lang(),))
+    fn __reduce__<'py>(
+        slf: &Bound<'py, Self>,
+    ) -> PyResult<(Bound<'py, PyAny>, Bound<'py, PyTuple>)> {
+        let py = slf.py();
+        let segmenter = slf.get();
+        let lists = PyDict::new(py);
+        lists.set_item("abbreviations", segmenter.abbreviations(py)?)?;
+        lists.set_item("tokens", segmenter.tokens(py)?)?;
+        let new = py.import("copyreg")?.getattr("__newobj_ex__")?;
+        let arguments = (slf.get_type(), (segmenter.lang(),), lists).into_pyobject(py)?;
+        Ok((new, arguments))
     }
 }
 

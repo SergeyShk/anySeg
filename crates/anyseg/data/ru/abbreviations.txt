@@ -1,0 +1,110 @@
+# Abbreviations that keep their period inside the token: lowercase, without the period.
+# A period after them does not end a sentence by itself. Single letters take a period too,
+# except those in not_abbreviations.txt. Sources: common usage and the list of standard
+# abbreviations of bibliographic description (GOST 7.0.12), no treebank lists.
+
+# time and dates
+гг
+вв
+мин
+сек
+ок
+прибл
+# places and addresses
+стр
+ул
+пер
+пр
+пл
+наб
+просп
+корп
+кв
+эт
+обл
+респ
+пос
+дер
+оз
+# numbers, money and measures
+тыс
+млн
+млрд
+трлн
+руб
+коп
+долл
+шт
+экз
+# reference and text
+см
+ср
+др
+напр
+рис
+табл
+илл
+прим
+ред
+изд
+вып
+кн
+гл
+разд
+ст
+пп
+доп
+под
+сост
+# titles and ranks
+им
+акад
+проф
+доц
+канд
+докт
+чл
+корр
+св
+ген
+адм
+полк
+лейт
+кап
+тов
+гр
+# languages
+англ
+нем
+франц
+фр
+лат
+греч
+итал
+исп
+рус
+укр
+араб
+кит
+яп
+# other
+тел
+моб
+доб
+вост
+зап
+сев
+юж
+муж
+жен
+ед
+мн
+наст
+прош
+буд
+устар
+сокр
+чел
+гос
+примеч
+дж

@@ -1,0 +1,3 @@
+# Words between two hyphens that join an inflected first part to the rest of a name: «Ростова-на-Дону» splits
+# at both hyphens
+на
