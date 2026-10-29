@@ -6,6 +6,32 @@
     width: 40px;
 }
 
+.md-typeset .signature {
+    border-left: 0.2rem solid var(--md-accent-fg-color);
+}
+
+.md-typeset .signature code {
+    padding-right: 2.6em;
+    white-space: pre-wrap;
+}
+
+.md-typeset .metric-card {
+    border: 0.05rem solid var(--md-default-fg-color--lightest);
+    border-radius: 0.2rem;
+    margin: 1.5em 0;
+    padding: 0 1rem 0.2rem;
+}
+
+.md-typeset .metric-card > h3 {
+    margin-top: 0.8em;
+}
+
+.md-typeset .metric-meta {
+    color: var(--md-default-fg-color--light);
+    font-size: 0.85em;
+    margin-top: -0.4em;
+}
+
 /* The orange of the logo; links in a darker shade on white and in the light one on the dark scheme */
 [data-md-color-primary="custom"] {
     --md-primary-fg-color: #ef6c00;
