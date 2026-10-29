@@ -38,6 +38,18 @@ pub(crate) struct Tables {
 
 /// A word lowercase, without stress marks (U+0300, U+0301) and soft hyphens
 fn fold(word: &str) -> String {
+    if word.chars().all(plain) {
+        return word.chars().flat_map(char::to_lowercase).collect();
+    }
+    normalized_fold(word)
+}
+
+/// ASCII and the Russian alphabet have no marks to drop: words of them fold without normalization
+fn plain(character: char) -> bool {
+    character.is_ascii() || matches!(character, 'А'..='я' | 'Ё' | 'ё')
+}
+
+fn normalized_fold(word: &str) -> String {
     word.nfd()
         .filter(|&character| !matches!(character, '\u{300}' | '\u{301}' | '\u{ad}'))
         .nfc()
@@ -155,5 +167,21 @@ mod tests {
         assert_eq!(tables.key("Ёлка й"), "ёлка й");
         assert_eq!(tables.key("Com"), "com");
         assert!(tables.final_abbreviations.contains("т д"));
+    }
+
+    #[test]
+    fn plain_words_fold_without_normalization() {
+        let characters: Vec<char> = (0..=0x10ffff)
+            .filter_map(char::from_u32)
+            .filter(|&character| plain(character))
+            .collect();
+        for &first in &characters {
+            let word = first.to_string();
+            assert_eq!(fold(&word), normalized_fold(&word), "{word:?}");
+            for &second in &characters {
+                let word = format!("{first}{second}");
+                assert_eq!(fold(&word), normalized_fold(&word), "{word:?}");
+            }
+        }
     }
 }

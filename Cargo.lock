@@ -4,14 +4,14 @@ version = 4
 
 [[package]]
 name = "anyseg"
-version = "0.1.0-dev.4"
+version = "0.1.0-dev.5"
 dependencies = [
  "unicode-normalization",
 ]
 
 [[package]]
 name = "anyseg-py"
-version = "0.1.0-dev.4"
+version = "0.1.0-dev.5"
 dependencies = [
  "anyseg",
  "pyo3",

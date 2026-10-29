@@ -26,6 +26,26 @@ fn char_at(text: &str, index: usize) -> Option<char> {
     text.get(index..)?.chars().next()
 }
 
+/// A letter: ASCII, Latin-1 and the Russian alphabet skip the tables of Unicode, which take most of the time
+pub(crate) fn is_alpha(character: char) -> bool {
+    match character {
+        'a'..='z' | 'A'..='Z' | 'А'..='я' | 'Ё' | 'ё' => true,
+        '\u{c0}'..='\u{ff}' => !matches!(character, '\u{d7}' | '\u{f7}'),
+        _ if character.is_ascii() => false,
+        _ => character.is_alphabetic(),
+    }
+}
+
+/// A letter or a digit, as [`char::is_alphanumeric`] decides, with the shortcuts of [`is_alpha`]
+pub(crate) fn is_word(character: char) -> bool {
+    match character {
+        'a'..='z' | 'A'..='Z' | '0'..='9' | 'А'..='я' | 'Ё' | 'ё' => true,
+        '\u{c0}'..='\u{ff}' => !matches!(character, '\u{d7}' | '\u{f7}'),
+        _ if character.is_ascii() => false,
+        _ => character.is_alphanumeric(),
+    }
+}
+
 pub(crate) fn is_mark(character: char) -> bool {
     is_combining_mark(character)
 }
@@ -60,10 +80,10 @@ fn is_digits(text: &str) -> bool {
 }
 
 pub(crate) fn is_letters(text: &str) -> bool {
-    text.chars().any(char::is_alphabetic)
-        && text.chars().all(|character| {
-            character.is_alphabetic() || is_mark(character) || is_joiner(character)
-        })
+    text.chars().any(is_alpha)
+        && text
+            .chars()
+            .all(|character| is_alpha(character) || is_mark(character) || is_joiner(character))
 }
 
 /// How two runs of a word or a number are joined
@@ -167,22 +187,23 @@ impl Scanner<'_> {
         {
             return self.push(index, end);
         }
-        if ["http://", "https://", "ftp://", "www."]
-            .iter()
-            .any(|prefix| self.starts_with(index, prefix))
+        if matches!(character, 'h' | 'H' | 'f' | 'F' | 'w' | 'W')
+            && ["http://", "https://", "ftp://", "www."]
+                .iter()
+                .any(|prefix| self.starts_with(index, prefix))
         {
             let end = self.url(index);
             return self.push(index, end);
         }
-        if character.is_alphanumeric() || (is_mark(character) && self.marks_start_word(index)) {
+        if is_word(character) || (is_mark(character) && self.marks_start_word(index)) {
             // Only a word followed by «@» or by a dot or a dash before a letter or a digit can start an e-mail
             // address or a domain
             let run = self.run(index);
             let web = match self.get(run) {
                 Some('@') => true,
-                Some(next @ ('.' | '-' | '_' | '+' | '%')) => self
-                    .get(run + next.len_utf8())
-                    .is_some_and(char::is_alphanumeric),
+                Some(next @ ('.' | '-' | '_' | '+' | '%')) => {
+                    self.get(run + next.len_utf8()).is_some_and(is_word)
+                }
                 _ => false,
             };
             if !web || index < self.not_web {
@@ -216,11 +237,7 @@ impl Scanner<'_> {
         }
         let next = index + character.len_utf8();
         match character {
-            '@' | '#'
-                if self
-                    .get(next)
-                    .is_some_and(|c| c.is_alphanumeric() || c == '_') =>
-            {
+            '@' | '#' if self.get(next).is_some_and(|c| is_word(c) || c == '_') => {
                 let end = self.handle(next, character == '@');
                 self.push(index, end)
             }
@@ -275,13 +292,12 @@ impl Scanner<'_> {
 
     /// Whether the combining marks at `start` come before a letter or a digit and so begin a word
     fn marks_start_word(&self, start: usize) -> bool {
-        self.get(self.marks_end(start))
-            .is_some_and(char::is_alphanumeric)
+        self.get(self.marks_end(start)).is_some_and(is_word)
     }
 
     /// The end of the longest token of the user at `index` that no letter or digit adjoins
     fn exception(&self, index: usize, character: char) -> Option<usize> {
-        let word = |c: char| c.is_alphanumeric() || is_mark(c);
+        let word = |c: char| is_word(c) || is_mark(c);
         if self.text[..index].chars().next_back().is_some_and(word) {
             return None;
         }
@@ -335,10 +351,8 @@ impl Scanner<'_> {
         let mut end = start;
         while let Some(character) = self.get(end) {
             let inner = extra.contains(character)
-                && self
-                    .get(end + character.len_utf8())
-                    .is_some_and(char::is_alphanumeric);
-            if character.is_alphanumeric() || is_mark(character) || inner {
+                && self.get(end + character.len_utf8()).is_some_and(is_word);
+            if is_word(character) || is_mark(character) || inner {
                 end += character.len_utf8();
             } else {
                 break;
@@ -374,7 +388,7 @@ impl Scanner<'_> {
     fn email(&self, at: usize) -> Option<usize> {
         let end = self.labels(at + 1, ".-");
         self.host(at + 1, end, |top| {
-            top.chars().count() >= 2 && top.chars().all(char::is_alphabetic)
+            top.chars().count() >= 2 && top.chars().all(is_alpha)
         })
     }
 
@@ -408,10 +422,8 @@ impl Scanner<'_> {
         let mut end = start;
         while let Some(character) = self.get(end) {
             let inner = (if mention { ".-" } else { "-" }).contains(character)
-                && self
-                    .get(end + 1)
-                    .is_some_and(|c| c.is_alphanumeric() || c == '_');
-            if character.is_alphanumeric() || character == '_' || is_mark(character) || inner {
+                && self.get(end + 1).is_some_and(|c| is_word(c) || c == '_');
+            if is_word(character) || character == '_' || is_mark(character) || inner {
                 end += character.len_utf8();
             } else {
                 break;
@@ -438,19 +450,14 @@ impl Scanner<'_> {
         }
         let mouth = self.get(index).filter(|c| ")(DPpOo*|/3][".contains(*c))?;
         // After a number or a word a digit is a score or an equation: «2:3», «n=3»
-        if mouth.is_ascii_digit()
-            && self.text[..start]
-                .chars()
-                .next_back()
-                .is_some_and(char::is_alphanumeric)
-        {
+        if mouth.is_ascii_digit() && self.text[..start].chars().next_back().is_some_and(is_word) {
             return None;
         }
         while self.get(index) == Some(mouth) {
             index += 1;
         }
-        let letter = mouth.is_alphanumeric();
-        (!(letter && self.get(index).is_some_and(char::is_alphanumeric))).then_some(index)
+        let letter = is_word(mouth);
+        (!(letter && self.get(index).is_some_and(is_word))).then_some(index)
     }
 
     /// The end of an HTML entity at `start`: «&quot;», «&#39;», «&#x27;»
@@ -510,7 +517,7 @@ impl Scanner<'_> {
                 break;
             }
         }
-        (groups >= 3 && !self.get(end).is_some_and(char::is_alphanumeric)).then_some(end)
+        (groups >= 3 && !self.get(end).is_some_and(is_word)).then_some(end)
     }
 
     /// A run of letters and digits with the combining marks and joiners inside it
@@ -518,13 +525,11 @@ impl Scanner<'_> {
         let rest = &self.text[start..self.end];
         let mut chars = rest.char_indices().peekable();
         while let Some((offset, character)) = chars.next() {
-            if character.is_alphanumeric() || is_mark(character) {
+            if is_word(character) || is_mark(character) {
                 continue;
             }
             let inner = is_joiner(character)
-                && chars
-                    .peek()
-                    .is_some_and(|&(_, c)| c.is_alphanumeric() || is_mark(c));
+                && chars.peek().is_some_and(|&(_, c)| is_word(c) || is_mark(c));
             if !inner {
                 return start + offset;
             }
@@ -542,14 +547,14 @@ impl Scanner<'_> {
         let digits = is_digits(piece);
         let only = |kind: Joint| kinds & !kind.bit() == 0;
         let joint = match character {
-            '-' | '\u{2010}' | '\u{2011}' if after.is_alphanumeric() => Joint::Hyphen,
-            '\'' | '\u{2019}' if after.is_alphabetic() && !digits => Joint::Apostrophe,
-            '_' if after.is_alphanumeric() => Joint::Underscore,
+            '-' | '\u{2010}' | '\u{2011}' if is_word(after) => Joint::Hyphen,
+            '\'' | '\u{2019}' if is_alpha(after) && !digits => Joint::Apostrophe,
+            '_' if is_word(after) => Joint::Underscore,
             '.' if digits && after.is_ascii_digit() && only(Joint::Point) => Joint::Point,
             ',' if digits && after.is_ascii_digit() && only(Joint::Thousands) => Joint::Comma,
             ':' if digits && piece.len() <= 2 && only(Joint::Colon) => {
                 let end = self.digits_end(next);
-                if end - next != 2 || self.get(end).is_some_and(char::is_alphanumeric) {
+                if end - next != 2 || self.get(end).is_some_and(is_word) {
                     return None;
                 }
                 Joint::Colon
@@ -564,7 +569,7 @@ impl Scanner<'_> {
                     }) =>
             {
                 let end = self.digits_end(next);
-                if end - next != 3 || self.get(end).is_some_and(char::is_alphanumeric) {
+                if end - next != 3 || self.get(end).is_some_and(is_word) {
                     return None;
                 }
                 Joint::Thousands
@@ -621,7 +626,7 @@ impl Scanner<'_> {
         if is_digits(right) {
             // A word with an inflected first part and a number splits («Формулы-1», «Марса-96»), an
             // abbreviation stays whole («Ту-154», «COVID-19»)
-            return left.chars().filter(|c| c.is_alphabetic()).count() >= 3
+            return left.chars().filter(|&c| is_alpha(c)).count() >= 3
                 && left.chars().any(char::is_lowercase)
                 && !tables.prefixes.contains(&left_key);
         }
@@ -752,7 +757,7 @@ impl Scanner<'_> {
                 // A run of «(» opens brackets before a word and is an emoticon otherwise; a run of «)» closes
                 // the open brackets one by one, and the rest of it is an emoticon
                 let singles = if character == '(' {
-                    if length >= 2 && !self.get(end).is_some_and(char::is_alphanumeric) {
+                    if length >= 2 && !self.get(end).is_some_and(is_word) {
                         0
                     } else {
                         length
@@ -777,7 +782,7 @@ impl Scanner<'_> {
             }
             '°' if self.get(next).is_some_and(|c| matches!(c, 'C' | 'С' | 'F')) => {
                 let letter = next + self.get(next).map_or(0, char::len_utf8);
-                if self.get(letter).is_some_and(char::is_alphanumeric) {
+                if self.get(letter).is_some_and(is_word) {
                     self.push(start, next)
                 } else {
                     self.push(start, letter)
@@ -790,6 +795,23 @@ impl Scanner<'_> {
 
 #[cfg(all(test, feature = "ru"))]
 mod tests {
+    use super::{is_alpha, is_word};
+
+    #[test]
+    fn character_shortcuts() {
+        for character in (0..=0x10ffff).filter_map(char::from_u32) {
+            assert_eq!(
+                is_alpha(character),
+                character.is_alphabetic(),
+                "{character:?}"
+            );
+            assert_eq!(
+                is_word(character),
+                character.is_alphanumeric(),
+                "{character:?}"
+            );
+        }
+    }
 
     fn tokens(text: &str) -> Vec<&str> {
         crate::Segmenter::new("ru")

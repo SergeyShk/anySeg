@@ -3,7 +3,7 @@
 use crate::Span;
 use crate::document::{Line, LineBreak};
 use crate::lang::Tables;
-use crate::tokens::{EMOTICONS, Exceptions, is_emoji, is_mark};
+use crate::tokens::{EMOTICONS, Exceptions, is_alpha, is_emoji, is_mark, is_word};
 
 /// Marks that start a list item at the beginning of a line
 const BULLETS: &str = "-‐‒–—―−•·*▪◦‣●■►▸→✓✔";
@@ -65,7 +65,7 @@ fn is_mention(piece: &str) -> bool {
 
 fn has_word(piece: &str) -> bool {
     let mut chars = piece.chars();
-    chars.next().is_some_and(char::is_alphanumeric) || chars.any(char::is_alphanumeric)
+    chars.next().is_some_and(is_word) || chars.any(is_word)
 }
 
 fn starts_upper(piece: &str) -> bool {
@@ -83,21 +83,21 @@ fn is_abbreviation(piece: &str) -> bool {
         && piece[..piece.len() - 1]
             .chars()
             .next_back()
-            .is_some_and(|c| c.is_alphabetic() || is_mark(c))
+            .is_some_and(|c| is_alpha(c) || is_mark(c))
 }
 
 /// The first letter of a line, past the quotes, dashes and bullets before it, is a capital one
 fn begins_upper(line: &str) -> bool {
     line.chars()
-        .find(|c| c.is_alphanumeric())
+        .find(|&c| is_word(c))
         .is_some_and(char::is_uppercase)
 }
 
 /// A line that does not end with punctuation: a heading, a line of a post
 fn ends_open(line: &str) -> bool {
-    line.chars().next_back().is_some_and(|c| {
-        c.is_alphanumeric() || !(c.is_ascii_punctuation() || "«»„“”‘’…—–‒―−".contains(c))
-    })
+    line.chars()
+        .next_back()
+        .is_some_and(|c| is_word(c) || !(c.is_ascii_punctuation() || "«»„“”‘’…—–‒―−".contains(c)))
 }
 
 struct Splitter<'a> {
@@ -306,7 +306,7 @@ impl Splitter<'_> {
         if opens(piece) {
             return true;
         }
-        if piece.starts_with(char::is_alphabetic) {
+        if piece.starts_with(is_alpha) {
             return false;
         }
         let next = |offset: usize| {
@@ -383,7 +383,7 @@ impl Splitter<'_> {
                 || self.piece(position + 1) == "/"
                 || (lowercase(piece)
                     && word.chars().count() <= 4
-                    && word.chars().all(char::is_alphabetic)
+                    && word.chars().all(is_alpha)
                     && (word.len() < piece.len()
                         || self.tables.abbreviations.contains(&self.tables.key(word))));
             if !unit {
