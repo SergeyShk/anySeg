@@ -25,11 +25,11 @@
 
 From Python, tokens and sentences come out at 2.4 M tokens per second, five times faster than razdel; the Rust crate gives 13.5 M. On the test files of the Russian treebanks of UD, token F1 is 99.1-99.8, above every other tool on Taiga, GSD and PUD, and the sentence boundaries are above razdel on all four sets.
 
-* **Tokens** - words with stress marks and soft hyphens, hyphenated words by the UD guidelines, numbers, dates and times, URLs, e-mail addresses, mentions, hashtags, emoticons and emoji, abbreviations and initials with their period
-* **Sentences** - final marks with the quotes and brackets after them, abbreviations that end a sentence, lines of dialogue, list items, headings and verse
-* **Paragraphs and lines** - paragraphs between blank lines, and every line marked as a break of the author or a wrap at the width of the page, as in text from PDF
-* **Document model** - tokens, words with the columns of [CoNLL-U](https://universaldependencies.org/format.html), sentences, paragraphs and lines; reading and writing CoNLL-U, a document read from it written back unchanged
-* **Lists of your own** - more abbreviations and strings that are one token each
+* **[Tokens](https://sergeyshk.github.io/anySeg/russian/#tokens)** - words with stress marks and soft hyphens, hyphenated words by the UD guidelines, numbers, dates and times, URLs, e-mail addresses, mentions, hashtags, emoticons and emoji, abbreviations and initials with their period
+* **[Sentences](https://sergeyshk.github.io/anySeg/russian/#sentences)** - final marks with the quotes and brackets after them, abbreviations that end a sentence, lines of dialogue, list items, headings and verse
+* **[Paragraphs and lines](https://sergeyshk.github.io/anySeg/russian/#lines)** - paragraphs between blank lines, and every line marked as a break of the author or a wrap at the width of the page, as in text from PDF
+* **[Document model](https://sergeyshk.github.io/anySeg/document/)** - tokens, words with the columns of [CoNLL-U](https://universaldependencies.org/format.html), sentences, paragraphs and lines; reading and writing CoNLL-U, a document read from it written back unchanged
+* **[Lists of your own](https://sergeyshk.github.io/anySeg/segmenter/#lists)** - more abbreviations and strings that are one token each
 * **[Comparison](https://sergeyshk.github.io/anySeg/comparison/)** - quality and speed against razdel, NLTK, spaCy, Stanza, trankit, SaT and other tools
 
 > [!NOTE]

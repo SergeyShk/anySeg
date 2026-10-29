@@ -4,10 +4,14 @@ site_description: "Fast segmentation of text into tokens and sentences, written 
 repo_url: https://github.com/SergeyShk/anySeg
 
 nav:
-    - About: index.md
-    - Installation: installation.md
-    - Comparison: comparison.md
-    - Authors: authors.md
+    - Home:
+      - About: index.md
+      - Installation: installation.md
+      - Comparison: comparison.md
+      - Authors: authors.md
+    - Segmenter: segmenter.md
+    - Document: document.md
+    - Russian: russian.md
 
 theme:
   name: material
