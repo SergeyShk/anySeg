@@ -13,9 +13,11 @@ use crate::layout::{self, is_separator, one_line};
 
 /// A line of CoNLL-U that cannot be read
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct ConlluError {
     /// The number of the line, from 1
     pub line: usize,
+    /// What is wrong with it
     pub message: String,
 }
 
@@ -217,13 +219,17 @@ fn parse<'a>(
 /// of a sentence is its `# text` comment or, without it, the forms of its tokens with the spaces of `SpaceAfter`
 /// and `SpacesAfter`; sentences of a paragraph are joined by a space (none after `SpaceAfter=No`) and paragraphs
 /// by a blank line. Comments, multiword token lines and empty nodes are kept, so that
-/// [`Document::to_conllu`] writes the text back as it was.
+/// [`Document::to_conllu`] writes the text back as it was, with LF line ends and heads as plain numbers. A byte
+/// order mark at the start is skipped.
 ///
 /// # Errors
 ///
-/// [`ConlluError`] on a line that is not a comment, a blank line or a token line of 10 columns with IDs in order,
-/// or on forms that do not match the `# text` of their sentence.
+/// [`ConlluError`] on a line that is not a comment, a blank line or a token line of 10 columns, on an ID or a head
+/// that cannot be read, on IDs out of order, on a multiword token without all its words, on a comment after the
+/// token lines of a sentence, on a sentence without words, on forms that do not match the `# text` of their
+/// sentence or a `# text` with characters that no token has, and on a text that does not end with a blank line.
 pub fn read_conllu(input: &str) -> Result<Vec<Document>, ConlluError> {
+    let input = input.strip_prefix('\u{feff}').unwrap_or(input);
     let mut sentences = Vec::new();
     let mut sentence = Block::default();
     let mut multiword = None;
@@ -636,6 +642,7 @@ fn normalize(gap: &str) -> String {
             '\u{200b}' | '\u{2060}' | '\u{feff}' | '\u{ad}' | '\u{200c}' | '\u{200d}' => None,
             '\t' | '\r' | '\n' => Some(character),
             '\u{b}' | '\u{c}' | '\u{85}' | '\u{2028}' | '\u{2029}' => Some('\n'),
+            _ if character.is_control() => None,
             _ => Some(' '),
         })
         .collect()
@@ -723,6 +730,8 @@ mod tests {
         assert_eq!(documents.len(), 2);
         let written: String = documents.iter().map(Document::to_conllu).collect();
         assert_eq!(written, UD);
+        let with_mark = format!("\u{feff}{UD}");
+        assert_eq!(read_conllu(&with_mark).unwrap(), documents);
     }
 
     #[test]

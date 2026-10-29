@@ -14,7 +14,7 @@ let doc = segmenter.segment("Ёж идёт домой\n\nКот спит");
 assert_eq!(doc.sentence(1).span.slice(doc.text()), "Кот спит");
 ```
 
-A `Document` holds the tokens, the words with the columns of CoNLL-U, the sentences, the paragraphs and their lines; `Document::to_conllu` and `read_conllu` write and read CoNLL-U, and a document read from CoNLL-U is written back unchanged.
+A `Document` holds the tokens, the words with the columns of CoNLL-U, the sentences, the paragraphs and their lines; `Document::to_conllu` and `read_conllu` write and read CoNLL-U, and a document read from CoNLL-U is written back as it was, with its comments, multiword tokens and empty nodes.
 
 The Python package with the same segmenter is [`anyseg`](https://github.com/SergeyShk/anySeg) on PyPI.
 

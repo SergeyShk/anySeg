@@ -212,9 +212,9 @@ impl Segmenter {
     /// Tokens of a text
     ///
     /// Description:
-    ///     Whitespace and the invisible separators (zero width space, word joiner, byte order
-    ///     mark, and a soft hyphen and zero width (non-)joiner outside a word) separate tokens and
-    ///     are in none. Words keep their combining marks and soft hyphens; hyphenated words,
+    ///     Whitespace, control characters and the invisible separators (zero width space, word
+    ///     joiner, byte order mark, and a soft hyphen and zero width (non-)joiner outside a word)
+    ///     separate tokens and are in none. Words keep their combining marks and soft hyphens; hyphenated words,
     ///     numbers with decimal commas and points, dates, times and digit groups, URLs, e-mail
     ///     addresses, file names, mentions, hashtags, emoticons and runs of emoji are one token
     ///     each, as are runs of final marks ("?!", "..."). Abbreviations and initials keep their
@@ -242,11 +242,12 @@ impl Segmenter {
     ///     at final marks (".", "?!", "...") with the closing quotes and brackets after them, when
     ///     a capital letter, a digit, or a dash or an opening quote before a capital letter follows.
     ///     An abbreviation ends a sentence before a capital letter when the language lists it
-    ///     ("и т. д.") or it follows a number ("в 1914 г."); initials do not. A line break starts a
-    ///     sentence before a list item or a line of dialogue, at a line without words and after a
-    ///     line without final punctuation before a capital letter, except in verse and in text
-    ///     wrapped at the width of the page (a line of the paragraph goes on with a lowercase
-    ///     letter)
+    ///     ("и т. д.") or it follows a number ("в 1914 г."); initials do not, but a single letter
+    ///     of another script than the next word ("через x. Тогда") and a unit after a number
+    ///     ("5 А.") do. A line break starts a sentence before a list item or a line of dialogue,
+    ///     at a line without words and after a line without final punctuation before a capital
+    ///     letter, except in verse and in text wrapped at the width of the page (a line of the
+    ///     paragraph goes on with a lowercase letter)
     ///
     /// Arguments:
     ///     text (str): Text
@@ -264,9 +265,9 @@ impl Segmenter {
     ///
     /// Description:
     ///     Tokens as tokenize gives them, one word per token, sentences as sentenize gives them,
-    ///     paragraphs and their lines. A line that goes on with a lowercase letter outside verse
-    ///     and does not start a sentence is a wrap at the width of the page ("typeset"), other
-    ///     lines are breaks of the author
+    ///     paragraphs and their lines. Outside verse, in a paragraph where some line goes on with
+    ///     a lowercase letter, a line that does not start a sentence is a wrap at the width of the
+    ///     page ("typeset"); other lines are breaks of the author
     ///
     /// Arguments:
     ///     text (str): Text

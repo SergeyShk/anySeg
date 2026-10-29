@@ -1,9 +1,9 @@
 //! Tokens: a scan of the text by classes of characters, with the lists of a language
 
-use std::collections::BTreeSet;
-use std::ops::Bound;
+use std::collections::{BTreeSet, HashMap, HashSet};
+use std::hash::{Hash, Hasher};
 
-use unicode_normalization::char::is_combining_mark;
+use unicode_normalization::char::{compose, is_combining_mark};
 
 use crate::Span;
 use crate::lang::Tables;
@@ -11,12 +11,15 @@ use crate::layout::is_separator;
 
 /// Top-level domains and file extensions that make a name one token: «example.ru», «Газета.ru», «robots.txt»
 const SUFFIXES: &[&str] = &[
-    "ru", "рф", "su", "com", "org", "net", "info", "biz", "edu", "gov", "int", "io", "ai", "me",
-    "tv", "fm", "pro", "online", "site", "store", "app", "dev", "by", "ua", "kz", "uz", "kg", "am",
-    "ge", "az", "md", "lv", "lt", "ee", "de", "fr", "uk", "us", "eu", "it", "es", "pl", "cz", "cn",
-    "jp", "txt", "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "csv", "json", "xml", "html",
-    "htm", "jpg", "jpeg", "png", "gif", "svg", "zip", "rar", "exe", "py", "js", "mp3", "mp4",
-    "avi",
+    "ru", "рф", "ру", "su", "com", "org", "net", "info", "biz", "edu", "gov", "int", "io", "ai",
+    "me", "tv", "fm", "pro", "online", "site", "store", "app", "dev", "by", "ua", "kz", "uz", "kg",
+    "am", "ge", "az", "md", "lv", "lt", "ee", "de", "fr", "uk", "us", "eu", "it", "es", "pl", "cz",
+    "cn", "jp", "txt", "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "rtf", "csv",
+    "json", "xml", "html", "htm", "css", "jpg", "jpeg", "png", "gif", "svg", "webp", "bmp", "tif",
+    "tiff", "zip", "rar", "gz", "tar", "exe", "dll", "apk", "iso", "mp3", "mp4", "avi", "mov",
+    "mkv", "wav", "flac", "ogg", "epub", "fb2", "djvu", "py", "js", "ts", "tsx", "jsx", "rs", "go",
+    "java", "kt", "cpp", "cs", "rb", "php", "swift", "sh", "sql", "ipynb", "yaml", "yml", "toml",
+    "ini", "cfg", "conf", "lock", "log",
 ];
 
 /// Emoticons that are not a face of eyes and a mouth
@@ -109,12 +112,46 @@ impl Joint {
 }
 
 /// The lists of the user: more abbreviations and strings that are one token each
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Default)]
 pub(crate) struct Exceptions {
     /// Keys of words that keep a period after them
     pub(crate) abbreviations: BTreeSet<String>,
     /// Strings, as written, that are one token
     pub(crate) tokens: BTreeSet<String>,
+    /// The same strings for a lookup by a slice of the text
+    lookup: HashSet<String>,
+    /// The lengths of the strings that start with a character, longest first
+    lengths: HashMap<char, Vec<usize>>,
+}
+
+impl Exceptions {
+    pub(crate) fn add_token(&mut self, token: &str) {
+        let Some(first) = token.chars().next() else {
+            return;
+        };
+        if self.tokens.insert(token.to_owned()) {
+            self.lookup.insert(token.to_owned());
+            let lengths = self.lengths.entry(first).or_default();
+            if let Err(position) = lengths.binary_search_by(|length| token.len().cmp(length)) {
+                lengths.insert(position, token.len());
+            }
+        }
+    }
+}
+
+impl PartialEq for Exceptions {
+    fn eq(&self, other: &Self) -> bool {
+        self.abbreviations == other.abbreviations && self.tokens == other.tokens
+    }
+}
+
+impl Eq for Exceptions {}
+
+impl Hash for Exceptions {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.abbreviations.hash(state);
+        self.tokens.hash(state);
+    }
 }
 
 struct Scanner<'a> {
@@ -157,7 +194,8 @@ pub(crate) fn tokenize(
         if is_separator(character) {
             index += character.len_utf8();
         } else {
-            index = scanner.token(index, character);
+            let end = scanner.token(index, character);
+            index = scanner.marks_after(end);
         }
     }
 }
@@ -258,28 +296,43 @@ impl Scanner<'_> {
                 let end = self.emoji(index);
                 self.push(index, end)
             }
-            _ => {
-                // Variation selectors and the keycap belong to the symbol before them («▶️», «#️⃣»), and so
-                // do combining marks unless a word follows them: «[͡ие]»
-                let mut end = self.punctuation(index, character);
-                let joined = end;
-                while let Some(c) = self.get(end) {
-                    if c != '\u{200d}' && is_emoji_part(c) {
-                        end += c.len_utf8();
-                    } else if is_mark(c) && !self.marks_start_word(end) {
-                        end = self.marks_end(end);
-                    } else {
-                        break;
-                    }
+            _ => self.punctuation(index, character),
+        }
+    }
+
+    /// Extends the token that ends at `end` over the variation selectors, the keycap and the combining marks
+    /// after it («▶️», «#️⃣», «°Ć»), unless the marks do not compose with it and a word follows them: «[͡ие]»
+    fn marks_after(&mut self, end: usize) -> usize {
+        let mut stop = end;
+        // Most tokens end before a space or ASCII punctuation: a byte tells it without the tables
+        while self
+            .text
+            .as_bytes()
+            .get(stop)
+            .is_some_and(|byte| !byte.is_ascii())
+            && let Some(c) = self.get(stop)
+        {
+            if c != '\u{200d}' && is_emoji_part(c) {
+                stop += c.len_utf8();
+            } else if is_mark(c) {
+                let composes = self.text[..stop]
+                    .chars()
+                    .next_back()
+                    .is_some_and(|base| compose(base, c).is_some());
+                if !composes && self.marks_start_word(stop) {
+                    break;
                 }
-                if end > joined
-                    && let Some(last) = self.out.last_mut()
-                {
-                    last.end = end;
-                }
-                end
+                stop = self.marks_end(stop);
+            } else {
+                break;
             }
         }
+        if stop > end
+            && let Some(last) = self.out.last_mut()
+        {
+            last.end = stop;
+        }
+        stop
     }
 
     fn marks_end(&self, start: usize) -> usize {
@@ -302,16 +355,16 @@ impl Scanner<'_> {
             return None;
         }
         let rest = &self.text[index..self.end];
-        let first = &rest[..character.len_utf8()];
         self.exceptions
-            .tokens
-            .range::<str, _>((Bound::Included(first), Bound::Unbounded))
-            .take_while(|token| token.starts_with(first))
-            .filter(|token| {
-                rest.starts_with(token.as_str()) && !self.get(index + token.len()).is_some_and(word)
+            .lengths
+            .get(&character)?
+            .iter()
+            .find(|&&length| {
+                rest.get(..length)
+                    .is_some_and(|piece| self.exceptions.lookup.contains(piece))
+                    && !self.get(index + length).is_some_and(word)
             })
-            .map(|token| index + token.len())
-            .max()
+            .map(|length| index + length)
     }
 
     /// The end of a URL: up to whitespace or a quote, without the punctuation that ends a sentence and a
@@ -441,7 +494,8 @@ impl Scanner<'_> {
             return Some(start + emoticon.len());
         }
         let mut index = start;
-        if !":;=".contains(self.get(index)?) {
+        let eyes = self.get(index)?;
+        if !":;=".contains(eyes) {
             return None;
         }
         index += 1;
@@ -449,12 +503,19 @@ impl Scanner<'_> {
             index += 1;
         }
         let mouth = self.get(index).filter(|c| ")(DPpOo*|/3][".contains(*c))?;
-        // After a number or a word a digit is a score or an equation: «2:3», «n=3»
-        if mouth.is_ascii_digit() && self.text[..start].chars().next_back().is_some_and(is_word) {
+        // After a number or a word a digit is a score or an equation, and so is a letter after «=»: «2:3»,
+        // «n=3», «F=P/S»
+        let after_word = self.text[..start].chars().next_back().is_some_and(is_word);
+        if after_word && (mouth.is_ascii_digit() || (eyes == '=' && mouth.is_alphabetic())) {
             return None;
         }
+        let mouth_start = index;
         while self.get(index) == Some(mouth) {
             index += 1;
+        }
+        // Stars after a colon are bold in Markdown: «**Итог:**»
+        if mouth == '*' && index - mouth_start > 1 {
+            return None;
         }
         let letter = is_word(mouth);
         (!(letter && self.get(index).is_some_and(is_word))).then_some(index)
@@ -550,7 +611,15 @@ impl Scanner<'_> {
             '-' | '\u{2010}' | '\u{2011}' if is_word(after) => Joint::Hyphen,
             '\'' | '\u{2019}' if is_alpha(after) && !digits => Joint::Apostrophe,
             '_' if is_word(after) => Joint::Underscore,
-            '.' if digits && after.is_ascii_digit() && only(Joint::Point) => Joint::Point,
+            // A version: «v1.2.3»
+            '.' if (digits
+                || (piece.starts_with(is_alpha)
+                    && piece.ends_with(|c: char| c.is_ascii_digit())))
+                && after.is_ascii_digit()
+                && only(Joint::Point) =>
+            {
+                Joint::Point
+            }
             ',' if digits && after.is_ascii_digit() && only(Joint::Thousands) => Joint::Comma,
             ':' if digits && piece.len() <= 2 && only(Joint::Colon) => {
                 let end = self.digits_end(next);
@@ -659,12 +728,15 @@ impl Scanner<'_> {
                     character,
                     '.' | ',' | ':' | ' ' | '\u{a0}' | '\u{202f}' | '\u{2009}'
                 ))
+                || (character == '.' && self.text[..end].ends_with(|c: char| c.is_ascii_digit()))
         });
         if !joins {
             let end = if self.abbreviation(start, end) {
                 end + 1
+            } else if digits {
+                self.percent_ending(end)
             } else {
-                end
+                self.dotted_name(start, end)
             };
             return self.push(start, end);
         }
@@ -695,9 +767,14 @@ impl Scanner<'_> {
                 chain = index;
             }
         }
+        let phone = self.phone_groups(&runs, &joints, &chains);
         let mut first = start;
         for index in 0..joints.len() {
-            if joints[index] == Joint::Hyphen && self.splits(&runs, &joints, &chains, index) {
+            if phone[index] {
+                self.push(first, runs[index].end);
+                first = runs[index + 1].start;
+            } else if joints[index] == Joint::Hyphen && self.splits(&runs, &joints, &chains, index)
+            {
                 self.push(first, runs[index].end);
                 self.push(runs[index].end, runs[index + 1].start);
                 first = runs[index + 1].start;
@@ -706,8 +783,75 @@ impl Scanner<'_> {
         let mut end = runs[runs.len() - 1].end;
         if first == runs[runs.len() - 1].start && self.abbreviation(first, end) {
             end += 1;
+        } else if is_digits(runs[runs.len() - 1].slice(self.text)) {
+            end = self.percent_ending(end);
         }
         self.push(first, end)
+    }
+
+    /// The end of a name of the language joined to the next word by a period: «Яндекс.Маркете»
+    fn dotted_name(&self, start: usize, end: usize) -> usize {
+        if end < self.end
+            && self.text.as_bytes()[end] == b'.'
+            && self.get(end + 1).is_some_and(char::is_uppercase)
+            && self
+                .tables
+                .dotted_names
+                .contains(&self.tables.key(&self.text[start..end]))
+        {
+            let next = self.run(end + 1);
+            if is_letters(&self.text[end + 1..next]) {
+                return next;
+            }
+        }
+        end
+    }
+
+    /// The end of a number with a percent sign and an ending after a hyphen, which is one word: «20%-ный»
+    fn percent_ending(&self, end: usize) -> usize {
+        if self.get(end) == Some('%')
+            && self.get(end + 1) == Some('-')
+            && self.get(end + 2).is_some_and(char::is_lowercase)
+        {
+            let ending = self.run(end + 2);
+            if is_letters(&self.text[end + 2..ending]) {
+                return ending;
+            }
+        }
+        end
+    }
+
+    /// The spaces between groups of digits that are not a number with thousands but a phone number: groups before a
+    /// chain of three groups or more or before a group of another length, «+7 495 123-45-67», «8 800 555 35 35»
+    fn phone_groups(&self, runs: &[Span], joints: &[Joint], chains: &[usize]) -> Vec<bool> {
+        let mut phone = vec![false; joints.len()];
+        let mut index = 0;
+        while index < joints.len() {
+            if joints[index] != Joint::Thousands {
+                index += 1;
+                continue;
+            }
+            let first = index;
+            while index < joints.len() && joints[index] == Joint::Thousands {
+                index += 1;
+            }
+            let after = if index < joints.len() {
+                joints[index] == Joint::Hyphen && chains[index] >= 3
+            } else {
+                let end = runs[index].end;
+                self.get(end)
+                    .is_some_and(|c| matches!(c, ' ' | '\u{a0}' | '\u{202f}' | '\u{2009}'))
+                    && self.get(end + 1).is_some_and(|c| c.is_ascii_digit())
+                    && {
+                        let group = self.digits_end(end + 1);
+                        !self.get(group).is_some_and(|c| is_word(c) || c == '-')
+                    }
+            };
+            if after {
+                phone[first..index].fill(true);
+            }
+        }
+        phone
     }
 
     /// Whether a period follows a word that keeps it: an abbreviation of the language or a single letter
@@ -1329,6 +1473,96 @@ mod tests {
         assert_eq!(
             tokens("((а)) (да))) Ок)))"),
             ["(", "(", "а", ")", ")", "(", "да", ")", "))", "Ок", ")))"]
+        );
+    }
+
+    #[test]
+    fn separators_and_combining_marks() {
+        assert_eq!(tokens("a\u{1f}b\u{0}c"), ["a", "b", "c"]);
+        assert_eq!(
+            tokens("Ура 😀\u{301} да °C\u{301}Б"),
+            ["Ура", "😀\u{301}", "да", "°C\u{301}", "Б"]
+        );
+    }
+
+    #[test]
+    fn technical_text() {
+        assert_eq!(
+            tokens("F=P/S, x=O(n) и Пока:P"),
+            [
+                "F", "=", "P", "/", "S", ",", "x", "=", "O", "(", "n", ")", "и", "Пока", ":P"
+            ]
+        );
+        assert_eq!(
+            tokens("main.rs, config.yaml, книга.fb2, v1.2.3 и **Итог:** да"),
+            [
+                "main.rs",
+                ",",
+                "config.yaml",
+                ",",
+                "книга.fb2",
+                ",",
+                "v1.2.3",
+                "и",
+                "**",
+                "Итог",
+                ":",
+                "**",
+                "да"
+            ]
+        );
+        assert_eq!(
+            tokens("на Яндекс.Маркете, Лента.ру и Яндекс. Потом"),
+            [
+                "на",
+                "Яндекс.Маркете",
+                ",",
+                "Лента.ру",
+                "и",
+                "Яндекс",
+                ".",
+                "Потом"
+            ]
+        );
+    }
+
+    #[test]
+    fn phones_and_percents() {
+        assert_eq!(
+            tokens("+7 495 123-45-67, 8 800 555 35 35, 1 000-1 500 руб"),
+            [
+                "+",
+                "7",
+                "495",
+                "123-45-67",
+                ",",
+                "8",
+                "800",
+                "555",
+                "35",
+                "35",
+                ",",
+                "1 000",
+                "-",
+                "1 500",
+                "руб"
+            ]
+        );
+        assert_eq!(
+            tokens("20%-ный, 0,5%-го, 1 000%-ная и 15%-20%"),
+            [
+                "20%-ный",
+                ",",
+                "0,5%-го",
+                ",",
+                "1 000%-ная",
+                "и",
+                "15",
+                "%",
+                "-",
+                "20",
+                "%"
+            ]
         );
     }
 

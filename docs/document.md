@@ -280,11 +280,11 @@ Exceptions:
 read_conllu(text)
 ```
 
-The documents of a text in CoNLL-U, in order. The comment `newdoc` starts a document and `newpar` a paragraph. The text of a sentence is its comment `text` or, without it, the forms of its tokens with the spaces of `SpaceAfter` and `SpacesAfter`; the sentences of a paragraph are joined by a space (none after `SpaceAfter=No`), the paragraphs by a blank line. Comments, the lines of multiword tokens and empty nodes are kept, so that `to_conllu` writes the text back as it was.
+The documents of a text in CoNLL-U, in order. The comment `newdoc` starts a document and `newpar` a paragraph. The text of a sentence is its comment `text` or, without it, the forms of its tokens with the spaces of `SpaceAfter` and `SpacesAfter`; the sentences of a paragraph are joined by a space (none after `SpaceAfter=No`), the paragraphs by a blank line. Comments, the lines of multiword tokens and empty nodes are kept, so that `to_conllu` writes the text back as it was, with LF line ends and heads as plain numbers. A byte order mark at the start is skipped.
 
 Exceptions:
 
-- `ValueError` - the text does not end with a blank line, a line is neither a comment, a blank line nor a token line of 10 columns with IDs in order and a numeric head, a comment follows token lines, a sentence has no words or a multiword token misses some, or the forms do not match the text of their sentence.
+- `ValueError` - the text does not end with a blank line, a line is neither a comment, a blank line nor a token line of 10 columns with IDs in order and a numeric head, a comment follows token lines, a sentence has no words or a multiword token misses some, or the forms do not match the text of their sentence or the text holds characters that no token has.
 
 === "Code"
 

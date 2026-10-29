@@ -71,7 +71,7 @@ The rules of a language know the common abbreviations and the usual kinds of tok
 tokenize(text)
 ```
 
-The tokens of the text in order. Whitespace and the invisible separators - zero width space, word joiner, byte order mark, and a soft hyphen and zero width (non-)joiner outside a word - separate the tokens and are in none of them. How a language splits its text, see [Russian](russian.md).
+The tokens of the text in order. Whitespace, control characters and the invisible separators - zero width space, word joiner, byte order mark, and a soft hyphen and zero width (non-)joiner outside a word - separate the tokens and are in none of them. How a language splits its text, see [Russian](russian.md).
 
 | Parameter | Type | Default | Description |
 | :-------- | :--- | :------ | :---------- |

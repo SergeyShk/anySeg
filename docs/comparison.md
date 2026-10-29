@@ -18,7 +18,7 @@ F1 of the CoNLL 2018 script.
 
 | Tool | SynTagRus | Taiga | GSD | PUD |
 | :-- | --: | --: | --: | --: |
-| **anySeg 0.1** | 99.60 | **99.10** | **99.11** | **99.78** |
+| **anySeg 0.1** | 99.61 | **99.10** | **99.14** | **99.78** |
 | razdel 0.5.0 | 98.73 | 95.74 | 92.64 | 99.26 |
 | NLTK 3.10.4, `word_tokenize` | 98.93 | 96.57 | 94.45 | 99.60 |
 | spaCy 3.8.16, `ru` | 98.38 | 96.85 | 94.66 | 98.46 |
@@ -36,7 +36,7 @@ F1 of the positions of the sentence ends.
 
 | Tool | SynTagRus | Taiga | GSD | PUD |
 | :-- | --: | --: | --: | --: |
-| **anySeg 0.1** | 99.45 | **95.89** | 98.49 | 99.75 |
+| **anySeg 0.1** | 99.46 | **95.94** | 98.66 | 99.75 |
 | razdel 0.5.0 | 99.41 | 85.58 | 96.94 | 99.65 |
 | rusenttokenize 0.0.5 | 99.36 | 84.11 | 98.07 | 99.60 |
 | NLTK 3.10.4, Punkt | 97.61 | 82.59 | 96.92 | 99.04 |
@@ -63,7 +63,7 @@ F1 of the CoNLL 2018 script: a sentence counts when both of its ends match, so t
 
 | Tool | SynTagRus | Taiga | GSD | PUD |
 | :-- | --: | --: | --: | --: |
-| **anySeg 0.1** | 98.51 | **89.78** | 95.81 | 99.25 |
+| **anySeg 0.1** | 98.53 | **89.92** | **96.32** | 99.25 |
 | razdel 0.5.0 | 98.37 | 70.73 | 91.33 | 98.95 |
 | NLTK 3.10.4 | 93.26 | 63.96 | 91.30 | 97.23 |
 | spaCy 3.8.16, `ru` | 82.19 | 56.65 | 91.99 | 91.06 |
@@ -73,7 +73,7 @@ F1 of the CoNLL 2018 script: a sentence counts when both of its ends match, so t
 | spaCy, `ru_core_news_sm` with the parser * | 95.39 | 63.33 | 85.85 | 96.10 |
 | Stanza 1.15.0 * | 98.61 | 88.69 | 95.48 | 99.25 |
 | UDPipe 1.4 * | 98.45 | 86.97 | 94.97 | 98.80 |
-| trankit 1.1.2 * | **98.73** | 86.42 | **96.17** | **99.70** |
+| trankit 1.1.2 * | **98.73** | 86.42 | 96.17 | **99.70** |
 
 ## Speed and memory
 

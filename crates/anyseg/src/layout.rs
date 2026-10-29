@@ -2,15 +2,23 @@
 
 use crate::Span;
 
-/// Whitespace and the invisible characters that separate tokens without being tokens: zero width space,
-/// word joiner, byte order mark, and a soft hyphen and zero width (non-)joiner, which inside a word or an
-/// emoji belong to it
+/// Whitespace, control characters and the invisible characters that separate tokens without being tokens:
+/// zero width space, word joiner, byte order mark, and a soft hyphen and zero width (non-)joiner, which
+/// inside a word or an emoji belong to it
 pub(crate) fn is_separator(character: char) -> bool {
-    character.is_whitespace()
-        || matches!(
-            character,
-            '\u{200b}' | '\u{2060}' | '\u{feff}' | '\u{ad}' | '\u{200c}' | '\u{200d}'
-        )
+    match character {
+        '\0'..=' ' | '\u{7f}' => true,
+        // ASCII and the Russian alphabet skip the tables of Unicode
+        '!'..='~' | 'А'..='я' | 'Ё' | 'ё' => false,
+        _ => {
+            character.is_whitespace()
+                || character.is_control()
+                || matches!(
+                    character,
+                    '\u{200b}' | '\u{2060}' | '\u{feff}' | '\u{ad}' | '\u{200c}' | '\u{200d}'
+                )
+        }
+    }
 }
 
 /// A span without the separators at its edges, if anything is left
@@ -127,6 +135,19 @@ mod tests {
             .iter()
             .map(|lines| lines.iter().map(|line| line.slice(text)).collect())
             .collect()
+    }
+
+    #[test]
+    fn separator_shortcuts() {
+        for character in (0..=0x10ffff).filter_map(char::from_u32) {
+            let slow = character.is_whitespace()
+                || character.is_control()
+                || matches!(
+                    character,
+                    '\u{200b}' | '\u{2060}' | '\u{feff}' | '\u{ad}' | '\u{200c}' | '\u{200d}'
+                );
+            assert_eq!(is_separator(character), slow, "{character:?}");
+        }
     }
 
     #[test]

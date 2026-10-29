@@ -58,6 +58,14 @@ fn is_stars(piece: &str) -> bool {
     piece.len() >= 3 && piece.bytes().all(|byte| byte == b'*')
 }
 
+/// A run of the marks of emphasis in Markdown: «*», «**», «__», «~~»
+fn is_emphasis(piece: &str) -> bool {
+    let mut bytes = piece.bytes();
+    bytes
+        .next()
+        .is_some_and(|first| matches!(first, b'*' | b'_' | b'~') && bytes.all(|byte| byte == first))
+}
+
 /// A mention, which starts a sentence after final marks or an emoticon: «Спасибо! @anna да»
 fn is_mention(piece: &str) -> bool {
     piece.len() > 1 && piece.starts_with('@')
@@ -86,10 +94,11 @@ fn is_abbreviation(piece: &str) -> bool {
             .is_some_and(|c| is_alpha(c) || is_mark(c))
 }
 
-/// The first letter of a line, past the quotes, dashes and bullets before it, is a capital one
+/// The first letter of a line, past the quotes, dashes, bullets and numbers before it («[12:01] Вася»), is a
+/// capital one
 fn begins_upper(line: &str) -> bool {
     line.chars()
-        .find(|&c| is_word(c))
+        .find(|&c| is_alpha(c))
         .is_some_and(char::is_uppercase)
 }
 
@@ -160,10 +169,12 @@ pub(crate) fn split(
     out.paragraphs.push(out.starts.len());
     out.starts.push(out.tokens.len());
     let mut words = false;
+    // Round brackets opened and not closed yet
+    let mut open = 0usize;
     let mut next_line = 1;
     let mut index = 0;
     while index < tokens.len() {
-        let (last, mut boundary) = splitter.end(index, words);
+        let (last, mut boundary) = splitter.end(index, words, open == 0);
         // At a line break after the part, the rules of lines may start a sentence where the marks do not
         if !boundary && next_line < lines.len() && splitter.line_tokens[next_line] == last + 1 {
             boundary = splitter.line_boundary(next_line - 1);
@@ -172,6 +183,11 @@ pub(crate) fn split(
             words = words || has_word(splitter.piece(position));
             let span = tokens[position];
             let piece = splitter.piece(position);
+            match piece {
+                "(" => open += 1,
+                ")" => open = open.saturating_sub(1),
+                _ => {}
+            }
             let ends = position == last && (boundary || last + 1 == tokens.len());
             if ends && is_abbreviation(piece) && !exceptions.tokens.contains(piece) {
                 out.tokens.push(Span {
@@ -236,8 +252,8 @@ impl Splitter<'_> {
 
     /// The last token of the sentence part that starts at `index`, and whether a sentence ends after it. A part is
     /// one token, or a final mark or an abbreviation with the final marks and closing quotes and brackets right
-    /// after it
-    fn end(&self, index: usize, words: bool) -> (usize, bool) {
+    /// after it; `unpaired` tells that no round bracket is open before it
+    fn end(&self, index: usize, words: bool, unpaired: bool) -> (usize, bool) {
         let piece = self.piece(index);
         let count = self.tokens.len();
         if index + 1 == count {
@@ -246,7 +262,19 @@ impl Splitter<'_> {
         let candidate =
             matches!(piece.as_bytes().last(), Some(b'.' | b'!' | b'?')) || piece.ends_with('…');
         let stars = is_stars(piece) || (piece == "*" && index > 0 && self.piece(index - 1) == "*");
-        if !candidate && !stars && !is_emoticon(piece) {
+        // A closing bracket that no bracket opened, right after a word, is a smile: «Спасибо) Завтра»
+        let smile = unpaired
+            && piece == ")"
+            && index > 0
+            && self.attached(index)
+            && self
+                .piece(index - 1)
+                .chars()
+                .filter(|&c| is_alpha(c))
+                .nth(1)
+                .is_some();
+        let emoticon = smile || is_emoticon(piece);
+        if !candidate && !stars && !emoticon {
             return (index, false);
         }
         let words = words || has_word(piece);
@@ -254,7 +282,7 @@ impl Splitter<'_> {
             // A separator of stars is a sentence of its own: «* * *», «***»
             return (index, starts_upper(self.piece(index + 1)));
         }
-        if is_emoticon(piece) {
+        if emoticon {
             // An emoticon after the words of a sentence ends it before a capital letter or a mention, unless it
             // starts a line as a bullet
             if self.line_start(index) {
@@ -263,7 +291,7 @@ impl Splitter<'_> {
             let next = self.piece(index + 1);
             return (index, words && (starts_upper(next) || is_mention(next)));
         }
-        if !candidate || self.omission(index) {
+        if !candidate || self.omission(index) || self.leading_dot(index) {
             return (index, false);
         }
         let mut last = index;
@@ -291,7 +319,9 @@ impl Splitter<'_> {
         let boundary = if marks {
             words && !source && !self.list_number(index) && self.starts(last + 1, true)
         } else {
-            is_abbreviation(piece) && self.starts(last + 1, false) && self.ends(index)
+            is_abbreviation(piece)
+                && self.starts(last + 1, false)
+                && (self.ends(index) || self.not_initial(index, last + 1))
         };
         (last, boundary)
     }
@@ -327,11 +357,12 @@ impl Splitter<'_> {
             // An ellipsis before a capital letter opens a sentence: «Он вышел. … Тополиный пух»
             return next(1).is_some_and(starts_upper);
         }
-        if piece == "*" {
-            return next(1) == Some("*");
-        }
-        if is_stars(piece) {
+        if is_stars(piece) || (piece == "*" && next(1) == Some("*")) {
             return true;
+        }
+        if is_emphasis(piece) {
+            // Emphasis in Markdown or a footnote before a capital letter: «**Итог**», «__Жирный__», «* Нумерация»
+            return next(1).is_some_and(starts_upper);
         }
         if is_dash(piece) {
             return match next(1) {
@@ -352,11 +383,16 @@ impl Splitter<'_> {
         for position in (index.saturating_sub(3)..=index).rev() {
             let piece = self.piece(position);
             let abbreviation = is_abbreviation(piece) && lowercase(piece);
-            let word = self.tables.key(if abbreviation {
-                &piece[..piece.len() - 1]
+            // A token of the user with inner periods keys as its parts: «т.д.» as «т д»
+            let word = if abbreviation {
+                piece[..piece.len() - 1]
+                    .split('.')
+                    .map(|part| self.tables.key(part))
+                    .collect::<Vec<_>>()
+                    .join(" ")
             } else {
-                piece
-            });
+                self.tables.key(piece)
+            };
             key = if key.is_empty() {
                 word
             } else {
@@ -393,6 +429,29 @@ impl Splitter<'_> {
         false
     }
 
+    /// Whether a single letter with a period before the capital letter at `next` is not an initial: a letter of
+    /// another script than that word, as a variable or a name («через x. Тогда», «Витамин C. Его»), or a capital
+    /// letter after a number, as a unit («5 А. Напряжение»)
+    fn not_initial(&self, index: usize, next: usize) -> bool {
+        let mut chars = self.piece(index).chars();
+        let (Some(letter), Some('.'), None) = (chars.next(), chars.next(), chars.next()) else {
+            return false;
+        };
+        let cyrillic = |c: char| matches!(c, '\u{400}'..='\u{52f}');
+        let capital = self.tokens[next..]
+            .iter()
+            .take(2)
+            .find_map(|span| span.slice(self.text).chars().find(|&c| is_alpha(c)));
+        let previous = index.checked_sub(1).map(|position| self.piece(position));
+        let initials =
+            previous.is_some_and(|piece| is_abbreviation(piece) && piece.chars().count() == 2);
+        (!initials && capital.is_some_and(|capital| cyrillic(letter) != cyrillic(capital)))
+            || (letter.is_uppercase()
+                && previous.is_some_and(|piece| {
+                    piece.starts_with(|c: char| c.is_ascii_digit()) && !piece.chars().any(is_alpha)
+                }))
+    }
+
     /// An ellipsis right after an opening quote or bracket marks an omission, not an end: «"…», «[…]»
     fn omission(&self, index: usize) -> bool {
         index > 0
@@ -401,6 +460,17 @@ impl Splitter<'_> {
             && self.attached(index)
             && is_opening(self.piece(index - 1))
             && (index == 1 || !self.attached(index - 1))
+    }
+
+    /// A period with a space before it and a Latin word right after it starts a name: «.NET», «.htaccess»
+    fn leading_dot(&self, index: usize) -> bool {
+        index > 0
+            && self.piece(index) == "."
+            && !self.attached(index)
+            && self.attached(index + 1)
+            && self
+                .piece(index + 1)
+                .starts_with(|c: char| c.is_ascii_alphabetic())
     }
 
     /// A number with a period at the start of a line: the marker of a list item, not the end of a sentence
@@ -438,10 +508,10 @@ impl Splitter<'_> {
         !self.verse && !self.typeset && ends_open(before) && begins_upper(next)
     }
 
-    /// Whether a line break without a sentence boundary is a wrap at the width of the page: the next line goes on
-    /// with a lowercase letter, outside verse
+    /// Whether a line break without a sentence boundary is a wrap at the width of the page: outside verse, the next
+    /// line goes on with a lowercase letter, or some line of the paragraph does
     fn wraps(&self, line: usize) -> bool {
-        !self.verse && self.line(line + 1).starts_with(char::is_lowercase)
+        !self.verse && (self.typeset || self.line(line + 1).starts_with(char::is_lowercase))
     }
 }
 
@@ -673,6 +743,10 @@ mod tests {
             [LineBreak::Typeset, LineBreak::Typeset]
         );
         assert_eq!(
+            kinds("Провели собрание в\nМоскве. Решение\nприняли все и\n«Газпром» тоже."),
+            [LineBreak::Typeset; 3]
+        );
+        assert_eq!(
             kinds(
                 "Прошёл фестиваль.\nОрганизаторы довольны.\n- Да\nМосква, спаленная пожаром,\nФранцузу"
             ),
@@ -748,6 +822,92 @@ mod tests {
                 "1\u{fe0f}\u{20e3} Регистрация",
                 "2\u{fe0f}\u{20e3} Доклады"
             ]
+        );
+    }
+
+    #[test]
+    fn letters_and_units() {
+        assert_eq!(
+            sentences("Через x. Тогда x = 5. Витамин C. Его много. Петра I. У него"),
+            [
+                "Через x.",
+                "Тогда x = 5.",
+                "Витамин C.",
+                "Его много.",
+                "Петра I.",
+                "У него"
+            ]
+        );
+        assert_eq!(
+            sentences("Ток 5 А. Напряжение 220 В. Мощность. В 29-летнем А. С. Пушкине"),
+            [
+                "Ток 5 А.",
+                "Напряжение 220 В.",
+                "Мощность.",
+                "В 29-летнем А. С. Пушкине"
+            ]
+        );
+        assert_eq!(tokens("Ток 5 А. Он"), ["Ток", "5", "А", ".", "Он"]);
+    }
+
+    #[test]
+    fn posts_and_markdown() {
+        assert_eq!(
+            sentences("Спасибо) Завтра увидимся) Пока. Он (кот) Спит. Пункты: а) Один"),
+            [
+                "Спасибо)",
+                "Завтра увидимся)",
+                "Пока.",
+                "Он (кот) Спит.",
+                "Пункты: а) Один"
+            ]
+        );
+        assert_eq!(
+            sentences("Это важно. **Итог** — всё. *Курсив* тоже. __Жирный__ да. ~~Нет~~ да."),
+            [
+                "Это важно.",
+                "**Итог** — всё.",
+                "*Курсив* тоже.",
+                "__Жирный__ да.",
+                "~~Нет~~ да."
+            ]
+        );
+        assert_eq!(
+            sentences("**Примечание:** Это важно. **Итог:** Всё. Текст. * Сноска"),
+            [
+                "**Примечание:** Это важно.",
+                "**Итог:** Всё.",
+                "Текст.",
+                "* Сноска"
+            ]
+        );
+        assert_eq!(
+            sentences("Также .NET и Node.js. Он ушёл .Она пришла"),
+            ["Также .NET и Node.js.", "Он ушёл .", "Она пришла"]
+        );
+    }
+
+    #[test]
+    fn found_by_the_qa() {
+        assert_eq!(
+            sentences("Согласно абз. 2 п. 1 и подп. 3 прил. 1 к закону. Это 28 окт. 2026 г. Всё."),
+            [
+                "Согласно абз. 2 п. 1 и подп. 3 прил. 1 к закону.",
+                "Это 28 окт. 2026 г.",
+                "Всё."
+            ]
+        );
+        let custom = Segmenter::new("ru").unwrap().with_tokens(["т.д."]).unwrap();
+        let text = "Купили хлеб и т.д. Потом ушли.";
+        let spans: Vec<&str> = custom
+            .sentenize(text)
+            .iter()
+            .map(|span| span.slice(text))
+            .collect();
+        assert_eq!(spans, ["Купили хлеб и т.д.", "Потом ушли."]);
+        assert_eq!(
+            sentences("[12:01] Вася: привет\n[12:02] Петя: здарова"),
+            ["[12:01] Вася: привет", "[12:02] Петя: здарова"]
         );
     }
 

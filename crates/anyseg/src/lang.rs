@@ -32,6 +32,8 @@ pub(crate) struct Tables {
     pub(crate) linkers: HashSet<String>,
     /// Abbreviations, as the keys of their words joined by spaces, that end a sentence before a capital letter
     pub(crate) final_abbreviations: HashSet<String>,
+    /// Names joined to the next word by a period: «Яндекс.Маркет»
+    pub(crate) dotted_names: HashSet<String>,
     /// Latin letters that stand for letters of the language in its words
     homoglyphs: HashMap<char, char>,
 }
@@ -68,7 +70,7 @@ fn lines(text: &str) -> impl Iterator<Item = &str> {
 }
 
 impl Tables {
-    fn new(files: [&str; 11]) -> Self {
+    fn new(files: [&str; 12]) -> Self {
         let [
             abbreviations,
             not_abbreviations,
@@ -80,6 +82,7 @@ impl Tables {
             endings,
             linkers,
             final_abbreviations,
+            dotted_names,
             homoglyphs,
         ] = files;
         Tables {
@@ -101,6 +104,7 @@ impl Tables {
                         .join(" ")
                 })
                 .collect(),
+            dotted_names: list(dotted_names),
             homoglyphs: lines(homoglyphs)
                 .filter_map(|line| {
                     let mut chars = line
@@ -148,6 +152,7 @@ pub(crate) fn tables(language: Language) -> &'static Tables {
                     include_str!("../data/ru/inflection_endings.txt"),
                     include_str!("../data/ru/hyphen_linkers.txt"),
                     include_str!("../data/ru/final_abbreviations.txt"),
+                    include_str!("../data/ru/dotted_names.txt"),
                     include_str!("../data/ru/homoglyphs.txt"),
                 ])
             })

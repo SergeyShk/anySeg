@@ -1,0 +1,3 @@
+# Names that are one word with the word after them joined by a period without a space: «Яндекс.Маркете»,
+# «Яндекс.Метрики» are one token each, whatever the case of the second part
+яндекс
