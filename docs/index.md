@@ -45,3 +45,5 @@ A document holds the tokens, the words with the columns of [CoNLL-U](https://uni
     ```
 
 `doc.to_conllu()` writes a document in CoNLL-U and `read_conllu(text)` reads documents from it; a document read from CoNLL-U is written back unchanged.
+
+How anySeg compares with other segmenters of Russian in quality and speed: [Comparison](comparison.md).

@@ -6,6 +6,7 @@ repo_url: https://github.com/SergeyShk/anySeg
 nav:
     - About: index.md
     - Installation: installation.md
+    - Comparison: comparison.md
     - Authors: authors.md
 
 theme:

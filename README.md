@@ -45,6 +45,21 @@ A segmenter takes more abbreviations and strings that are one token each: `Segme
 
 A document holds the tokens, the words with the columns of [CoNLL-U](https://universaldependencies.org/format.html), the sentences, the paragraphs (the parts of the text between blank lines) and their lines. `doc.to_conllu()` writes it in CoNLL-U and `read_conllu(text)` reads documents from it; a document read from CoNLL-U is written back unchanged.
 
+## Comparison
+
+On the test files of the Russian treebanks of Universal Dependencies 2.18, F1 (* marks neural tools trained on SynTagRus):
+
+| Tool | Tokens, SynTagRus | Tokens, Taiga | Sentence ends, SynTagRus | Sentence ends, Taiga | Tokens/s from Python |
+| :-- | --: | --: | --: | --: | --: |
+| **anySeg 0.1** | 99.60 | **99.10** | 99.45 | **95.89** | **2.42 M** |
+| razdel 0.5.0 | 98.73 | 95.74 | 99.41 | 85.58 | 489 k |
+| NLTK 3.10.4 | 98.93 | 96.57 | 97.61 | 82.59 | 195 k |
+| spaCy 3.8.16 | 98.38 | 96.85 | 89.60 | 76.18 | 225 k |
+| Stanza 1.15.0 * | **99.75** | 95.55 | 99.51 | 95.71 | 2.1 k |
+| trankit 1.1.2 * | 99.74 | 95.54 | **99.55** | 94.79 | 1.4 k |
+
+From Rust, the crate gives 13.5 M tokens per second with sentences. All tools and sets, and how it is measured: [Comparison](https://sergeyshk.github.io/anySeg/comparison/).
+
 ## License
 
 MIT, see [LICENSE.txt](https://github.com/SergeyShk/anySeg/blob/master/LICENSE.txt).
