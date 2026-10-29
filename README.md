@@ -21,9 +21,9 @@
 
 ---
 
-**anySeg** segments text into tokens, words and sentences with their positions in the source text: a Rust core with a Python API and no dependencies. The text is never changed - every token and sentence is a span of the original string - and the tokens follow the conventions of [Universal Dependencies](https://universaldependencies.org/), so the results can be compared with the treebanks and with the tools trained on them. One package serves all languages: the rules are shared, and a language brings its lists. Russian comes first, Spanish and English follow.
+**anySeg** segments text into tokens, words and sentences with their positions in the source text: a Rust core and a Python package without dependencies. The text is never changed - every token and sentence is a span of the original string - and the tokens follow the conventions of [Universal Dependencies](https://universaldependencies.org/), so the results can be compared with the treebanks and with the tools trained on them. One package serves all languages: the rules are shared, and a language brings its lists. Russian comes first, Spanish and English follow.
 
-From Python, tokens and sentences come out at 2.4 M tokens per second, five times faster than razdel; the Rust crate gives 13 M. On the test files of the Russian treebanks of UD, token F1 is 99.1-99.8, above every other tool on Taiga, GSD and PUD, and the sentence boundaries are above razdel on all four sets.
+From Python, tokens and sentences come out at 2.4 M tokens per second, five times faster than razdel; the Rust crate gives 13.5 M. On the test files of the Russian treebanks of UD, token F1 is 99.1-99.8, above every other tool on Taiga, GSD and PUD, and the sentence boundaries are above razdel on all four sets.
 
 * **Tokens** - words with stress marks and soft hyphens, hyphenated words by the UD guidelines, numbers, dates and times, URLs, e-mail addresses, mentions, hashtags, emoticons and emoji, abbreviations and initials with their period
 * **Sentences** - final marks with the quotes and brackets after them, abbreviations that end a sentence, lines of dialogue, list items, headings and verse
