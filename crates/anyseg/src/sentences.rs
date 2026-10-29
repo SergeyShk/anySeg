@@ -84,6 +84,19 @@ fn is_number(piece: &str) -> bool {
     piece.starts_with(|c: char| c.is_ascii_digit()) || piece.chars().all(|c| "IVXLCDM".contains(c))
 }
 
+/// An integer or a decimal number, which a unit may follow, but not a year, a date or a time: «5», «1,5», «15 000»
+fn is_quantity(piece: &str) -> bool {
+    let year = piece.len() == 4
+        && piece.starts_with(['1', '2'])
+        && piece.bytes().all(|byte| byte.is_ascii_digit());
+    piece.starts_with(|c: char| c.is_ascii_digit())
+        && piece.chars().all(|c| {
+            c.is_ascii_digit() || matches!(c, ',' | '.' | ' ' | '\u{a0}' | '\u{202f}' | '\u{2009}')
+        })
+        && piece.matches([',', '.']).count() <= 1
+        && !year
+}
+
 /// A word with the period of an abbreviation in the token: «г.», «т.», «А.»
 fn is_abbreviation(piece: &str) -> bool {
     piece.len() > 1
@@ -94,10 +107,20 @@ fn is_abbreviation(piece: &str) -> bool {
             .is_some_and(|c| is_alpha(c) || is_mark(c))
 }
 
-/// The first letter of a line, past the quotes, dashes, bullets and numbers before it («[12:01] Вася»), is a
-/// capital one
+/// The first letter or digit of a line, past the quotes, dashes and bullets before it, is a capital letter; the
+/// time of a chat log counts as nothing: «[12:01] Вася», «12:01 Вася»
 fn begins_upper(line: &str) -> bool {
-    line.chars()
+    let Some(first) = line.find(is_word) else {
+        return false;
+    };
+    let rest = &line[first..];
+    if rest.starts_with(|c: char| c.is_ascii_digit()) {
+        let digits = rest.bytes().take_while(u8::is_ascii_digit).count();
+        if !(line[..first].ends_with('[') || rest[digits..].starts_with(':')) {
+            return false;
+        }
+    }
+    rest.chars()
         .find(|&c| is_alpha(c))
         .is_some_and(char::is_uppercase)
 }
@@ -267,6 +290,8 @@ impl Splitter<'_> {
             && piece == ")"
             && index > 0
             && self.attached(index)
+            && !self.line_start(index - 1)
+            && !is_number(self.piece(index - 1))
             && self
                 .piece(index - 1)
                 .chars()
@@ -430,8 +455,8 @@ impl Splitter<'_> {
     }
 
     /// Whether a single letter with a period before the capital letter at `next` is not an initial: a letter of
-    /// another script than that word, as a variable or a name («через x. Тогда», «Витамин C. Его»), or a capital
-    /// letter after a number, as a unit («5 А. Напряжение»)
+    /// another script before a Cyrillic word, as a variable or a name («через x. Тогда», «Витамин C. Его»), or a
+    /// capital letter after a quantity, as a unit («5 А. Напряжение»)
     fn not_initial(&self, index: usize, next: usize) -> bool {
         let mut chars = self.piece(index).chars();
         let (Some(letter), Some('.'), None) = (chars.next(), chars.next(), chars.next()) else {
@@ -445,11 +470,10 @@ impl Splitter<'_> {
         let previous = index.checked_sub(1).map(|position| self.piece(position));
         let initials =
             previous.is_some_and(|piece| is_abbreviation(piece) && piece.chars().count() == 2);
-        (!initials && capital.is_some_and(|capital| cyrillic(letter) != cyrillic(capital)))
+        (!initials && !cyrillic(letter) && capital.is_some_and(cyrillic))
             || (letter.is_uppercase()
-                && previous.is_some_and(|piece| {
-                    piece.starts_with(|c: char| c.is_ascii_digit()) && !piece.chars().any(is_alpha)
-                }))
+                && previous.is_some_and(is_quantity)
+                && !(index >= 2 && self.piece(index - 2) == ":"))
     }
 
     /// An ellipsis right after an opening quote or bracket marks an omission, not an end: «"…», «[…]»
@@ -848,6 +872,20 @@ mod tests {
             ]
         );
         assert_eq!(tokens("Ток 5 А. Он"), ["Ток", "5", "А", ".", "Он"]);
+        // A letter of the language before a Latin word and an initial after a time, a date, a year or a score
+        assert_eq!(
+            sentences("Архив, т. III, с. 257. См. ч. II и г. London. Ток 1,5 А. Он"),
+            [
+                "Архив, т. III, с. 257.",
+                "См. ч. II и г. London.",
+                "Ток 1,5 А.",
+                "Он"
+            ]
+        );
+        assert_eq!(
+            sentences("В 12:00 В. Путин, 12.05.2009 В. Путин, в 2020 В. Путин, 6:3 А. Зверева."),
+            ["В 12:00 В. Путин, 12.05.2009 В. Путин, в 2020 В. Путин, 6:3 А. Зверева."]
+        );
     }
 
     #[test]
@@ -882,6 +920,16 @@ mod tests {
             ]
         );
         assert_eq!(
+            sentences("План:\nI) Введение\nII) Основная часть. Пункты: I) Первый; II) Второй"),
+            [
+                "План:",
+                "I) Введение",
+                "II) Основная часть.",
+                "Пункты: I) Первый; II) Второй"
+            ]
+        );
+        assert_eq!(sentences("Люблю тебя :** Пока"), ["Люблю тебя :**", "Пока"]);
+        assert_eq!(
             sentences("Также .NET и Node.js. Он ушёл .Она пришла"),
             ["Также .NET и Node.js.", "Он ушёл .", "Она пришла"]
         );
@@ -908,6 +956,14 @@ mod tests {
         assert_eq!(
             sentences("[12:01] Вася: привет\n[12:02] Петя: здарова"),
             ["[12:01] Вася: привет", "[12:02] Петя: здарова"]
+        );
+        assert_eq!(
+            sentences("12:01 Вася: привет\n12:02 Петя: здарова"),
+            ["12:01 Вася: привет", "12:02 Петя: здарова"]
+        );
+        assert_eq!(
+            sentences("Федеральный закон от\n27.07.2006 № 152-ФЗ вступил в силу."),
+            ["Федеральный закон от\n27.07.2006 № 152-ФЗ вступил в силу."]
         );
     }
 

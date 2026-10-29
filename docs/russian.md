@@ -142,7 +142,7 @@ A paragraph always starts a sentence. Inside it, a sentence ends at final marks 
 
 ### Abbreviations { #sentence-abbreviations }
 
-An abbreviation ends a sentence before a capital letter when the language lists it as one that usually stands at the end - «т. д.», «т. п.», «др.», «и пр.», «проч.», «н. э.», «тел.» - or when it follows a number: «в 1914 г.», «15 000 р.», «60 км/ч.». Other abbreviations and initials do not end a sentence: «г. Москва», «А. С. Пушкин». A single letter that is not an initial does: a letter of another script than the next word, as a variable or a name - «через x. Тогда», «Петра I. У него» - and a capital letter after a number, as a unit: «5 А. Напряжение».
+An abbreviation ends a sentence before a capital letter when the language lists it as one that usually stands at the end - «т. д.», «т. п.», «др.», «и пр.», «проч.», «н. э.», «тел.» - or when it follows a number: «в 1914 г.», «15 000 р.», «60 км/ч.». Other abbreviations and initials do not end a sentence: «г. Москва», «А. С. Пушкин». A single letter that is not an initial does: a Latin letter before a Russian word, as a variable or a name - «через x. Тогда», «Петра I. У него» - and a capital letter after a quantity, as a unit: «5 А. Напряжение», but not after a year, a date or a time: «в 12:00 В. Путин».
 
 === "Code"
 

@@ -513,8 +513,8 @@ impl Scanner<'_> {
         while self.get(index) == Some(mouth) {
             index += 1;
         }
-        // Stars after a colon are bold in Markdown: «**Итог:**»
-        if mouth == '*' && index - mouth_start > 1 {
+        // Stars after a colon at a word are bold in Markdown: «**Итог:**»; after a space, a kiss: «:**»
+        if mouth == '*' && index - mouth_start > 1 && after_word {
             return None;
         }
         let letter = is_word(mouth);
@@ -813,8 +813,10 @@ impl Scanner<'_> {
             && self.get(end + 1) == Some('-')
             && self.get(end + 2).is_some_and(char::is_lowercase)
         {
+            // Endings are short («-ный», «-го»); a longer word is a word after a dash: «50%-только»
             let ending = self.run(end + 2);
-            if is_letters(&self.text[end + 2..ending]) {
+            let letters = &self.text[end + 2..ending];
+            if is_letters(letters) && letters.chars().count() <= 4 {
                 return ending;
             }
         }
@@ -838,14 +840,24 @@ impl Scanner<'_> {
             let after = if index < joints.len() {
                 joints[index] == Joint::Hyphen && chains[index] >= 3
             } else {
-                let end = runs[index].end;
-                self.get(end)
-                    .is_some_and(|c| matches!(c, ' ' | '\u{a0}' | '\u{202f}' | '\u{2009}'))
+                // A phone number has 10 digits, 11 with the code of the country; numbers side by side have more
+                let space = |c: char| matches!(c, ' ' | '\u{a0}' | '\u{202f}' | '\u{2009}');
+                let mut digits: usize = runs[first..=index]
+                    .iter()
+                    .map(|run| run.end - run.start)
+                    .sum();
+                let mut end = runs[index].end;
+                while digits <= 11
+                    && self.get(end).is_some_and(space)
                     && self.get(end + 1).is_some_and(|c| c.is_ascii_digit())
-                    && {
-                        let group = self.digits_end(end + 1);
-                        !self.get(group).is_some_and(|c| is_word(c) || c == '-')
-                    }
+                {
+                    let group = self.digits_end(end + 1);
+                    digits += group - end - 1;
+                    end = group;
+                }
+                end > runs[index].end
+                    && (10..=11).contains(&digits)
+                    && !self.get(end).is_some_and(|c| is_word(c) || c == '-')
             };
             if after {
                 phone[first..index].fill(true);
@@ -1488,6 +1500,10 @@ mod tests {
     #[test]
     fn technical_text() {
         assert_eq!(
+            tokens("Целую :** и :*** да"),
+            ["Целую", ":**", "и", ":***", "да"]
+        );
+        assert_eq!(
             tokens("F=P/S, x=O(n) и Пока:P"),
             [
                 "F", "=", "P", "/", "S", ",", "x", "=", "O", "(", "n", ")", "и", "Пока", ":P"
@@ -1547,6 +1563,17 @@ mod tests {
                 "1 500",
                 "руб"
             ]
+        );
+        assert_eq!(
+            tokens("+7 912 345 67 89, 8 495 123 4567; 12 345 11 234 9 876; 1 250 12,5"),
+            [
+                "+", "7", "912", "345", "67", "89", ",", "8", "495", "123", "4567", ";", "12 345",
+                "11 234", "9 876", ";", "1 250", "12,5"
+            ]
+        );
+        assert_eq!(
+            tokens("Скидка 50%-только сегодня"),
+            ["Скидка", "50", "%", "-", "только", "сегодня"]
         );
         assert_eq!(
             tokens("20%-ный, 0,5%-го, 1 000%-ная и 15%-20%"),

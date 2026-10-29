@@ -127,7 +127,8 @@ fn spans(text: &str, spans: Vec<anyseg::Span>) -> Vec<Span> {
 ///
 /// Raises:
 ///     ValueError: If the language is not supported, an abbreviation is not a word of letters or a
-///         token is empty, has whitespace or starts or ends with an invisible separator
+///         token is empty, has whitespace or control characters or starts or ends with an invisible
+///         separator
 ///     TypeError: If abbreviations or tokens is a string or holds something else
 #[pyclass(frozen, eq, hash, module = "anyseg")]
 #[derive(PartialEq, Eq, Hash)]
@@ -184,7 +185,7 @@ impl Segmenter {
                 repr(py, &word)?
             ))),
             Err(anyseg::InvalidEntry::Token(token)) => Err(PyValueError::new_err(format!(
-                "token {} is empty, has whitespace or starts or ends with an invisible separator",
+                "token {} is empty, has whitespace or control characters or starts or ends with an invisible separator",
                 repr(py, &token)?
             ))),
             Err(error) => Err(PyValueError::new_err(error.to_string())),
@@ -242,9 +243,9 @@ impl Segmenter {
     ///     at final marks (".", "?!", "...") with the closing quotes and brackets after them, when
     ///     a capital letter, a digit, or a dash or an opening quote before a capital letter follows.
     ///     An abbreviation ends a sentence before a capital letter when the language lists it
-    ///     ("и т. д.") or it follows a number ("в 1914 г."); initials do not, but a single letter
-    ///     of another script than the next word ("через x. Тогда") and a unit after a number
-    ///     ("5 А.") do. A line break starts a sentence before a list item or a line of dialogue,
+    ///     ("и т. д.") or it follows a number ("в 1914 г."); initials do not, but a single Latin
+    ///     letter before a Cyrillic word ("через x. Тогда") and a unit after a quantity ("5 А.")
+    ///     do. A line break starts a sentence before a list item or a line of dialogue,
     ///     at a line without words and after a line without final punctuation before a capital
     ///     letter, except in verse and in text wrapped at the width of the page (a line of the
     ///     paragraph goes on with a lowercase letter)

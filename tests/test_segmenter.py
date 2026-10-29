@@ -77,10 +77,11 @@ def test_lists(segmenter):
         (
             {"tokens": ["a b"]},
             ValueError,
-            "token 'a b' is empty, has whitespace or starts or ends with an invisible separator",
+            "token 'a b' is empty, has whitespace or control characters or starts or ends with an invisible separator",
         ),
         ({"tokens": [""]}, ValueError, "token '' is empty"),
         ({"tokens": ["\u200ba"]}, ValueError, "token '\\u200ba' is empty"),
+        ({"tokens": ["a\x1fb"]}, ValueError, "token 'a\\x1fb' is empty"),
     ],
 )
 def test_invalid_lists(lists, error, message):

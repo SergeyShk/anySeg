@@ -123,7 +123,7 @@ impl Error for UnknownLanguage {}
 pub enum InvalidEntry {
     /// Not a word of letters, with a period after it or without
     Abbreviation(String),
-    /// Empty, with whitespace, or with an invisible separator at an edge
+    /// Empty, with whitespace or control characters, or with an invisible separator at an edge
     Token(String),
 }
 
@@ -136,7 +136,7 @@ impl fmt::Display for InvalidEntry {
             ),
             InvalidEntry::Token(token) => write!(
                 f,
-                "token {token:?} is empty, has whitespace or starts or ends with an invisible separator"
+                "token {token:?} is empty, has whitespace or control characters or starts or ends with an invisible separator"
             ),
         }
     }
@@ -194,8 +194,8 @@ impl Segmenter {
     ///
     /// # Errors
     ///
-    /// [`InvalidEntry::Token`] if a string is empty, has whitespace or starts or ends with an
-    /// invisible separator.
+    /// [`InvalidEntry::Token`] if a string is empty, has whitespace or control characters or starts
+    /// or ends with an invisible separator.
     pub fn with_tokens<I>(mut self, strings: I) -> Result<Self, InvalidEntry>
     where
         I: IntoIterator,
@@ -204,7 +204,7 @@ impl Segmenter {
         for string in strings {
             let string = string.as_ref();
             if string.is_empty()
-                || string.chars().any(char::is_whitespace)
+                || string.chars().any(|c| c.is_whitespace() || c.is_control())
                 || string.starts_with(layout::is_separator)
                 || string.ends_with(layout::is_separator)
             {
@@ -250,12 +250,12 @@ impl Segmenter {
     /// sentence ends at final marks («.», «?!», «...») with the closing quotes and brackets after
     /// them, when a capital letter, a digit, or a dash or an opening quote before a capital letter
     /// follows. An abbreviation ends a sentence before a capital letter when the language lists it
-    /// («и т. д.») or it follows a number («в 1914 г.»); initials do not, but a single letter of
-    /// another script than the next word («через x. Тогда») and a unit after a number («5 А.»)
-    /// do. A line break starts a
-    /// sentence before a list item or a line of dialogue, at a line without words and after a line
-    /// without final punctuation before a capital letter, except in verse and in text wrapped at the
-    /// width of the page (a line of the paragraph goes on with a lowercase letter).
+    /// («и т. д.») or it follows a number («в 1914 г.»); initials do not, but a single Latin letter
+    /// before a Cyrillic word («через x. Тогда») and a unit after a quantity («5 А.») do. A line
+    /// break starts a sentence before a list item or a line of dialogue, at a line without words
+    /// and after a line without final punctuation before a capital letter, except in verse and in
+    /// text wrapped at the width of the page (a line of the paragraph goes on with a lowercase
+    /// letter).
     pub fn sentenize(&self, text: &str) -> Vec<Span> {
         let split = self.split(text, false);
         let tokens = &split.tokens;
@@ -461,7 +461,7 @@ mod tests {
                 Err(InvalidEntry::Abbreviation(word.to_owned()))
             );
         }
-        for token in ["", "a b", " a", "\u{ad}a", "a\u{200b}"] {
+        for token in ["", "a b", " a", "\u{ad}a", "a\u{200b}", "a\u{1f}b"] {
             assert_eq!(
                 segmenter.clone().with_tokens([token]),
                 Err(InvalidEntry::Token(token.to_owned()))

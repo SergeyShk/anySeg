@@ -8,7 +8,7 @@ Segmenter of texts in one language: it gives the tokens and the sentences of a t
 
 Exceptions:
 
-- `ValueError` - the language is not supported, an [abbreviation](#lists) is not a word of letters, or a [token](#lists) is empty, has whitespace or starts or ends with an invisible separator;
+- `ValueError` - the language is not supported, an [abbreviation](#lists) is not a word of letters, or a [token](#lists) is empty, has whitespace or control characters or starts or ends with an invisible separator;
 - `TypeError` - `abbreviations` or `tokens` is a string or holds something other than strings.
 
 === "Code"
