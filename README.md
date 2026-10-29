@@ -98,7 +98,7 @@ git clone https://github.com/SergeyShk/anySeg.git
 cd anySeg
 
 make deps        # create the environment, install the dependencies and build the Rust module
-make test        # run the Python tests, the docstring examples (doctest) and the Rust tests
+make test        # run the Python tests, the examples of the docstrings, the README and the documentation, and the Rust tests
 make lint        # ruff, mypy, stubtest, rustfmt and clippy
 ```
 

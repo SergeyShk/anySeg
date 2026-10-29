@@ -26,7 +26,7 @@ Before submitting a pull request, these must pass:
 
 ```bash
 make lint        # ruff check, ruff format, mypy, stubtest, cargo fmt, cargo clippy
-make test-cov    # pytest with the docstring examples (doctest) and the coverage threshold, cargo test
+make test-cov    # pytest with the examples and the coverage threshold, cargo test
 make docs-build  # mkdocs build --strict, if the documentation changed
 ```
 
@@ -37,7 +37,7 @@ CI runs the same on Python 3.11-3.14 and free-threaded 3.14t (Linux), on Windows
 - **One topic per pull request.** Unrelated changes go separately.
 - **Languages are data.** The mechanism is shared by all languages; a language adds its lists and tables behind a Cargo feature, not code paths of its own.
 - **Measurements.** A change of the segmentation gives the F1 of tokens, words and sentences on all Universal Dependencies treebanks of the language before and after, measured from the raw text with the [CoNLL 2018 evaluation script](https://universaldependencies.org/conll18/evaluation.html), and says how it was measured. A rule is added only when it does not make the other treebanks of the language worse beyond noise. A pure difference of conventions between treebanks is resolved by the guidelines of Universal Dependencies, not by a rule for one treebank.
-- **Tests.** New code is covered by tests: the Rust code by tests in `crates/`, the Python API by tests in `tests/`; Python coverage stays at 100%. The examples of the docstrings run as doctests and show the actual output.
+- **Tests.** New code is covered by tests: the Rust code by tests in `crates/`, the Python API by tests in `tests/`; Python coverage stays at 100%. The examples of the docstrings, the README and the documentation pages run in the tests and show the actual output.
 - **Style.** Python is formatted with ruff and checked with mypy; Rust is formatted with rustfmt and checked with clippy without warnings (`make format`, `make lint`). Docstrings, comments and documentation are in English; docstrings follow the project format (`Description`, `Arguments`, `Returns`, `Raises`, `Example`). Comments do not repeat what the code already says.
 - **Commits.** Messages in English, imperative mood: "Add ...", "Fix ...", "Remove ...".
 

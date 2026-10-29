@@ -1,5 +1,8 @@
+import gc
 import pickle
 import random
+import subprocess
+import sys
 import unicodedata
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -12,6 +15,7 @@ from anyseg import (
     Paragraphs,
     Segmenter,
     Sentences,
+    Span,
     Tokens,
     Words,
     read_conllu,
@@ -433,13 +437,115 @@ def test_threads():
     assert results[1] == ["слово1", "слово2", "слово3"]
 
 
-def test_document_is_not_picklable(doc):
-    with pytest.raises(TypeError):
-        pickle.dumps(doc)
+@pytest.mark.parametrize("protocol", range(pickle.HIGHEST_PROTOCOL + 1))
+def test_document_is_not_picklable(doc, protocol):
+    for value in (doc, doc.tokens, doc.tokens[0], doc.words[0], doc.lines, iter(doc.sentences)):
+        with pytest.raises(
+            TypeError, match=f"cannot pickle 'anyseg.{type(value).__name__}' object"
+        ):
+            pickle.dumps(value, protocol)
 
 
 def test_lone_surrogate():
-    with pytest.raises(UnicodeEncodeError):
-        segment("a \ud800", lang="ru")
+    for text in ("a \ud800", "a " * 5000 + "\ud800"):
+        with pytest.raises(UnicodeEncodeError):
+            segment(text, lang="ru")
     with pytest.raises(UnicodeEncodeError):
         Document.from_tokens("a \ud800", [0], [1])
+
+
+def test_not_tracked_by_the_collector(doc):
+    sentence = doc.sentences[0]
+    values = [
+        *Segmenter("ru").tokenize("Ёж идёт"),
+        doc.tokens,
+        doc.tokens[1:],
+        *doc.tokens[::2],
+        *doc.words,
+        sentence,
+        sentence.tokens,
+        sentence.paragraph,
+        doc.words[0].token,
+        iter(doc.lines),
+    ]
+    assert not any(gc.is_tracked(value) for value in values)
+
+
+def test_lazy_iteration(doc):
+    tokens = iter(doc.tokens)
+    assert iter(tokens) is tokens
+    assert next(tokens).text == "Ёж"
+    assert [token.text for token in tokens] == [text for _, _, text in TOKENS[1:]]
+    assert next(tokens, None) is None
+    shared = iter(segment(" ".join(f"слово{number}" for number in range(5000)), lang="ru").tokens)
+    with ThreadPoolExecutor(4) as pool:
+        parts = list(pool.map(lambda _: [token.index for token in shared], range(4)))
+    assert sorted(index for part in parts for index in part) == list(range(5000))
+
+
+def test_huge_integers(doc):
+    with pytest.raises(IndexError):
+        doc.tokens[10**30]
+    with pytest.raises(IndexError):
+        doc.tokens[-(10**30)]
+    assert doc.tokens.index(doc.tokens[1], -(10**30), 10**30) == 1
+    with pytest.raises(ValueError, match="head of word 0 is 1180591620717411303424"):
+        doc.set_columns(head=[2**70] + [None] * (len(doc.words) - 1))
+    for starts in ([-1], [10**30]):
+        with pytest.raises(ValueError, match="sentence starts must be increasing"):
+            Document.from_tokens("Ёж идёт", [0, 3], [2, 7], sentence_starts=starts)
+    with pytest.raises(ValueError, match="token 1: ends after the text"):
+        Document.from_tokens("Ёж идёт", [0, 3], [2, 10**30])
+
+
+def test_long_texts():
+    # Texts this long are segmented without the GIL, from a temporary copy in UTF-8
+    piece = "Ёж идёт домой. Кот спит.\n\n"
+    text = piece * 400
+    segmenter = Segmenter("ru")
+    size = sys.getsizeof(text)
+    tokens = segmenter.tokenize(text)
+    sentences = segmenter.sentenize(text)
+    doc = segmenter.segment(text)
+    assert sys.getsizeof(text) == size
+    assert len(tokens) == 2800 and len(sentences) == 800
+    assert tokens[-1] == Span(len(text) - 3, len(text) - 2, ".")
+    assert [sentence.text for sentence in sentences[-2:]] == ["Ёж идёт домой.", "Кот спит."]
+    assert [(token.start, token.end) for token in doc.tokens] == [(t.start, t.end) for t in tokens]
+    (back,) = read_conllu(doc.to_conllu())
+    assert [token.text for token in back.tokens] == [token.text for token in tokens]
+
+
+def test_column_and_set_columns_from_threads():
+    # A list made under the lock may start a collection whose finalizers release the GIL to a writer that
+    # waits for the lock: the process hung on Python 3.11
+    script = """
+import threading, time
+from anyseg import segment
+doc = segment(" ".join(f"слово{i}" for i in range(50)), lang="ru")
+stop = threading.Event()
+class Cycle:
+    __slots__ = ("me", "__weakref__")
+    def __init__(self):
+        self.me = self
+    def __del__(self):
+        time.sleep(0.0001)
+def reader():
+    kept = []
+    while not stop.is_set():
+        Cycle()
+        kept.append(doc.column("upos"))
+def writer():
+    values = [["NOUN"] * 50, ["VERB"] * 50]
+    while not stop.is_set():
+        doc.set_columns(upos=values[0])
+        values.reverse()
+threads = [threading.Thread(target=work) for work in (reader, writer)]
+for thread in threads:
+    thread.start()
+time.sleep(3)
+stop.set()
+for thread in threads:
+    thread.join()
+"""
+    subprocess.run([sys.executable, "-c", script], check=True, timeout=60)

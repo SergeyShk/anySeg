@@ -35,7 +35,7 @@ A segmented text: its tokens, its words with the columns of [CoNLL-U](https://un
 | `paragraphs` | `Paragraphs` | [Paragraphs](#paragraph) in order |
 | `lines` | `Lines` | [Lines](#line) of the paragraphs in order |
 
-The parts are views of the document, made when they are read. `Tokens`, `Words` and the other collections are sequences (`collections.abc.Sequence`): they have a length, indices from the end and slices, and a slice with step 1 is a collection of the same kind. Two tokens, words, sentences, paragraphs or lines are equal when they are the same part of the same document; the collections compare by identity. A document and its parts cannot be pickled.
+The parts are views of the document, made when they are read; iterating over a collection makes them one at a time. `Tokens`, `Words` and the other collections are sequences (`collections.abc.Sequence`): they have a length, indices from the end and slices, and a slice with step 1 is a collection of the same kind. Two tokens, words, sentences, paragraphs or lines are equal when they are the same part of the same document; the collections compare by identity. A document and its parts cannot be pickled.
 
 === "Code"
 
@@ -255,7 +255,7 @@ The document of the tokens of a text made by another tool, one word per token. P
 Exceptions:
 
 - `ValueError` - the lists differ in length, a token is empty, out of the text, overlaps the token before it, starts or ends with whitespace or runs over a paragraph boundary, the text between the tokens holds anything but whitespace and the invisible separators, or the sentence starts are not increasing token indices;
-- `OverflowError` - a sentence start is negative.
+- `TypeError` - a list holds something other than integers.
 
 === "Code"
 
