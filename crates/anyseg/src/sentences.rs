@@ -285,12 +285,14 @@ impl Splitter<'_> {
         let candidate =
             matches!(piece.as_bytes().last(), Some(b'.' | b'!' | b'?')) || piece.ends_with('…');
         let stars = is_stars(piece) || (piece == "*" && index > 0 && self.piece(index - 1) == "*");
-        // A closing bracket that no bracket opened, right after a word, is a smile: «Спасибо) Завтра»
+        // A closing bracket that no bracket opened, right after a word, is a smile: «Спасибо) Завтра»; after a
+        // number or a word without lowercase letters at the start of a line, it closes a list marker: «II)», «AB)»
         let smile = unpaired
             && piece == ")"
             && index > 0
             && self.attached(index)
-            && !self.line_start(index - 1)
+            && !(self.line_start(index - 1)
+                && !self.piece(index - 1).chars().any(char::is_lowercase))
             && !is_number(self.piece(index - 1))
             && self
                 .piece(index - 1)
@@ -929,6 +931,10 @@ mod tests {
             ]
         );
         assert_eq!(sentences("Люблю тебя :** Пока"), ["Люблю тебя :**", "Пока"]);
+        assert_eq!(
+            sentences("Привет)\nКак дела?\nAB) Оба"),
+            ["Привет)", "Как дела?", "AB) Оба"]
+        );
         assert_eq!(
             sentences("Также .NET и Node.js. Он ушёл .Она пришла"),
             ["Также .NET и Node.js.", "Он ушёл .", "Она пришла"]
