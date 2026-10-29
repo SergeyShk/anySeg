@@ -1,5 +1,7 @@
 # anySeg
 
+![anySeg](img/anyseg.svg)
+
 **anySeg** segments text into tokens and sentences with their positions in the source text. The core is written in Rust, the package has a Python API and no dependencies. The text is never changed: every token and sentence is a span of the original string, and tokens follow the conventions of [Universal Dependencies](https://universaldependencies.org/).
 
 The project is in development: Russian comes first, Spanish and English follow.
