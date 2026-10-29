@@ -795,6 +795,23 @@ impl Scanner<'_> {
 
 #[cfg(all(test, feature = "ru"))]
 mod tests {
+    use super::{is_alpha, is_word};
+
+    #[test]
+    fn character_shortcuts() {
+        for character in (0..=0x10ffff).filter_map(char::from_u32) {
+            assert_eq!(
+                is_alpha(character),
+                character.is_alphabetic(),
+                "{character:?}"
+            );
+            assert_eq!(
+                is_word(character),
+                character.is_alphanumeric(),
+                "{character:?}"
+            );
+        }
+    }
 
     fn tokens(text: &str) -> Vec<&str> {
         crate::Segmenter::new("ru")

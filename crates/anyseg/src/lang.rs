@@ -45,6 +45,10 @@ fn fold(word: &str) -> String {
     if plain {
         return word.chars().flat_map(char::to_lowercase).collect();
     }
+    normalized_fold(word)
+}
+
+fn normalized_fold(word: &str) -> String {
     word.nfd()
         .filter(|&character| !matches!(character, '\u{300}' | '\u{301}' | '\u{ad}'))
         .nfc()
@@ -162,5 +166,22 @@ mod tests {
         assert_eq!(tables.key("Ёлка й"), "ёлка й");
         assert_eq!(tables.key("Com"), "com");
         assert!(tables.final_abbreviations.contains("т д"));
+    }
+
+    #[test]
+    fn plain_words_fold_without_normalization() {
+        let plain: Vec<char> = (0..0x80u8)
+            .map(char::from)
+            .chain('А'..='я')
+            .chain(['Ё', 'ё'])
+            .collect();
+        for &first in &plain {
+            let word = first.to_string();
+            assert_eq!(fold(&word), normalized_fold(&word), "{word:?}");
+            for &second in &plain {
+                let word = format!("{first}{second}");
+                assert_eq!(fold(&word), normalized_fold(&word), "{word:?}");
+            }
+        }
     }
 }

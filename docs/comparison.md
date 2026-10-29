@@ -4,7 +4,7 @@ anySeg against the segmenters of Russian, rule-based and neural, on the test fil
 
 ## How it is measured
 
-- The raw text of a treebank is built as the tools of UD build it: documents and paragraphs are separated by blank lines, and the sentences of a paragraph are joined by spaces.
+- The raw text of a treebank is built from the text of its sentences: documents and paragraphs are separated by blank lines, the sentences of a paragraph are joined by spaces, and a paragraph stays on one line (the `conllu_to_text.pl` script of UD also wraps lines at 80 characters).
 - Tokens and sentences are scored with the evaluation script of the CoNLL 2018 shared task (F1). Sentence boundaries are scored as the positions of the sentence ends in the text (F1).
 - The scores follow the conventions of the treebanks, which anySeg follows too: a tool with other conventions loses points for them.
 - The rules of anySeg were chosen on the train and dev files; the test files are used only for this comparison.
@@ -55,7 +55,7 @@ F1 of the positions of the sentence ends.
 | SaT 3-layer, wtpsplit 2.2.2 * | 99.28 | 94.93 | 99.00 | 99.80 |
 | SaT 12-layer, wtpsplit 2.2.2 * | **99.68** | 95.86 | **99.67** | 99.85 |
 
-In SynTagRus, a number with a period at the start of a sentence (`5. Семя Аршака…`) is a sentence of its own more often than not in the train and dev files, and anySeg follows them; in the test file it never is, which costs anySeg 26 of its 41 false boundaries there.
+In the train and dev files of SynTagRus, a number with a period at the start of a sentence, before a capital letter, is a sentence of its own in 24 of 24 cases for a Roman numeral and in 23 of 49 for an Arabic one; anySeg makes both a sentence of their own. In the test file all 26 such numbers are Arabic and start a longer sentence (`1. Поглощать пищу в верхней одежде.`), which costs anySeg 26 of its 41 false boundaries there.
 
 ## Sentences
 
@@ -69,29 +69,31 @@ F1 of the CoNLL 2018 script: a sentence counts when both of its ends match, so t
 | spaCy 3.8.16, `ru` | 82.19 | 56.65 | 91.99 | 91.06 |
 | blingfire 0.1.8 | 96.46 | 64.89 | 91.64 | 97.23 |
 | ICU 77.1 | 86.10 | 78.55 | 94.01 | 98.60 |
+| spaCy, `ru_core_news_sm` with `senter` * | 93.69 | 59.99 | 92.17 | 95.05 |
+| spaCy, `ru_core_news_sm` with the parser * | 95.39 | 63.33 | 85.85 | 96.10 |
 | Stanza 1.15.0 * | 98.61 | 88.69 | 95.48 | 99.25 |
 | UDPipe 1.4 * | 98.45 | 86.97 | 94.97 | 98.80 |
 | trankit 1.1.2 * | **98.73** | 86.42 | **96.17** | **99.70** |
 
 ## Speed and memory
 
-From Python: the time to load the tool, tokens per second, and the memory the loaded tool takes. anySeg gives tokens and sentences with `tokenize` and `sentenize`; "sentences" marks the tools that give only sentences.
+From Python: the time to load the tool, tokens per second, and the memory the loaded tool takes (to a tenth of a megabyte below 10 MB). anySeg gives tokens and sentences with `tokenize` and `sentenize`; "sentences" marks the tools that give only sentences.
 
 | Tool | Gives | Load, s | Tokens/s | Memory, MB |
 | :-- | :-- | --: | --: | --: |
 | **anySeg 0.1** | tokens, sentences | 0.00 | **2.42 M** | 0.5 |
-| razdel 0.5.0 | tokens, sentences | 0.00 | 489 k | 0 |
-| rusenttokenize 0.0.5 | sentences | 0.00 | 317 k | 0 |
+| razdel 0.5.0 | tokens, sentences | 0.00 | 489 k | 0.1 |
+| rusenttokenize 0.0.5 | sentences | 0.00 | 317 k | 0.2 |
 | NLTK 3.10.4 | tokens, sentences | 0.85 | 195 k | 121 |
 | spaCy 3.8.16, `ru` with `sentencizer` | tokens, sentences | 0.95 | 225 k | 198 |
 | spaCy, `ru_core_news_sm` with `senter` * | tokens, sentences | 1.24 | 44 k | 442 |
 | spaCy, `ru_core_news_sm` with the parser * | tokens, sentences | 1.15 | 30 k | 441 |
-| sentencex 1.0.32 | sentences | 0.00 | 930 k | 0 |
-| pysbd 0.3.4 | sentences | 0.00 | about 90, quadratic | 0 |
-| yasbd-lib 1.0.3 | sentences | 0.03 | 185 k | 2 |
-| sentsplit 1.0.8 | sentences | 0.07 | 47 k | 6 |
-| blingfire 0.1.8 | tokens, sentences | 0.03 | 442 k | 5 |
-| ICU 77.1 | tokens, sentences | 0.02 | 1.56 M | 5 |
+| sentencex 1.0.32 | sentences | 0.00 | 930 k | 0.5 |
+| pysbd 0.3.4 | sentences | 0.00 | about 90, quadratic | - |
+| yasbd-lib 1.0.3 | sentences | 0.03 | 185 k | 1.7 |
+| sentsplit 1.0.8 | sentences | 0.07 | 47 k | 6.1 |
+| blingfire 0.1.8 | tokens, sentences | 0.03 | 442 k | 4.7 |
+| ICU 77.1 | tokens, sentences | 0.02 | 1.56 M | 4.9 |
 | Stanza 1.15.0 * | tokens, sentences | 2.04 | 2.1 k | 267 |
 | UDPipe 1.4 * | tokens, sentences | 1.89 | 17 k | 350 |
 | trankit 1.1.2 * | tokens, sentences | 4.02 | 1.4 k | 1465 |
