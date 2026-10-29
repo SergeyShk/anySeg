@@ -4,6 +4,18 @@
 # abbreviations of bibliographic description (GOST 7.0.12), no treebank lists.
 
 # time and dates
+янв
+февр
+апр
+авг
+сент
+окт
+нояб
+дек
+мес
+нед
+сут
+дн
 гг
 вв
 мин
@@ -38,6 +50,12 @@
 куб
 экз
 # reference and text
+абз
+подп
+прил
+соч
+собр
+тт
 см
 ср
 др
@@ -86,6 +104,8 @@
 араб
 яп
 # other
+нач
+отд
 тел
 моб
 доб

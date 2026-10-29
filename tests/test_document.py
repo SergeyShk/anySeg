@@ -349,6 +349,7 @@ def test_read_conllu():
     docs = read_conllu(UD)
     assert len(docs) == 2
     assert "".join(doc.to_conllu() for doc in docs) == UD
+    assert [doc.text for doc in read_conllu("\ufeff" + UD)] == [doc.text for doc in docs]
     doc = docs[0]
     assert doc.text == "Vino  del norte.\n\nSí."
     token = doc.tokens[1]

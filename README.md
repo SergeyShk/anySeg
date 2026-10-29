@@ -28,7 +28,7 @@ From Python, tokens and sentences come out at 2.4 M tokens per second, five time
 * **[Tokens](https://sergeyshk.github.io/anySeg/russian/#tokens)** - words with stress marks and soft hyphens, hyphenated words by the UD guidelines, numbers, dates and times, URLs, e-mail addresses, mentions, hashtags, emoticons and emoji, abbreviations and initials with their period
 * **[Sentences](https://sergeyshk.github.io/anySeg/russian/#sentences)** - final marks with the quotes and brackets after them, abbreviations that end a sentence, lines of dialogue, list items, headings and verse
 * **[Paragraphs and lines](https://sergeyshk.github.io/anySeg/russian/#lines)** - paragraphs between blank lines, and every line marked as a break of the author or a wrap at the width of the page, as in text from PDF
-* **[Document model](https://sergeyshk.github.io/anySeg/document/)** - tokens, words with the columns of [CoNLL-U](https://universaldependencies.org/format.html), sentences, paragraphs and lines; reading and writing CoNLL-U, a document read from it written back unchanged
+* **[Document model](https://sergeyshk.github.io/anySeg/document/)** - tokens, words with the columns of [CoNLL-U](https://universaldependencies.org/format.html), sentences, paragraphs and lines; reading and writing CoNLL-U, a document read from it written back as it was
 * **[Lists of your own](https://sergeyshk.github.io/anySeg/segmenter/#lists)** - more abbreviations and strings that are one token each
 * **[Comparison](https://sergeyshk.github.io/anySeg/comparison/)** - quality and speed against razdel, NLTK, spaCy, Stanza, trankit, SaT and other tools
 
@@ -80,7 +80,7 @@ On the test files of the Russian treebanks of Universal Dependencies 2.18, F1 (*
 
 | Tool | Tokens, SynTagRus | Tokens, Taiga | Sentence ends, SynTagRus | Sentence ends, Taiga | Tokens/s from Python |
 | :-- | --: | --: | --: | --: | --: |
-| **anySeg 0.1** | 99.60 | **99.10** | 99.45 | **95.89** | **2.42 M** |
+| **anySeg 0.1** | 99.61 | **99.10** | 99.46 | **95.94** | **2.42 M** |
 | razdel 0.5.0 | 98.73 | 95.74 | 99.41 | 85.58 | 489 k |
 | NLTK 3.10.4 | 98.93 | 96.57 | 97.61 | 82.59 | 195 k |
 | spaCy 3.8.16 | 98.38 | 96.85 | 89.60 | 76.18 | 225 k |

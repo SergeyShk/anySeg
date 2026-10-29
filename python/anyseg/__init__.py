@@ -146,7 +146,8 @@ def read_conllu(text: str) -> list[Document]:
         comment text or, without it, the forms of its tokens with the spaces of SpaceAfter and
         SpacesAfter; sentences of a paragraph are joined by a space (none after SpaceAfter=No),
         paragraphs by a blank line. Comments, multiword token lines and empty nodes are kept, so
-        that to_conllu writes the text back as it was
+        that to_conllu writes the text back as it was, with LF line ends and heads as plain
+        numbers. A byte order mark at the start is skipped
 
     Arguments:
         text (str): Text in CoNLL-U
@@ -155,7 +156,10 @@ def read_conllu(text: str) -> list[Document]:
         list[Document]: Documents in order
 
     Raises:
-        ValueError: If a line is neither a comment, a blank line nor a token line of 10 columns
-            with IDs in order, or forms do not match the text of their sentence
+        ValueError: If a line is neither a comment, a blank line nor a token line of 10 columns,
+            an ID or a head cannot be read, IDs are out of order, a multiword token lacks some of
+            its words, a comment follows the token lines of a sentence, a sentence has no words,
+            forms do not match the text of their sentence or the text holds characters that no
+            token has, or the text does not end with a blank line
     """
     return _read_conllu(text)

@@ -25,7 +25,7 @@ A word keeps its stress marks and soft hyphens, and a word with an apostrophe is
 
 ### Abbreviations and initials { #abbreviations }
 
-A common abbreviation keeps its period: «г.», «т.», «е.», «тыс.», «руб.», «им.»; so does a single letter - an initial «А.» or a lowercase letter of an abbreviation, except the word «я». At the end of a sentence, the period of an abbreviation is a token of its own: «т. д.» at the end gives «т.», «д», «.». More abbreviations can be [added to the segmenter](segmenter.md#lists).
+A common abbreviation keeps its period: «г.», «т.», «е.», «тыс.», «руб.», «им.», «окт.»; so does a single letter - an initial «А.» or a lowercase letter of an abbreviation, except the word «я». At the end of a sentence, the period of an abbreviation is a token of its own: «т. д.» at the end gives «т.», «д», «.». More abbreviations can be [added to the segmenter](segmenter.md#lists).
 
 === "Code"
 
@@ -71,36 +71,36 @@ A hyphenated word is one token: «кто-то», «кое-как», «мини-�
 
 ### Numbers
 
-Decimal numbers, numbers with groups of digits separated by spaces, dates with dots, times, and three or more groups of digits joined by hyphens, as in phone numbers, are one token each. A phone number written with spaces or brackets and a date with slashes split.
+Decimal numbers, numbers with groups of digits separated by spaces, dates with dots, times, three or more groups of digits joined by hyphens, as in phone numbers, and a number with a percent sign and an ending - «20%-ный» - are one token each. A phone number written with spaces or brackets and a date with slashes split.
 
 === "Code"
 
     ``` python
-    text = "4,5 и 1.5, 3 000 руб., 12.10.2026, 12:30, +7-495-123-45-67, 15%"
+    text = "4,5 и 1.5, 3 000 руб., 12.10.2026, 12:30, +7-495-123-45-67, 8 800 555 35 35, 15%, 20%-ный"
     [span.text for span in segmenter.tokenize(text)]
     ```
 
 === "Result"
 
     ```
-    ['4,5', 'и', '1.5', ',', '3 000', 'руб.', ',', '12.10.2026', ',', '12:30', ',', '+7-495-123-45-67', ',', '15', '%']
+    ['4,5', 'и', '1.5', ',', '3 000', 'руб.', ',', '12.10.2026', ',', '12:30', ',', '+7-495-123-45-67', ',', '8', '800', '555', '35', '35', ',', '15', '%', ',', '20%-ный']
     ```
 
 ### The web
 
-URLs, e-mail addresses, domains and file names, mentions and hashtags are one token each. The punctuation that ends a sentence and a closing bracket that a URL did not open stay out of it.
+URLs, e-mail addresses, domains and file names, mentions and hashtags are one token each, and so is a name of a service with a period: «Яндекс.Маркете». The punctuation that ends a sentence and a closing bracket that a URL did not open stay out of it.
 
 === "Code"
 
     ``` python
-    text = "Пишите на info@example.ru, сайт https://example.ru/news?id=5, файл IMG_1234.jpg, @anna и #шопинг"
+    text = "Пишите на info@example.ru, сайт https://example.ru/news?id=5, файл config.yaml, @anna и #шопинг на Яндекс.Маркете"
     [span.text for span in segmenter.tokenize(text)]
     ```
 
 === "Result"
 
     ```
-    ['Пишите', 'на', 'info@example.ru', ',', 'сайт', 'https://example.ru/news?id=5', ',', 'файл', 'IMG_1234.jpg', ',', '@anna', 'и', '#шопинг']
+    ['Пишите', 'на', 'info@example.ru', ',', 'сайт', 'https://example.ru/news?id=5', ',', 'файл', 'config.yaml', ',', '@anna', 'и', '#шопинг', 'на', 'Яндекс.Маркете']
     ```
 
 ### Marks and symbols
@@ -142,7 +142,7 @@ A paragraph always starts a sentence. Inside it, a sentence ends at final marks 
 
 ### Abbreviations { #sentence-abbreviations }
 
-An abbreviation ends a sentence before a capital letter when the language lists it as one that usually stands at the end - «т. д.», «т. п.», «др.», «и пр.», «проч.», «н. э.», «тел.» - or when it follows a number: «в 1914 г.», «15 000 р.», «60 км/ч.». Other abbreviations and initials do not end a sentence: «г. Москва», «А. С. Пушкин».
+An abbreviation ends a sentence before a capital letter when the language lists it as one that usually stands at the end - «т. д.», «т. п.», «др.», «и пр.», «проч.», «н. э.», «тел.» - or when it follows a number: «в 1914 г.», «15 000 р.», «60 км/ч.». Other abbreviations and initials do not end a sentence: «г. Москва», «А. С. Пушкин». A single letter that is not an initial does: a Latin letter before a Russian word, as a variable or a name - «через x. Тогда», «Петра I. У него» - and a capital letter after a quantity, as a unit: «5 А. Напряжение», but not after a year, a date or a time: «в 12:00 В. Путин».
 
 === "Code"
 
@@ -150,6 +150,7 @@ An abbreviation ends a sentence before a capital letter when the language lists 
     text = "Купили груши и т. д. Потом ушли. Это было в г. Москва. В 1914 г. Затем всё. Пушкин А. С. Лермонтов"
     [span.text for span in segmenter.sentenize(text)]
     [span.text for span in segmenter.sentenize("Цена 15 000 р. Пишите. Едем 60 км/ч. Всё.")]
+    [span.text for span in segmenter.sentenize("Обозначим через x. Тогда ток 5 А. Напряжение 220 В.")]
     ```
 
 === "Result"
@@ -157,11 +158,12 @@ An abbreviation ends a sentence before a capital letter when the language lists 
     ```
     ['Купили груши и т. д.', 'Потом ушли.', 'Это было в г. Москва.', 'В 1914 г.', 'Затем всё.', 'Пушкин А. С. Лермонтов']
     ['Цена 15 000 р.', 'Пишите.', 'Едем 60 км/ч.', 'Всё.']
+    ['Обозначим через x.', 'Тогда ток 5 А.', 'Напряжение 220 В.']
     ```
 
 ### Posts and messages
 
-An emoticon or an emoji after final marks stays in the sentence; without them, it ends a sentence before a capital letter, as a period would. A mention after final marks or an emoticon starts a sentence. A separator of stars - «* * *», «***» - is a sentence of its own on a line of its own, or after final marks before a capital letter.
+An emoticon or an emoji after final marks stays in the sentence; without them, it ends a sentence before a capital letter, as a period would. So does a closing bracket that no bracket opened, right after a word: «Спасибо) Завтра». A mention after final marks or an emoticon starts a sentence, and so does emphasis in Markdown before a capital letter: «**Итог**», «*Курсив*», «__Жирный__». A separator of stars - «* * *», «***» - is a sentence of its own on a line of its own, or after final marks before a capital letter.
 
 === "Code"
 
@@ -169,6 +171,7 @@ An emoticon or an emoji after final marks stays in the sentence; without them, i
     text = "Привет 😀 Как дела? Ура! :) Пойдём. Спасибо! @anna да."
     [span.text for span in segmenter.sentenize(text)]
     [span.text for span in segmenter.sentenize("Текст. * * * Новая глава.")]
+    [span.text for span in segmenter.sentenize("Спасибо) Завтра увидимся. **Итог:** Всё хорошо.")]
     ```
 
 === "Result"
@@ -176,6 +179,7 @@ An emoticon or an emoji after final marks stays in the sentence; without them, i
     ```
     ['Привет 😀', 'Как дела?', 'Ура! :)', 'Пойдём.', 'Спасибо!', '@anna да.']
     ['Текст.', '* * *', 'Новая глава.']
+    ['Спасибо)', 'Завтра увидимся.', '**Итог:** Всё хорошо.']
     ```
 
 ### Numbered items
@@ -219,7 +223,7 @@ A paragraph is the part of the text between blank lines (or the paragraph separa
     ['Скажи-ка, дядя, ведь не даром\nМосква, спалённая пожаром,\nФранцузу отдана?', 'Ведь были ж схватки боевые']
     ```
 
-Every line of a [document](document.md#line) tells how it begins: `"author"` for a break the author made - a verse line, a list item, a paragraph per line - and `"typeset"` for a wrap at the width of the page, as in text extracted from PDF: a line that goes on with a lowercase letter outside verse and does not start a sentence.
+Every line of a [document](document.md#line) tells how it begins: `"author"` for a break the author made - a verse line, a list item, a paragraph per line - and `"typeset"` for a wrap at the width of the page, as in text extracted from PDF: outside verse, in a paragraph where some line goes on with a lowercase letter, a line that does not start a sentence.
 
 === "Code"
 

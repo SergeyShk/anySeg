@@ -20,7 +20,7 @@ SEPARATORS = " \n\r\t\u00a0\u2028\u3000\ufeff\u200b\u2060\u00ad\u200c\u200d"
 
 
 # A segmenter with lists of the user
-CUSTOM = Segmenter("ru", abbreviations={"Сущ.", "прил"}, tokens=("C++", "т.н."))
+CUSTOM = Segmenter("ru", abbreviations={"Сущ.", "глаг"}, tokens=("C++", "т.н."))
 
 
 @pytest.fixture(scope="module")
@@ -37,22 +37,22 @@ def test_language(segmenter):
 
 
 def test_lists(segmenter):
-    text = "сущ. и прил. на C++, т.н.\n\nТаков т.н."
+    text = "сущ. и глаг. на C++, т.н.\n\nТаков т.н."
     assert [span.text for span in segmenter.tokenize(text)] == [
-        *("сущ", ".", "и", "прил", ".", "на", "C", "++", ",", "т.", "н", "."),
+        *("сущ", ".", "и", "глаг", ".", "на", "C", "++", ",", "т.", "н", "."),
         *("Таков", "т.", "н", "."),
     ]
     assert [span.text for span in CUSTOM.tokenize(text)] == [
-        *("сущ.", "и", "прил.", "на", "C++", ",", "т.н.", "Таков", "т.н."),
+        *("сущ.", "и", "глаг.", "на", "C++", ",", "т.н.", "Таков", "т.н."),
     ]
     assert [token.text for token in CUSTOM.segment(text).tokens] == [
         span.text for span in CUSTOM.tokenize(text)
     ]
-    assert (CUSTOM.abbreviations, CUSTOM.tokens) == (("прил", "сущ"), ("C++", "т.н."))
+    assert (CUSTOM.abbreviations, CUSTOM.tokens) == (("глаг", "сущ"), ("C++", "т.н."))
     assert (segmenter.abbreviations, segmenter.tokens) == ((), ())
-    assert repr(CUSTOM) == "Segmenter('ru', abbreviations=('прил', 'сущ'), tokens=('C++', 'т.н.'))"
+    assert repr(CUSTOM) == "Segmenter('ru', abbreviations=('глаг', 'сущ'), tokens=('C++', 'т.н.'))"
     assert repr(Segmenter("ru", tokens=["C++"])) == "Segmenter('ru', tokens=('C++',))"
-    same = Segmenter("ru", abbreviations=iter(["прил.", "СУЩ"]), tokens=["т.н.", "C++", "C++"])
+    same = Segmenter("ru", abbreviations=iter(["глаг.", "СУЩ"]), tokens=["т.н.", "C++", "C++"])
     assert same == CUSTOM
     assert len({CUSTOM, same, segmenter}) == 2
     assert Segmenter("ru", abbreviations=None, tokens=[]) == segmenter
@@ -77,10 +77,11 @@ def test_lists(segmenter):
         (
             {"tokens": ["a b"]},
             ValueError,
-            "token 'a b' is empty, has whitespace or starts or ends with an invisible separator",
+            "token 'a b' is empty, has whitespace or control characters or starts or ends with an invisible separator",
         ),
         ({"tokens": [""]}, ValueError, "token '' is empty"),
         ({"tokens": ["\u200ba"]}, ValueError, "token '\\u200ba' is empty"),
+        ({"tokens": ["a\x1fb"]}, ValueError, "token 'a\\x1fb' is empty"),
     ],
 )
 def test_invalid_lists(lists, error, message):

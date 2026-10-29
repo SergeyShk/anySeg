@@ -8,7 +8,7 @@ Segmenter of texts in one language: it gives the tokens and the sentences of a t
 
 Exceptions:
 
-- `ValueError` - the language is not supported, an [abbreviation](#lists) is not a word of letters, or a [token](#lists) is empty, has whitespace or starts or ends with an invisible separator;
+- `ValueError` - the language is not supported, an [abbreviation](#lists) is not a word of letters, or a [token](#lists) is empty, has whitespace or control characters or starts or ends with an invisible separator;
 - `TypeError` - `abbreviations` or `tokens` is a string or holds something other than strings.
 
 === "Code"
@@ -71,7 +71,7 @@ The rules of a language know the common abbreviations and the usual kinds of tok
 tokenize(text)
 ```
 
-The tokens of the text in order. Whitespace and the invisible separators - zero width space, word joiner, byte order mark, and a soft hyphen and zero width (non-)joiner outside a word - separate the tokens and are in none of them. How a language splits its text, see [Russian](russian.md).
+The tokens of the text in order. Whitespace, control characters and the invisible separators - zero width space, word joiner, byte order mark, and a soft hyphen and zero width (non-)joiner outside a word - separate the tokens and are in none of them. How a language splits its text, see [Russian](russian.md).
 
 | Parameter | Type | Default | Description |
 | :-------- | :--- | :------ | :---------- |

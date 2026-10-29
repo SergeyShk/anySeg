@@ -9,6 +9,7 @@ use crate::layout::{self, is_separator};
 
 /// How a line of a paragraph begins after the line before it
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum LineBreak {
     /// A break the author made: a verse line, a list item, a paragraph per line
     Author,
@@ -17,6 +18,7 @@ pub enum LineBreak {
 }
 
 impl LineBreak {
+    /// The name of the kind: `"author"` or `"typeset"`
     pub fn name(self) -> &'static str {
         match self {
             LineBreak::Author => "author",
@@ -27,6 +29,7 @@ impl LineBreak {
 
 /// A line of a paragraph
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub struct Line {
     /// The line without the separators around it
     pub span: Span,
@@ -34,35 +37,51 @@ pub struct Line {
     pub break_before: Option<LineBreak>,
 }
 
-/// A sentence: from the start of its first token to the end of its last one
+/// A sentence of a [`Document`]
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub struct Sentence {
+    /// From the start of its first token to the end of its last one
     pub span: Span,
+    /// The indices of its tokens
     pub tokens: Range<usize>,
+    /// The indices of its words
     pub words: Range<usize>,
 }
 
-/// A paragraph: from the start of its first token to the end of its last one
+/// A paragraph of a [`Document`]
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub struct Paragraph {
+    /// From the start of its first token to the end of its last one
     pub span: Span,
+    /// The indices of its sentences
     pub sentences: Range<usize>,
+    /// The indices of its tokens
     pub tokens: Range<usize>,
 }
 
 /// A column of CoNLL-U that a word holds as text; `head` is a number and `form` comes from the tokens
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Column {
+    /// LEMMA: the lemma or the stem
     Lemma,
+    /// UPOS: the universal part of speech
     Upos,
+    /// XPOS: the part of speech of the language
     Xpos,
+    /// FEATS: the morphological features
     Feats,
+    /// DEPREL: the relation to the head
     Deprel,
+    /// DEPS: the enhanced dependency graph
     Deps,
+    /// MISC: any other annotation
     Misc,
 }
 
 impl Column {
+    /// The columns in the order of CoNLL-U
     pub const ALL: [Column; 7] = [
         Column::Lemma,
         Column::Upos,
@@ -73,6 +92,7 @@ impl Column {
         Column::Misc,
     ];
 
+    /// The name of the column in lowercase: `"lemma"`, `"upos"`
     pub fn name(self) -> &'static str {
         match self {
             Column::Lemma => "lemma",
@@ -85,6 +105,7 @@ impl Column {
         }
     }
 
+    /// The column with a name in lowercase
     pub fn from_name(name: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|column| column.name() == name)
     }
@@ -92,7 +113,7 @@ impl Column {
 
 /// Wrong tokens, sentence starts or column values
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct DocumentError(pub String);
+pub struct DocumentError(pub(crate) String);
 
 impl fmt::Display for DocumentError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -195,14 +216,19 @@ impl Document {
     /// sentence of every paragraph and the lines
     pub(crate) fn segmented(
         text: String,
-        tokens: Vec<Span>,
+        mut tokens: Vec<Span>,
         mut sentence_tokens: Vec<usize>,
         mut paragraph_sentences: Vec<usize>,
-        lines: Vec<Line>,
+        mut lines: Vec<Line>,
     ) -> Self {
         let count = tokens.len();
         paragraph_sentences.push(sentence_tokens.len());
         sentence_tokens.push(count);
+        // The vectors grew by doubling: a document keeps only what it holds
+        tokens.shrink_to_fit();
+        sentence_tokens.shrink_to_fit();
+        paragraph_sentences.shrink_to_fit();
+        lines.shrink_to_fit();
         Document {
             text,
             tokens,
@@ -276,29 +302,44 @@ impl Document {
         })
     }
 
+    /// The text of the document
     pub fn text(&self) -> &str {
         &self.text
     }
 
+    /// The tokens in order
     pub fn tokens(&self) -> &[Span] {
         &self.tokens
     }
 
-    /// The words of a token
+    /// The words of a token.
+    ///
+    /// # Panics
+    ///
+    /// If there is no such token.
     pub fn token_words(&self, token: usize) -> Range<usize> {
         self.token_words[token]..self.token_words[token + 1]
     }
 
+    /// The number of words
     pub fn word_count(&self) -> usize {
         self.word_tokens.len()
     }
 
-    /// The token that holds a word
+    /// The token that holds a word.
+    ///
+    /// # Panics
+    ///
+    /// If there is no such word.
     pub fn word_token(&self, word: usize) -> usize {
         self.word_tokens[word]
     }
 
-    /// The form of a word: the text of its token unless it is a word of a multiword token
+    /// The form of a word: the text of its token unless it is a word of a multiword token.
+    ///
+    /// # Panics
+    ///
+    /// If there is no such word.
     pub fn form(&self, word: usize) -> &str {
         match self.forms.get(word) {
             Some(Some(form)) => form,
@@ -306,21 +347,46 @@ impl Document {
         }
     }
 
+    /// The value of a column of a word, `None` until set.
+    ///
+    /// # Panics
+    ///
+    /// If there is no such word.
     pub fn column(&self, column: Column, word: usize) -> Option<&str> {
+        self.check_word(word);
         self.columns[column as usize]
             .get(word)
             .and_then(Option::as_deref)
     }
 
-    /// The head of a word: the ID of a word of its sentence or 0 for the root
+    /// The head of a word: the ID of a word of its sentence or 0 for the root, `None` until set.
+    ///
+    /// # Panics
+    ///
+    /// If there is no such word.
     pub fn head(&self, word: usize) -> Option<u32> {
+        self.check_word(word);
         self.heads.get(word).copied().flatten()
     }
 
+    fn check_word(&self, word: usize) {
+        let count = self.word_count();
+        assert!(
+            word < count,
+            "word {word} is out of range for {count} words"
+        );
+    }
+
+    /// The number of sentences
     pub fn sentence_count(&self) -> usize {
         self.sentence_tokens.len() - 1
     }
 
+    /// A sentence by its index.
+    ///
+    /// # Panics
+    ///
+    /// If there is no such sentence.
     pub fn sentence(&self, index: usize) -> Sentence {
         let tokens = self.sentence_tokens[index]..self.sentence_tokens[index + 1];
         Sentence {
@@ -330,28 +396,51 @@ impl Document {
         }
     }
 
-    /// The sentence that holds a token
+    /// The sentence that holds a token.
+    ///
+    /// # Panics
+    ///
+    /// If there is no such token.
     pub fn token_sentence(&self, token: usize) -> usize {
+        let count = self.tokens.len();
+        assert!(
+            token < count,
+            "token {token} is out of range for {count} tokens"
+        );
         self.sentence_tokens
             .partition_point(|&start| start <= token)
             - 1
     }
 
-    /// The sentence that holds a word
+    /// The sentence that holds a word.
+    ///
+    /// # Panics
+    ///
+    /// If there is no such word.
     pub fn word_sentence(&self, word: usize) -> usize {
         self.token_sentence(self.word_tokens[word])
     }
 
-    /// The ID of a word in its sentence, from 1
+    /// The ID of a word in its sentence, from 1.
+    ///
+    /// # Panics
+    ///
+    /// If there is no such word.
     pub fn word_id(&self, word: usize) -> usize {
         let first = self.sentence_tokens[self.word_sentence(word)];
         word - self.token_words[first] + 1
     }
 
+    /// The number of paragraphs
     pub fn paragraph_count(&self) -> usize {
         self.paragraph_sentences.len() - 1
     }
 
+    /// A paragraph by its index.
+    ///
+    /// # Panics
+    ///
+    /// If there is no such paragraph.
     pub fn paragraph(&self, index: usize) -> Paragraph {
         let sentences = self.paragraph_sentences[index]..self.paragraph_sentences[index + 1];
         let tokens = self.sentence_tokens[sentences.start]..self.sentence_tokens[sentences.end];
@@ -362,13 +451,23 @@ impl Document {
         }
     }
 
-    /// The paragraph that holds a sentence
+    /// The paragraph that holds a sentence.
+    ///
+    /// # Panics
+    ///
+    /// If there is no such sentence.
     pub fn sentence_paragraph(&self, sentence: usize) -> usize {
+        let count = self.sentence_count();
+        assert!(
+            sentence < count,
+            "sentence {sentence} is out of range for {count} sentences"
+        );
         self.paragraph_sentences
             .partition_point(|&start| start <= sentence)
             - 1
     }
 
+    /// The lines of the paragraphs in order
     pub fn lines(&self) -> &[Line] {
         &self.lines
     }
@@ -503,6 +602,34 @@ mod tests {
         assert_eq!(doc.word_id(1), 2);
         assert_eq!(doc.column(Column::Lemma, 0), None);
         assert_eq!(doc.head(0), None);
+    }
+
+    #[test]
+    fn indices_out_of_range() {
+        let doc = document("Ёж идёт", None);
+        for call in [
+            |doc: &Document| {
+                let _ = doc.column(Column::Lemma, 2);
+            },
+            |doc: &Document| {
+                let _ = doc.head(2);
+            },
+            |doc: &Document| {
+                let _ = doc.form(2);
+            },
+            |doc: &Document| {
+                let _ = doc.token_sentence(2);
+            },
+            |doc: &Document| {
+                let _ = doc.sentence_paragraph(1);
+            },
+            |doc: &Document| {
+                let _ = doc.sentence(1);
+            },
+        ] {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| call(&doc)));
+            assert!(result.is_err());
+        }
     }
 
     #[test]

@@ -18,6 +18,8 @@
 //! # }
 //! ```
 
+#![warn(missing_docs)]
+
 use std::error::Error;
 use std::fmt;
 
@@ -37,7 +39,9 @@ pub use document::{Column, Document, DocumentError, Line, LineBreak, Paragraph, 
 /// A piece of a text: `&text[start..end]`, in bytes
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Span {
+    /// The offset of the first byte
     pub start: usize,
+    /// The offset after the last byte
     pub end: usize,
 }
 
@@ -56,6 +60,7 @@ impl Span {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum Language {
+    /// Russian, `"ru"`
     #[cfg(feature = "ru")]
     Russian,
 }
@@ -86,7 +91,14 @@ impl Language {
 
 /// The language code is not one of [`Language::ALL`]
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct UnknownLanguage(pub String);
+pub struct UnknownLanguage(String);
+
+impl UnknownLanguage {
+    /// The code that was given
+    pub fn code(&self) -> &str {
+        &self.0
+    }
+}
 
 impl fmt::Display for UnknownLanguage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -111,7 +123,7 @@ impl Error for UnknownLanguage {}
 pub enum InvalidEntry {
     /// Not a word of letters, with a period after it or without
     Abbreviation(String),
-    /// Empty, with whitespace, or with an invisible separator at an edge
+    /// Empty, with whitespace or control characters, or with an invisible separator at an edge
     Token(String),
 }
 
@@ -124,7 +136,7 @@ impl fmt::Display for InvalidEntry {
             ),
             InvalidEntry::Token(token) => write!(
                 f,
-                "token {token:?} is empty, has whitespace or starts or ends with an invisible separator"
+                "token {token:?} is empty, has whitespace or control characters or starts or ends with an invisible separator"
             ),
         }
     }
@@ -182,8 +194,8 @@ impl Segmenter {
     ///
     /// # Errors
     ///
-    /// [`InvalidEntry::Token`] if a string is empty, has whitespace or starts or ends with an
-    /// invisible separator.
+    /// [`InvalidEntry::Token`] if a string is empty, has whitespace or control characters or starts
+    /// or ends with an invisible separator.
     pub fn with_tokens<I>(mut self, strings: I) -> Result<Self, InvalidEntry>
     where
         I: IntoIterator,
@@ -192,17 +204,18 @@ impl Segmenter {
         for string in strings {
             let string = string.as_ref();
             if string.is_empty()
-                || string.chars().any(char::is_whitespace)
+                || string.chars().any(|c| c.is_whitespace() || c.is_control())
                 || string.starts_with(layout::is_separator)
                 || string.ends_with(layout::is_separator)
             {
                 return Err(InvalidEntry::Token(string.to_owned()));
             }
-            self.exceptions.tokens.insert(string.to_owned());
+            self.exceptions.add_token(string);
         }
         Ok(self)
     }
 
+    /// The language of the segmenter
     pub fn language(&self) -> Language {
         self.language
     }
@@ -217,9 +230,9 @@ impl Segmenter {
         self.exceptions.tokens.iter().map(String::as_str)
     }
 
-    /// The tokens of a text in order. Whitespace and the invisible separators (zero width space,
-    /// word joiner, byte order mark, and a soft hyphen and zero width (non-)joiner outside a word)
-    /// separate tokens and are in none. Words keep their combining marks and soft hyphens;
+    /// The tokens of a text in order. Whitespace, control characters and the invisible separators
+    /// (zero width space, word joiner, byte order mark, and a soft hyphen and zero width
+    /// (non-)joiner outside a word) separate tokens and are in none. Words keep their combining marks and soft hyphens;
     /// hyphenated words, numbers with decimal commas and points, dates, times and digit groups,
     /// URLs, e-mail addresses, file names, mentions, hashtags, emoticons and runs of emoji are one
     /// token each, as are runs of final marks («?!», «...»). Abbreviations and initials keep their
@@ -237,10 +250,12 @@ impl Segmenter {
     /// sentence ends at final marks («.», «?!», «...») with the closing quotes and brackets after
     /// them, when a capital letter, a digit, or a dash or an opening quote before a capital letter
     /// follows. An abbreviation ends a sentence before a capital letter when the language lists it
-    /// («и т. д.») or it follows a number («в 1914 г.»); initials do not. A line break starts a
-    /// sentence before a list item or a line of dialogue, at a line without words and after a line
-    /// without final punctuation before a capital letter, except in verse and in text wrapped at the
-    /// width of the page (a line of the paragraph goes on with a lowercase letter).
+    /// («и т. д.») or it follows a number («в 1914 г.»); initials do not, but a single Latin letter
+    /// before a Cyrillic word («через x. Тогда») and a unit after a quantity («5 А.») do. A line
+    /// break starts a sentence before a list item or a line of dialogue, at a line without words
+    /// and after a line without final punctuation before a capital letter, except in verse and in
+    /// text wrapped at the width of the page (a line of the paragraph goes on with a lowercase
+    /// letter).
     pub fn sentenize(&self, text: &str) -> Vec<Span> {
         let split = self.split(text, false);
         let tokens = &split.tokens;
@@ -257,8 +272,9 @@ impl Segmenter {
 
     /// The document of a text: its tokens, one word per token, its sentences as
     /// [`sentenize`](Self::sentenize) gives them, its paragraphs and their lines, each with how it
-    /// begins: a line that goes on with a lowercase letter outside verse and does not start a
-    /// sentence is a wrap at the width of the page, other lines are breaks of the author
+    /// begins: outside verse, in a paragraph where some line goes on with a lowercase letter, a
+    /// line that does not start a sentence is a wrap at the width of the page; other lines are
+    /// breaks of the author
     pub fn segment(&self, text: &str) -> Document {
         let split = self.split(text, true);
         Document::segmented(
@@ -318,6 +334,7 @@ mod tests {
     fn unknown_language() {
         let error = Segmenter::new("xx").unwrap_err();
         assert_eq!(error, UnknownLanguage("xx".to_owned()));
+        assert_eq!(error.code(), "xx");
         assert_eq!(
             error.to_string(),
             "unsupported language \"xx\", expected one of: ru"
@@ -370,7 +387,7 @@ mod tests {
 
     #[test]
     fn lists_of_the_user() {
-        let text = "На C++, C++11 и aC++ сущ. и прил. т.н.\n\nТаков т.н.";
+        let text = "На C++, C++11 и aC++ сущ. и глаг. т.н.\n\nТаков т.н.";
         let default = Segmenter::new("ru").unwrap();
         assert_eq!(
             pieces(text, &default.tokenize(text)),
@@ -388,7 +405,7 @@ mod tests {
                 "сущ",
                 ".",
                 "и",
-                "прил",
+                "глаг",
                 ".",
                 "т.",
                 "н",
@@ -400,7 +417,7 @@ mod tests {
             ]
         );
         let segmenter = default
-            .with_abbreviations(["Сущ.", "прил", "сущ"])
+            .with_abbreviations(["Сущ.", "глаг", "сущ"])
             .unwrap()
             .with_tokens(["C+", "C++", "т.н."])
             .unwrap();
@@ -418,7 +435,7 @@ mod tests {
                 "++",
                 "сущ.",
                 "и",
-                "прил.",
+                "глаг.",
                 "т.н.",
                 "Таков",
                 "т.н."
@@ -426,7 +443,7 @@ mod tests {
         );
         assert_eq!(
             segmenter.abbreviations().collect::<Vec<_>>(),
-            ["прил", "сущ"]
+            ["глаг", "сущ"]
         );
         assert_eq!(
             segmenter.tokens().collect::<Vec<_>>(),
@@ -444,7 +461,7 @@ mod tests {
                 Err(InvalidEntry::Abbreviation(word.to_owned()))
             );
         }
-        for token in ["", "a b", " a", "\u{ad}a", "a\u{200b}"] {
+        for token in ["", "a b", " a", "\u{ad}a", "a\u{200b}", "a\u{1f}b"] {
             assert_eq!(
                 segmenter.clone().with_tokens([token]),
                 Err(InvalidEntry::Token(token.to_owned()))
@@ -454,5 +471,14 @@ mod tests {
             InvalidEntry::Abbreviation("т.н".to_owned()).to_string(),
             "abbreviation \"т.н\" is not a word of letters with an optional final period"
         );
+    }
+
+    #[test]
+    fn many_tokens_of_the_user() {
+        // A lookup by every token of the list takes seconds here
+        let strings: Vec<String> = (0..50_000).map(|number| format!("x{number}+")).collect();
+        let segmenter = Segmenter::new("ru").unwrap().with_tokens(&strings).unwrap();
+        let text = "x1+ x49999+ x ".repeat(10_000);
+        assert_eq!(segmenter.tokenize(&text).len(), 30_000);
     }
 }
