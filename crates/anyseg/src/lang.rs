@@ -38,6 +38,13 @@ pub(crate) struct Tables {
 
 /// A word lowercase, without stress marks (U+0300, U+0301) and soft hyphens
 fn fold(word: &str) -> String {
+    // ASCII and the Russian alphabet have no marks to drop: no need to normalize
+    let plain = word
+        .chars()
+        .all(|character| character.is_ascii() || matches!(character, 'А'..='я' | 'Ё' | 'ё'));
+    if plain {
+        return word.chars().flat_map(char::to_lowercase).collect();
+    }
     word.nfd()
         .filter(|&character| !matches!(character, '\u{300}' | '\u{301}' | '\u{ad}'))
         .nfc()
