@@ -244,7 +244,9 @@ impl Segmenter {
     ///     An abbreviation ends a sentence before a capital letter when the language lists it
     ///     ("и т. д.") or it follows a number ("в 1914 г."); initials do not. A line break starts a
     ///     sentence before a list item or a line of dialogue, at a line without words and after a
-    ///     line without final punctuation before a capital letter, except in verse
+    ///     line without final punctuation before a capital letter, except in verse and in text
+    ///     wrapped at the width of the page (a line of the paragraph goes on with a lowercase
+    ///     letter)
     ///
     /// Arguments:
     ///     text (str): Text
@@ -263,7 +265,8 @@ impl Segmenter {
     /// Description:
     ///     Tokens as tokenize gives them, one word per token, sentences as sentenize gives them,
     ///     paragraphs and their lines. A line that goes on with a lowercase letter outside verse
-    ///     is a wrap at the width of the page ("typeset"), other lines are breaks of the author
+    ///     and does not start a sentence is a wrap at the width of the page ("typeset"), other
+    ///     lines are breaks of the author
     ///
     /// Arguments:
     ///     text (str): Text

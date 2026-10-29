@@ -3,7 +3,7 @@
 use crate::Span;
 use crate::document::{Line, LineBreak};
 use crate::lang::Tables;
-use crate::tokens::{EMOTICONS, Exceptions, is_emoji};
+use crate::tokens::{EMOTICONS, Exceptions, is_emoji, is_mark};
 
 /// Marks that start a list item at the beginning of a line
 const BULLETS: &str = "-‐‒–—―−•·*▪◦‣●■►▸→✓✔";
@@ -83,7 +83,7 @@ fn is_abbreviation(piece: &str) -> bool {
         && piece[..piece.len() - 1]
             .chars()
             .next_back()
-            .is_some_and(char::is_alphabetic)
+            .is_some_and(|c| c.is_alphabetic() || is_mark(c))
 }
 
 /// The first letter of a line, past the quotes, dashes and bullets before it, is a capital one
@@ -255,7 +255,11 @@ impl Splitter<'_> {
             return (index, starts_upper(self.piece(index + 1)));
         }
         if is_emoticon(piece) {
-            // An emoticon after the words of a sentence ends it before a capital letter or a mention
+            // An emoticon after the words of a sentence ends it before a capital letter or a mention, unless it
+            // starts a line as a bullet
+            if self.line_start(index) {
+                return (index, false);
+            }
             let next = self.piece(index + 1);
             return (index, words && (starts_upper(next) || is_mention(next)));
         }
@@ -271,7 +275,11 @@ impl Splitter<'_> {
         }
         let marks = (index..=last).any(|position| is_final(self.piece(position)));
         // Emoticons after final marks stay in the sentence: «Ура! :)»
-        while marks && last + 1 < count && is_emoticon(self.piece(last + 1)) {
+        while marks
+            && last + 1 < count
+            && is_emoticon(self.piece(last + 1))
+            && !self.line_start(last + 1)
+        {
             last += 1;
         }
         if last + 1 == count {
@@ -339,13 +347,16 @@ impl Splitter<'_> {
     /// or a lowercase one after a number, maybe through other lowercase ones («в 1914 г.», «15 тыс. руб.»)
     fn ends(&self, index: usize) -> bool {
         let lowercase = |piece: &str| !piece.chars().any(char::is_uppercase);
+        // The abbreviations before this one and the word before them, as the list keys them: «т. д.», «и пр.»
         let mut key = String::new();
-        for position in (index.saturating_sub(2)..=index).rev() {
+        for position in (index.saturating_sub(3)..=index).rev() {
             let piece = self.piece(position);
-            if !is_abbreviation(piece) || !lowercase(piece) {
-                break;
-            }
-            let word = self.tables.key(&piece[..piece.len() - 1]);
+            let abbreviation = is_abbreviation(piece) && lowercase(piece);
+            let word = self.tables.key(if abbreviation {
+                &piece[..piece.len() - 1]
+            } else {
+                piece
+            });
             key = if key.is_empty() {
                 word
             } else {
@@ -353,6 +364,9 @@ impl Splitter<'_> {
             };
             if self.tables.final_abbreviations.contains(&key) {
                 return true;
+            }
+            if !abbreviation {
+                break;
             }
         }
         // Back to a number over units: «5 млрд руб.», «60 км/ч.»
@@ -364,10 +378,14 @@ impl Splitter<'_> {
             if is_number(piece) {
                 return true;
             }
+            let word = piece.trim_end_matches('.');
             let unit = piece == "/"
+                || self.piece(position + 1) == "/"
                 || (lowercase(piece)
-                    && piece.trim_end_matches('.').chars().count() <= 4
-                    && piece.trim_end_matches('.').chars().all(char::is_alphabetic));
+                    && word.chars().count() <= 4
+                    && word.chars().all(char::is_alphabetic)
+                    && (word.len() < piece.len()
+                        || self.tables.abbreviations.contains(&self.tables.key(word))));
             if !unit {
                 return false;
             }
@@ -391,7 +409,12 @@ impl Splitter<'_> {
             && self.piece(index) == "."
             && self.attached(index)
             && is_number(self.piece(index - 1))
-            && (index == 1 || self.line_tokens.binary_search(&(index - 1)).is_ok())
+            && (index == 1 || self.line_start(index - 1))
+    }
+
+    /// Whether a token starts a line of a paragraph of several lines
+    fn line_start(&self, index: usize) -> bool {
+        self.line_tokens.binary_search(&index).is_ok()
     }
 
     /// Whether a line break starts a sentence: before a list item, at a line without words, or after a heading
@@ -399,6 +422,8 @@ impl Splitter<'_> {
         let first = self.line_tokens[line + 1];
         let after = self.piece(first);
         let marker = after.chars().all(|c| BULLETS.contains(c))
+            || after.starts_with(is_emoji)
+            || after.contains('\u{20e3}')
             || (first + 1 < self.tokens.len()
                 && self.attached(first + 1)
                 && matches!(self.piece(first + 1), "." | ")")
@@ -656,6 +681,72 @@ mod tests {
                 LineBreak::Author,
                 LineBreak::Author,
                 LineBreak::Author
+            ]
+        );
+    }
+
+    #[test]
+    fn found_by_the_review() {
+        assert_eq!(
+            sentences(
+                "Родился 5 мая 1950 года в г. Ташкенте. Через 5 лет у акад. Сахарова отняли награды."
+            ),
+            [
+                "Родился 5 мая 1950 года в г. Ташкенте.",
+                "Через 5 лет у акад. Сахарова отняли награды."
+            ]
+        );
+        assert_eq!(
+            sentences(
+                "Объём 300 куб. м. Затем всё. Офис на пр. Мира. Купили соль и пр. Потом ушли."
+            ),
+            [
+                "Объём 300 куб. м.",
+                "Затем всё.",
+                "Офис на пр. Мира.",
+                "Купили соль и пр.",
+                "Потом ушли."
+            ]
+        );
+        assert_eq!(
+            sentences("Справки по тел. 8 (495) 123-45-67. Нет у них тел. Есть души."),
+            [
+                "Справки по тел. 8 (495) 123-45-67.",
+                "Нет у них тел.",
+                "Есть души."
+            ]
+        );
+        assert_eq!(
+            tokens("Купили и т. д\u{301}. Потом и т. д\u{301}."),
+            [
+                "Купили",
+                "и",
+                "т.",
+                "д\u{301}",
+                ".",
+                "Потом",
+                "и",
+                "т.",
+                "д\u{301}",
+                "."
+            ]
+        );
+        assert_eq!(
+            sentences("Наши услуги:\n✅ Ремонт квартир\n✅ Покраска стен\n\nСкидки!\n🔥 Успейте"),
+            [
+                "Наши услуги:",
+                "✅ Ремонт квартир",
+                "✅ Покраска стен",
+                "Скидки!",
+                "🔥 Успейте"
+            ]
+        );
+        assert_eq!(
+            sentences("Программа\n1\u{fe0f}\u{20e3} Регистрация\n2\u{fe0f}\u{20e3} Доклады"),
+            [
+                "Программа",
+                "1\u{fe0f}\u{20e3} Регистрация",
+                "2\u{fe0f}\u{20e3} Доклады"
             ]
         );
     }

@@ -239,7 +239,8 @@ impl Segmenter {
     /// follows. An abbreviation ends a sentence before a capital letter when the language lists it
     /// («и т. д.») or it follows a number («в 1914 г.»); initials do not. A line break starts a
     /// sentence before a list item or a line of dialogue, at a line without words and after a line
-    /// without final punctuation before a capital letter, except in verse.
+    /// without final punctuation before a capital letter, except in verse and in text wrapped at the
+    /// width of the page (a line of the paragraph goes on with a lowercase letter).
     pub fn sentenize(&self, text: &str) -> Vec<Span> {
         let split = self.split(text, false);
         let tokens = &split.tokens;
@@ -256,8 +257,8 @@ impl Segmenter {
 
     /// The document of a text: its tokens, one word per token, its sentences as
     /// [`sentenize`](Self::sentenize) gives them, its paragraphs and their lines, each with how it
-    /// begins: a line that goes on with a lowercase letter outside verse is a wrap at the width of
-    /// the page, other lines are breaks of the author
+    /// begins: a line that goes on with a lowercase letter outside verse and does not start a
+    /// sentence is a wrap at the width of the page, other lines are breaks of the author
     pub fn segment(&self, text: &str) -> Document {
         let split = self.split(text, true);
         Document::segmented(

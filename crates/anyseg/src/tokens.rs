@@ -26,7 +26,7 @@ fn char_at(text: &str, index: usize) -> Option<char> {
     text.get(index..)?.chars().next()
 }
 
-fn is_mark(character: char) -> bool {
+pub(crate) fn is_mark(character: char) -> bool {
     is_combining_mark(character)
 }
 
