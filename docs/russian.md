@@ -49,7 +49,7 @@ A hyphenated word is one token: «кто-то», «кое-как», «мини-�
 
 *   a particle after a hyphen - «-то», «-ка», «-таки», «-с», «-де»: «Вася-то», «скажи-ка»; indefinite pronouns and adverbs keep their «-то» («кто-то», «где-то»), and set phrases stay whole («всё-таки»);
 *   a range or an approximate number: «1941-1945», «XIX-XX», «2,5-3,5», «два-три»;
-*   a compound whose first part inflects, as the UD guidelines ask: «Ростова-на-Дону», «учеными-энтузиастами», «Формулы-1».
+*   a compound whose first part inflects, as the UD guidelines ask, where the segmenter can see it without a dictionary: two parts that end alike, as inflected forms do («учеными-энтузиастами», «человека-паука»), a word and a number («Формулы-1»), a name with «-на-» («Ростова-на-Дону»). Other compounds stay whole: «женщины-врача».
 
 === "Code"
 
@@ -71,7 +71,7 @@ A hyphenated word is one token: «кто-то», «кое-как», «мини-�
 
 ### Numbers
 
-Decimal numbers, numbers with groups of digits separated by spaces, dates, times, and phone numbers with three or more groups are one token each.
+Decimal numbers, numbers with groups of digits separated by spaces, dates with dots, times, and three or more groups of digits joined by hyphens, as in phone numbers, are one token each. A phone number written with spaces or brackets and a date with slashes split.
 
 === "Code"
 
@@ -121,7 +121,7 @@ A run of final marks is one token: «?!», «...», «!!!». So are an emoticon,
 
 ## Sentences { #sentences }
 
-A paragraph always starts a sentence. Inside it, a sentence ends at final marks - «.», «!», «?», «…» and their runs, with the closing quotes and brackets right after them - when a capital letter, a digit, an opening quote or bracket before a capital letter, or a dash before a capital letter follows. A lowercase letter goes on with the sentence: the words of the author after a line of dialogue («— спросил он») and a thought after an ellipsis. A period without a space before a capital letter ends a sentence too.
+A paragraph always starts a sentence. Inside it, a sentence ends at final marks - «.», «!», «?», «…» and their runs, with the closing quotes and brackets right after them - when a capital letter, a digit, an opening quote or bracket before a capital letter, or a dash before a capital letter follows - but not a source in brackets after a quotation: «…!» (Пушкин). A lowercase letter goes on with the sentence: the words of the author after a line of dialogue («— спросил он») and a thought after an ellipsis. A period without a space before a capital letter ends a sentence too.
 
 === "Code"
 
@@ -140,9 +140,9 @@ A paragraph always starts a sentence. Inside it, a sentence ends at final marks 
     ['Он пришел.', 'Она ушла.', 'В 10.30.', 'Начали.']
     ```
 
-### Abbreviations
+### Abbreviations { #sentence-abbreviations }
 
-An abbreviation ends a sentence before a capital letter when it usually stands at the end - «и т. д.», «и т. п.», «и др.», «и пр.», «н. э.» - or when it follows a number: «в 1914 г.», «15 000 р.», «60 км/ч.». Other abbreviations and initials do not end a sentence: «г. Москва», «А. С. Пушкин».
+An abbreviation ends a sentence before a capital letter when the language lists it as one that usually stands at the end - «т. д.», «т. п.», «др.», «и пр.», «проч.», «н. э.», «тел.» - or when it follows a number: «в 1914 г.», «15 000 р.», «60 км/ч.». Other abbreviations and initials do not end a sentence: «г. Москва», «А. С. Пушкин».
 
 === "Code"
 
@@ -161,7 +161,7 @@ An abbreviation ends a sentence before a capital letter when it usually stands a
 
 ### Posts and messages
 
-An emoticon after final marks stays in the sentence; an emoticon without them ends a sentence before a capital letter, as a period would. A mention after final marks or an emoticon starts a sentence, and a separator of stars - «* * *», «***» - is a sentence of its own.
+An emoticon or an emoji after final marks stays in the sentence; without them, it ends a sentence before a capital letter, as a period would. A mention after final marks or an emoticon starts a sentence. A separator of stars - «* * *», «***» - is a sentence of its own on a line of its own, or after final marks before a capital letter.
 
 === "Code"
 
@@ -200,7 +200,7 @@ A paragraph is the part of the text between blank lines (or the paragraph separa
 
 *   before a list item - a bullet, an emoji, «1)», «1.», «а)» - or a line of dialogue;
 *   at a line without words: «***», «-»;
-*   after a line without final punctuation before a line with a capital letter: a heading, a line of a post. In verse, where lines end with a comma before a capital letter, and in text wrapped at the width of the page, where a line goes on with a lowercase letter, this rule is silent.
+*   after a line without final punctuation before a line with a capital letter: a heading, a line of a post. In a paragraph where some line ends with a comma or a semicolon before a line with a capital letter, as in verse, or some line goes on with a lowercase letter, as in text wrapped at the width of the page, this rule is silent for all its lines.
 
 === "Code"
 

@@ -35,7 +35,7 @@ A segmented text: its tokens, its words with the columns of [CoNLL-U](https://un
 | `paragraphs` | `Paragraphs` | [Paragraphs](#paragraph) in order |
 | `lines` | `Lines` | [Lines](#line) of the paragraphs in order |
 
-The parts are views of the document, made when they are read. `Tokens`, `Words` and the other collections are sequences (`collections.abc.Sequence`): they have a length, indices from the end and slices, and a slice with step 1 is a collection of the same kind. Two views are equal when they are the same part of the same document.
+The parts are views of the document, made when they are read. `Tokens`, `Words` and the other collections are sequences (`collections.abc.Sequence`): they have a length, indices from the end and slices, and a slice with step 1 is a collection of the same kind. Two tokens, words, sentences, paragraphs or lines are equal when they are the same part of the same document; the collections compare by identity. A document and its parts cannot be pickled.
 
 === "Code"
 
@@ -74,8 +74,8 @@ A word of the document with its columns of CoNLL-U. Empty columns are `None`. Th
 | `index` | `int` | Position of the word in the document, from 0 |
 | `id` | `int` | ID of the word in its sentence, from 1 |
 | `form` | `str` | Form of the word |
-| `lemma`, `upos`, `xpos`, `feats`, `deprel`, `deps`, `misc` | `str \| None` | Columns of CoNLL-U |
-| `head` | `int \| None` | ID of the head word in the sentence, 0 for the root |
+| `lemma`, `upos`, `xpos`, `feats`, `deprel`, `deps`, `misc` | `str | None` | Columns of CoNLL-U |
+| `head` | `int | None` | ID of the head word in the sentence, 0 for the root |
 | `token` | `Token` | Token of the word |
 | `sentence` | `Sentence` | Sentence of the word |
 
@@ -111,7 +111,7 @@ A line of a paragraph, without the whitespace around it.
 | `index` | `int` | Position of the line in the document, from 0 |
 | `start`, `end` | `int` | Position of the first character and the position after the last one |
 | `text` | `str` | Text of the line |
-| `break_before` | `str \| None` | How the line begins: `None` for the first line of a paragraph, `"author"` for a break the author made (a verse line, a list item, a paragraph per line), `"typeset"` for a wrap at the width of the page, as in text extracted from PDF |
+| `break_before` | `str | None` | How the line begins: `None` for the first line of a paragraph, `"author"` for a break the author made (a verse line, a list item, a paragraph per line), `"typeset"` for a wrap at the width of the page, as in text extracted from PDF |
 
 ## Methods
 
@@ -192,7 +192,7 @@ The document in CoNLL-U, every sentence followed by a blank line. A document rea
 
 | Parameter | Type | Default | Description |
 | :-------- | :--- | :------ | :---------- |
-| `doc_id` | `str` | `None` | ID of the document: `newdoc` gets it and `sent_id` becomes `ID-N`, so that the sentences of several documents in one file have distinct IDs |
+| `doc_id` | `str` | `None` | ID of the document: `newdoc` gets it and `sent_id` becomes `ID-N`, so that the sentences of several documents in one file have distinct IDs; a document read from CoNLL-U keeps its own comments and ignores it |
 
 Exceptions:
 
@@ -254,7 +254,8 @@ The document of the tokens of a text made by another tool, one word per token. P
 
 Exceptions:
 
-- `ValueError` - the lists differ in length, a token is empty, out of the text, overlaps the token before it, starts or ends with whitespace or runs over a paragraph boundary, the text between the tokens holds anything but whitespace, or the sentence starts are not increasing token indices.
+- `ValueError` - the lists differ in length, a token is empty, out of the text, overlaps the token before it, starts or ends with whitespace or runs over a paragraph boundary, the text between the tokens holds anything but whitespace and the invisible separators, or the sentence starts are not increasing token indices;
+- `OverflowError` - a sentence start is negative.
 
 === "Code"
 
@@ -279,11 +280,11 @@ Exceptions:
 read_conllu(text)
 ```
 
-The documents of a text in CoNLL-U, in order. The comment `newdoc` starts a document and `newpar` a paragraph. The text of a sentence is its comment `text` or, without it, the forms of its tokens with the spaces of `SpaceAfter` and `SpacesAfter`; the sentences of a paragraph are joined by a space, the paragraphs by a blank line. Comments, the lines of multiword tokens and empty nodes are kept, so that `to_conllu` writes the text back as it was.
+The documents of a text in CoNLL-U, in order. The comment `newdoc` starts a document and `newpar` a paragraph. The text of a sentence is its comment `text` or, without it, the forms of its tokens with the spaces of `SpaceAfter` and `SpacesAfter`; the sentences of a paragraph are joined by a space (none after `SpaceAfter=No`), the paragraphs by a blank line. Comments, the lines of multiword tokens and empty nodes are kept, so that `to_conllu` writes the text back as it was.
 
 Exceptions:
 
-- `ValueError` - a line is neither a comment, a blank line nor a token line of 10 columns with IDs in order, or the forms do not match the text of their sentence.
+- `ValueError` - the text does not end with a blank line, a line is neither a comment, a blank line nor a token line of 10 columns with IDs in order and a numeric head, a comment follows token lines, a sentence has no words or a multiword token misses some, or the forms do not match the text of their sentence.
 
 === "Code"
 

@@ -40,7 +40,7 @@ The object keeps them read-only: `lang` is the code of the language, `abbreviati
 
 The rules of a language know the common abbreviations and the usual kinds of tokens; a text of a special field may need more.
 
-*   **Abbreviations** are words that keep a period after them: `"сущ"` or `"сущ."`, in any case. Such a word with its period is one token and ends a sentence as the [abbreviations of the language](russian.md#abbreviations) do. The segmenter keeps them lowercase, without the period and the stress marks.
+*   **Abbreviations** are words that keep a period after them: `"сущ"` or `"сущ."`, in any case. Such a word with its period is one token and ends a sentence as the [abbreviations of the language](russian.md#sentence-abbreviations) do. The segmenter keeps them lowercase, without the period and the stress marks.
 *   **Tokens** are strings that are one token each, as written: `"C++"`, `"т.н."`. A string matches where a token would start and no letter or digit adjoins it; of several strings that match at one place, the longest wins.
 
 === "Code"
