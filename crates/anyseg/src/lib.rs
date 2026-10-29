@@ -25,8 +25,10 @@ mod conllu;
 mod document;
 mod lang;
 mod layout;
+mod sentences;
 mod tokens;
 
+use sentences::Split;
 use tokens::Exceptions;
 
 pub use conllu::{ConlluError, read_conllu};
@@ -221,41 +223,78 @@ impl Segmenter {
     /// hyphenated words, numbers with decimal commas and points, dates, times and digit groups,
     /// URLs, e-mail addresses, file names, mentions, hashtags, emoticons and runs of emoji are one
     /// token each, as are runs of final marks («?!», «...»). Abbreviations and initials keep their
-    /// period, except at the end of a paragraph. Particles after a hyphen («Вася-то»), ranges
+    /// period, except at the end of a sentence. Particles after a hyphen («Вася-то»), ranges
     /// («2-3»), approximate numbers («два-три») and compounds whose first part inflects
     /// («Ростова-на-Дону», «Формулы-1», «учеными-энтузиастами») split at the hyphen.
     /// The lists of the language decide which words are abbreviations, particles and numerals;
     /// the lists of the segmenter add abbreviations and strings that are one token each.
     pub fn tokenize(&self, text: &str) -> Vec<Span> {
-        let tables = lang::tables(self.language);
-        let mut spans = Vec::with_capacity(text.len() / 8);
-        for lines in layout::paragraphs(text) {
-            let span = Span {
-                start: lines[0].start,
-                end: lines[lines.len() - 1].end,
-            };
-            tokens::tokenize(text, span, tables, &self.exceptions, &mut spans);
-        }
-        spans
+        self.split(text, false).tokens
     }
 
-    /// The sentences of a text in order: every paragraph, the part of the text between blank lines,
-    /// without the separators around it
+    /// The sentences of a text in order, from the start of the first token to the end of the last.
+    /// A paragraph, the part of the text between blank lines, starts a sentence; inside it a
+    /// sentence ends at final marks («.», «?!», «...») with the closing quotes and brackets after
+    /// them, when a capital letter, a digit, or a dash or an opening quote before a capital letter
+    /// follows. An abbreviation ends a sentence before a capital letter when the language lists it
+    /// («и т. д.») or it follows a number («в 1914 г.»); initials do not. A line break starts a
+    /// sentence before a list item or a line of dialogue, at a line without words and after a line
+    /// without final punctuation before a capital letter, except in verse and in text wrapped at the
+    /// width of the page (a line of the paragraph goes on with a lowercase letter).
     pub fn sentenize(&self, text: &str) -> Vec<Span> {
-        layout::paragraphs(text)
-            .iter()
-            .map(|lines| Span {
-                start: lines[0].start,
-                end: lines[lines.len() - 1].end,
+        let split = self.split(text, false);
+        let tokens = &split.tokens;
+        (0..split.starts.len())
+            .map(|index| {
+                let end = split.starts.get(index + 1).map_or(tokens.len(), |&end| end);
+                Span {
+                    start: tokens[split.starts[index]].start,
+                    end: tokens[end - 1].end,
+                }
             })
             .collect()
     }
 
     /// The document of a text: its tokens, one word per token, its sentences as
-    /// [`sentenize`](Self::sentenize) gives them, its paragraphs and their lines
+    /// [`sentenize`](Self::sentenize) gives them, its paragraphs and their lines, each with how it
+    /// begins: a line that goes on with a lowercase letter outside verse and does not start a
+    /// sentence is a wrap at the width of the page, other lines are breaks of the author
     pub fn segment(&self, text: &str) -> Document {
-        Document::assemble(text.to_owned(), self.tokenize(text), None)
-            .expect("tokens of the segmenter lie inside paragraphs")
+        let split = self.split(text, true);
+        Document::segmented(
+            text.to_owned(),
+            split.tokens,
+            split.starts,
+            split.paragraphs,
+            split.lines.unwrap_or_default(),
+        )
+    }
+
+    fn split(&self, text: &str, lines: bool) -> Split {
+        let tables = lang::tables(self.language);
+        let mut split = Split {
+            tokens: Vec::with_capacity(text.len() / 8),
+            lines: lines.then(Vec::new),
+            ..Split::default()
+        };
+        let mut paragraph = Vec::new();
+        for paragraph_lines in layout::paragraphs(text) {
+            let span = Span {
+                start: paragraph_lines[0].start,
+                end: paragraph_lines[paragraph_lines.len() - 1].end,
+            };
+            paragraph.clear();
+            tokens::tokenize(text, span, tables, &self.exceptions, &mut paragraph);
+            sentences::split(
+                text,
+                &paragraph_lines,
+                &paragraph,
+                tables,
+                &self.exceptions,
+                &mut split,
+            );
+        }
+        split
     }
 }
 
@@ -311,13 +350,13 @@ mod tests {
     }
 
     #[test]
-    fn sentence_is_paragraph() {
+    fn sentences_inside_paragraphs() {
         let text = "\n Мама мыла раму.\nРама чистая.\u{a0}\n \n\u{feff}Утро";
         let segmenter = Segmenter::new("ru").unwrap();
         let spans = segmenter.sentenize(text);
         assert_eq!(
             pieces(text, &spans),
-            ["Мама мыла раму.\nРама чистая.", "Утро"]
+            ["Мама мыла раму.", "Рама чистая.", "Утро"]
         );
         let doc = segmenter.segment(text);
         assert_eq!(doc.tokens(), segmenter.tokenize(text));
@@ -326,6 +365,7 @@ mod tests {
             .collect();
         assert_eq!(sentences, spans);
         assert_eq!((doc.paragraph_count(), doc.lines().len()), (2, 3));
+        assert_eq!(doc.paragraph(0).sentences, 0..2);
     }
 
     #[test]

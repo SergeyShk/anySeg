@@ -20,13 +20,13 @@ const SUFFIXES: &[&str] = &[
 ];
 
 /// Emoticons that are not a face of eyes and a mouth
-const EMOTICONS: &[&str] = &["^_^", "^^", "-_-", "o_O", "O_o", "о_О", "О_о", "<3"];
+pub(crate) const EMOTICONS: &[&str] = &["^_^", "^^", "-_-", "o_O", "O_o", "о_О", "О_о", "<3"];
 
 fn char_at(text: &str, index: usize) -> Option<char> {
     text.get(index..)?.chars().next()
 }
 
-fn is_mark(character: char) -> bool {
+pub(crate) fn is_mark(character: char) -> bool {
     is_combining_mark(character)
 }
 
@@ -35,7 +35,7 @@ fn is_joiner(character: char) -> bool {
     matches!(character, '\u{ad}' | '\u{200c}' | '\u{200d}')
 }
 
-fn is_emoji(character: char) -> bool {
+pub(crate) fn is_emoji(character: char) -> bool {
     matches!(
         character as u32,
         0x1F000..=0x1FAFF | 0x203C | 0x2049 | 0x2600..=0x27BF | 0x2B05..=0x2B07 | 0x2B1B..=0x2B1C | 0x2B50 | 0x2B55
@@ -109,6 +109,8 @@ struct Scanner<'a> {
     chain: (usize, Option<usize>),
     /// The end of the labels where no token can start an e-mail address or a domain
     not_web: usize,
+    /// The end of the labels last read for a domain
+    domain_chain: usize,
 }
 
 /// The tokens of a paragraph, appended to `out`
@@ -119,7 +121,6 @@ pub(crate) fn tokenize(
     exceptions: &Exceptions,
     out: &mut Vec<Span>,
 ) {
-    let first = out.len();
     let mut scanner = Scanner {
         text,
         end: span.end,
@@ -129,6 +130,7 @@ pub(crate) fn tokenize(
         open: 0,
         chain: (0, None),
         not_web: 0,
+        domain_chain: 0,
     };
     let mut index = span.start;
     while let Some(character) = scanner.get(index) {
@@ -136,30 +138,6 @@ pub(crate) fn tokenize(
             index += character.len_utf8();
         } else {
             index = scanner.token(index, character);
-        }
-    }
-    // A period after an abbreviation that ends a paragraph ends a sentence: it is a token of its own
-    if out.len() > first
-        && let Some(last) = out.last().copied()
-    {
-        let piece = last.slice(text);
-        if piece.len() > 1
-            && piece.ends_with('.')
-            && !exceptions.tokens.contains(piece)
-            && piece[..piece.len() - 1]
-                .chars()
-                .next_back()
-                .is_some_and(|character| character.is_alphabetic() || is_mark(character))
-        {
-            out.pop();
-            out.push(Span {
-                start: last.start,
-                end: last.end - 1,
-            });
-            out.push(Span {
-                start: last.end - 1,
-                end: last.end,
-            });
         }
     }
 }
@@ -372,21 +350,20 @@ impl Scanner<'_> {
     /// The end of a host name in the labels from `start` to `end`: after the last label that `top` accepts,
     /// so that a sentence glued to it after a period («example.ru.Регистрация») is left out
     fn host(&self, start: usize, end: usize, top: impl Fn(&str) -> bool) -> Option<usize> {
-        let labels: Vec<(usize, &str)> = self.text[start..end]
+        let mut labels = self.text[start..end]
             .split('.')
             .scan(start, |position, label| {
                 let at = *position;
                 *position += label.len() + 1;
                 Some((at, label))
             })
-            .collect();
-        for index in 1..labels.len() {
-            let (at, label) = labels[index];
-            let last = index + 1 == labels.len();
-            let glued = labels
-                .get(index + 1)
-                .is_some_and(|(_, next)| next.starts_with(char::is_uppercase));
-            if top(label) && (last || glued) {
+            .skip(1)
+            .peekable();
+        while let Some((at, label)) = labels.next() {
+            let ends = labels
+                .peek()
+                .is_none_or(|(_, next)| next.starts_with(char::is_uppercase));
+            if ends && top(label) {
                 return Some(at + label.len());
             }
         }
@@ -403,8 +380,12 @@ impl Scanner<'_> {
 
     /// A bare domain («example.ru», «Газета.ru») with its port and path, or a file name («robots.txt»);
     /// otherwise the end of the labels read
-    fn domain(&self, start: usize) -> Result<usize, usize> {
-        let labels = self.labels(start, ".-_");
+    fn domain(&mut self, start: usize) -> Result<usize, usize> {
+        // Every start inside the same labels reads them to the same end: read them once
+        if start >= self.domain_chain {
+            self.domain_chain = self.labels(start, ".-_");
+        }
+        let labels = self.domain_chain;
         let mut end = self
             .host(start, labels, |top| {
                 SUFFIXES.contains(&self.tables.key(top).as_str())
@@ -809,23 +790,14 @@ impl Scanner<'_> {
 
 #[cfg(all(test, feature = "ru"))]
 mod tests {
-    use super::*;
-    use crate::Language;
-    use crate::lang::tables;
 
     fn tokens(text: &str) -> Vec<&str> {
-        let mut out = Vec::new();
-        tokenize(
-            text,
-            Span {
-                start: 0,
-                end: text.len(),
-            },
-            tables(Language::Russian),
-            &Exceptions::default(),
-            &mut out,
-        );
-        out.iter().map(|span| span.slice(text)).collect()
+        crate::Segmenter::new("ru")
+            .unwrap()
+            .tokenize(text)
+            .iter()
+            .map(|span| span.slice(text))
+            .collect()
     }
 
     #[test]
@@ -1352,6 +1324,8 @@ mod tests {
             format!("{}1", "1-".repeat(40_000)),
             format!("{}a", "(".repeat(40_000)),
             format!("{}a{}", "(".repeat(20_000), ")".repeat(40_000)),
+            "Сайт.рф.".repeat(20_000),
+            "B.ru.".repeat(20_000),
             format!("[{}a", "\u{361}".repeat(40_000)),
             "\u{301}".repeat(40_000),
         ] {
