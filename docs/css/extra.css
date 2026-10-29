@@ -6,18 +6,13 @@
     width: 40px;
 }
 
-/* The orange of the logo; links in a darker shade on white, in the light one on the dark scheme */
+/* The orange of the logo; links in a darker shade on white and in the light one on the dark scheme */
 [data-md-color-primary="custom"] {
     --md-primary-fg-color: #ef6c00;
     --md-primary-fg-color--light: #ffb74d;
     --md-primary-fg-color--dark: #e65100;
     --md-primary-bg-color: #ffffff;
     --md-primary-bg-color--light: #ffffffb3;
-}
-
-[data-md-color-accent="custom"] {
-    --md-accent-fg-color: #e65100;
-    --md-accent-fg-color--transparent: #e651001a;
 }
 
 [data-md-color-scheme="default"][data-md-color-primary="custom"] {
