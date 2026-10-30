@@ -480,6 +480,10 @@ mod tests {
             .segment(&"Ёж идёт домой. Кот спит.\n".repeat(1000));
         assert_eq!(doc.tokens.capacity(), doc.tokens.len());
         assert_eq!(doc.sentence_tokens.capacity(), doc.sentence_tokens.len());
+        assert_eq!(
+            doc.paragraph_sentences.capacity(),
+            doc.paragraph_sentences.len()
+        );
         assert_eq!(doc.lines.capacity(), doc.lines.len());
     }
 

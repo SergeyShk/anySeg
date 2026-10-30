@@ -638,6 +638,17 @@ mod tests {
     }
 
     #[test]
+    fn fitted_vectors_are_new_blocks() {
+        // Shrinking in place would keep the block, and its rest would not be reused on macOS
+        let mut vector = Vec::with_capacity(200_000);
+        vector.resize(150_000, Span { start: 0, end: 1 });
+        let block = vector.as_ptr();
+        let vector = fitted(vector);
+        assert_eq!(vector.capacity(), vector.len());
+        assert_ne!(vector.as_ptr(), block);
+    }
+
+    #[test]
     fn blank_text() {
         let doc = document(" \n\n ", None);
         assert_eq!(
