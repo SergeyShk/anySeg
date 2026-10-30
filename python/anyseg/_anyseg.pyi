@@ -75,6 +75,8 @@ class Document:
     def column(
         self, name: Literal["lemma", "upos", "xpos", "feats", "deprel", "deps", "misc"]
     ) -> list[str | None]: ...
+    @overload
+    def column(self, name: str) -> list[str] | list[str | None] | list[int | None]: ...
     def set_columns(
         self,
         *,

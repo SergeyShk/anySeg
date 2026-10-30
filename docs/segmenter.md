@@ -4,7 +4,7 @@
 Segmenter(lang, *, abbreviations=None, tokens=None)
 ```
 
-Segmenter of texts in one language: it gives the tokens and the sentences of a text as spans of it, and the [document](document.md) of a text. The text is never changed. A segmenter is immutable: create it once and use it throughout the program, from several threads at once; it can be pickled and equals the segmenters of the same language and lists.
+Segmenter of texts in one language: it gives the tokens and the sentences of a text as spans of it, and the [document](document.md) of a text. The text is never changed. A segmenter is immutable: create it once and use it throughout the program, from several threads at once, which segment long texts in parallel; it can be pickled and equals the segmenters of the same language and lists.
 
 Exceptions:
 
