@@ -21,6 +21,7 @@
   <a href="https://github.com/SergeyShk/anySeg/actions/workflows/ci.yml"><img src="https://github.com/SergeyShk/anySeg/actions/workflows/ci.yml/badge.svg" alt="Build"></a>
   <a href="https://github.com/astral-sh/ruff"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json" alt="Ruff"></a>
   <a href="https://github.com/SergeyShk/anySeg/blob/master/LICENSE.txt"><img src="https://img.shields.io/github/license/sergeyshk/anyseg.svg" alt="License"></a>
+  <a href="https://doi.org/10.5281/zenodo.23788634"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.23788634.svg" alt="DOI"></a>
 </p>
 
 ---
@@ -146,13 +147,14 @@ The code and the lists of the languages are distributed under the [MIT](https://
 
 ## Citation
 
-If you use **anySeg** in research or software, please cite it with the following BibTeX entry - citations help the development and support of the project. The same metadata is in [CITATION.cff](https://github.com/SergeyShk/anySeg/blob/master/CITATION.cff), which GitHub shows under the "Cite this repository" button.
+If you use **anySeg** in research or software, please cite it with the following BibTeX entry - citations help the development and support of the project. The same metadata is in [CITATION.cff](https://github.com/SergeyShk/anySeg/blob/master/CITATION.cff), which GitHub shows under the "Cite this repository" button. The concept DOI [10.5281/zenodo.23788634](https://doi.org/10.5281/zenodo.23788634) on Zenodo points to all versions of the package; the DOI of a version is on the page of its release.
 
 ```bibtex
 @software{anySeg,
   author = {Sergey Shkarin},
   title = {{anySeg, fast segmentation of text into tokens and sentences}},
   year = 2026,
+  doi = {10.5281/zenodo.23788634},
   url = {https://github.com/SergeyShk/anySeg}
 }
 ```
