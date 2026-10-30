@@ -561,6 +561,7 @@ def test_text_of_a_subclass():
     def documents():
         return sum(type(value) is Document for value in gc.get_objects())
 
+    gc.collect()
     before = documents()
     for _ in range(100):
         text = Text("Ёж идёт домой. Кот спит.")
