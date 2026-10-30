@@ -2,7 +2,7 @@
 
 ## Requirements
 
-*   `python` 3.11 or newer, including free-threaded 3.14t
+*   `python` 3.11 or newer, including free-threaded 3.14t and 3.15t
 
 The package has no dependencies. Building it from the source also needs [Rust](https://www.rust-lang.org/tools/install) 1.88 or newer.
 

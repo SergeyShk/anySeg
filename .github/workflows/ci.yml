@@ -59,10 +59,12 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        python-version: ["3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.11", "3.12", "3.13", "3.14", "3.15"]
         include:
           - os: ubuntu-latest
             python-version: "3.14t"
+          - os: ubuntu-latest
+            python-version: "3.15t"
           - os: windows-latest
             python-version: "3.12"
           - os: macos-latest
