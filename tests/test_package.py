@@ -64,7 +64,12 @@ def test_wheel_contents(tmp_path):
     assert ("-abi3-" in wheel.name) != bool(sysconfig.get_config_var("Py_GIL_DISABLED"))
     with zipfile.ZipFile(wheel) as archive:
         names = set(archive.namelist())
-    assert {"anyseg/__init__.py", "anyseg/_anyseg.pyi", "anyseg/py.typed"} <= names
+    assert {
+        "anyseg/__init__.py",
+        "anyseg/_anyseg.pyi",
+        "anyseg/py.typed",
+        "anyseg/spacy.py",
+    } <= names
     modules = [
         name for name in names if re.fullmatch(r"anyseg/_anyseg(\.[\w-]+)?\.(so|pyd)", name)
     ]

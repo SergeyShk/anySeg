@@ -71,8 +71,11 @@ def lines(text):
 
 @pytest.mark.parametrize("page", PAGES, ids=[page.name for page in PAGES])
 def test_documentation(page):
+    text = page.read_text(encoding="utf-8")
+    if "import spacy" in text:
+        pytest.importorskip("spacy")
     namespace = {}
-    tabs = list(TABS.finditer(page.read_text(encoding="utf-8")))
+    tabs = list(TABS.finditer(text))
     assert tabs
     for match in tabs:
         code = re.sub(r"^``` ?\w*\n|^```\n?", "", textwrap.dedent(match.group(1)), flags=re.M)
