@@ -952,7 +952,7 @@
 </tr>
 </tbody>
 </table>
-<p>The parts are views of the document, made when they are read. <code>Tokens</code>, <code>Words</code> and the other collections are sequences (<code>collections.abc.Sequence</code>): they have a length, indices from the end and slices, and a slice with step 1 is a collection of the same kind. Two tokens, words, sentences, paragraphs or lines are equal when they are the same part of the same document; the collections compare by identity. A document and its parts cannot be pickled.</p>
+<p>The parts are views of the document, made when they are read; iterating over a collection makes them one at a time. <code>Tokens</code>, <code>Words</code> and the other collections are sequences (<code>collections.abc.Sequence</code>): they have a length, indices from the end and slices, and a slice with step 1 is a collection of the same kind. Two tokens, words, sentences, paragraphs or lines are equal when they are the same part of the same document; the collections compare by identity. A document and its parts cannot be pickled.</p>
 <div class="tabbed-set tabbed-alternate" data-tabs="2:2"><input checked="checked" id="__tabbed_2_1" name="__tabbed_2" type="radio" /><input id="__tabbed_2_2" name="__tabbed_2" type="radio" /><div class="tabbed-labels"><label for="__tabbed_2_1">Code</label><label for="__tabbed_2_2">Result</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
@@ -1330,7 +1330,7 @@
 <p>Exceptions:</p>
 <ul>
 <li><code>ValueError</code> - the lists differ in length, a token is empty, out of the text, overlaps the token before it, starts or ends with whitespace or runs over a paragraph boundary, the text between the tokens holds anything but whitespace and the invisible separators, or the sentence starts are not increasing token indices;</li>
-<li><code>OverflowError</code> - a sentence start is negative.</li>
+<li><code>TypeError</code> - a list holds something other than integers.</li>
 </ul>
 <div class="tabbed-set tabbed-alternate" data-tabs="5:2"><input checked="checked" id="__tabbed_5_1" name="__tabbed_5" type="radio" /><input id="__tabbed_5_2" name="__tabbed_5" type="radio" /><div class="tabbed-labels"><label for="__tabbed_5_1">Code</label><label for="__tabbed_5_2">Result</label></div>
 <div class="tabbed-content">
@@ -1351,10 +1351,10 @@
 <h2 id="read_conllu">Reading CoNLL-U<a class="headerlink" href="#read_conllu" title="Permanent link">&para;</a></h2>
 <div class="signature highlight"><pre><span></span><code><span class="n">read_conllu</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
 </code></pre></div>
-<p>The documents of a text in CoNLL-U, in order. The comment <code>newdoc</code> starts a document and <code>newpar</code> a paragraph. The text of a sentence is its comment <code>text</code> or, without it, the forms of its tokens with the spaces of <code>SpaceAfter</code> and <code>SpacesAfter</code>; the sentences of a paragraph are joined by a space (none after <code>SpaceAfter=No</code>), the paragraphs by a blank line. Comments, the lines of multiword tokens and empty nodes are kept, so that <code>to_conllu</code> writes the text back as it was.</p>
+<p>The documents of a text in CoNLL-U, in order. The comment <code>newdoc</code> starts a document and <code>newpar</code> a paragraph. The text of a sentence is its comment <code>text</code> or, without it, the forms of its tokens with the spaces of <code>SpaceAfter</code> and <code>SpacesAfter</code>; the sentences of a paragraph are joined by a space (none after <code>SpaceAfter=No</code>), the paragraphs by a blank line. Comments, the lines of multiword tokens and empty nodes are kept, so that <code>to_conllu</code> writes the text back as it was, with LF line ends and heads as plain numbers. A byte order mark at the start is skipped.</p>
 <p>Exceptions:</p>
 <ul>
-<li><code>ValueError</code> - the text does not end with a blank line, a line is neither a comment, a blank line nor a token line of 10 columns with IDs in order and a numeric head, a comment follows token lines, a sentence has no words or a multiword token misses some, or the forms do not match the text of their sentence.</li>
+<li><code>ValueError</code> - the text does not end with a blank line, a line is neither a comment, a blank line nor a token line of 10 columns with IDs in order and a numeric head, a comment follows token lines, a sentence has no words or a multiword token misses some, or the forms do not match the text of their sentence or the text holds characters that no token has.</li>
 </ul>
 <div class="tabbed-set tabbed-alternate" data-tabs="6:2"><input checked="checked" id="__tabbed_6_1" name="__tabbed_6" type="radio" /><input id="__tabbed_6_2" name="__tabbed_6" type="radio" /><div class="tabbed-labels"><label for="__tabbed_6_1">Code</label><label for="__tabbed_6_2">Result</label></div>
 <div class="tabbed-content">

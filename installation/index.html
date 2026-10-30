@@ -401,10 +401,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#requirements" class="md-nav__link">
+  <a href="#prebuilt-wheels" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Requirements
+        Prebuilt wheels
       
     </span>
   </a>
@@ -412,10 +412,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#from-the-repository" class="md-nav__link">
+  <a href="#building-from-source" class="md-nav__link">
     <span class="md-ellipsis">
       
-        From the repository
+        Building from source
       
     </span>
   </a>
@@ -423,10 +423,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#rust-crate" class="md-nav__link">
+  <a href="#rust" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Rust crate
+        Rust
       
     </span>
   </a>
@@ -613,10 +613,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#requirements" class="md-nav__link">
+  <a href="#prebuilt-wheels" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Requirements
+        Prebuilt wheels
       
     </span>
   </a>
@@ -624,10 +624,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#from-the-repository" class="md-nav__link">
+  <a href="#building-from-source" class="md-nav__link">
     <span class="md-ellipsis">
       
-        From the repository
+        Building from source
       
     </span>
   </a>
@@ -635,10 +635,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#rust-crate" class="md-nav__link">
+  <a href="#rust" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Rust crate
+        Rust
       
     </span>
   </a>
@@ -666,21 +666,24 @@
 
 
 <h1 id="installation">Installation<a class="headerlink" href="#installation" title="Permanent link">&para;</a></h1>
-<h2 id="requirements">Requirements<a class="headerlink" href="#requirements" title="Permanent link">&para;</a></h2>
-<ul>
-<li><code>python</code> 3.11 or newer, including free-threaded 3.14t</li>
-</ul>
-<p>The package has no dependencies. Building it from the source also needs <a href="https://www.rust-lang.org/tools/install">Rust</a> 1.88 or newer.</p>
-<h2 id="from-the-repository">From the repository<a class="headerlink" href="#from-the-repository" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/SergeyShk/anySeg.git
-<span class="nb">cd</span><span class="w"> </span>anySeg
-uv<span class="w"> </span>sync
+<p>Python 3.11 or newer is required.</p>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>anyseg
 </code></pre></div>
-<p><code>uv sync</code> builds the Rust module and installs the package into the environment of the project.</p>
-<h2 id="rust-crate">Rust crate<a class="headerlink" href="#rust-crate" title="Permanent link">&para;</a></h2>
-<p>The segmenter itself is the Rust crate <code>anyseg</code>, with every language behind a Cargo feature: <code>ru</code> (Russian, on by default). It gives positions in bytes of the UTF-8 string.</p>
-<div class="highlight"><pre><span></span><code><span class="k">[dependencies]</span>
-<span class="n">anyseg</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">git</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s2">"https://github.com/SergeyShk/anySeg"</span><span class="w"> </span><span class="p">}</span>
+<p>The package has no dependencies.</p>
+<h2 id="prebuilt-wheels">Prebuilt wheels<a class="headerlink" href="#prebuilt-wheels" title="Permanent link">&para;</a></h2>
+<p>PyPI hosts wheels for Linux (x86_64 and aarch64; manylinux and musllinux for Alpine), macOS (Intel and Apple Silicon) and Windows (x64 and arm64). One wheel serves every Python version starting with 3.11, and the free-threaded Python 3.14t and 3.15t have wheels of their own; Rust is not needed to install them.</p>
+<p>Pre-release versions <code>X.Y.Z.devN</code> are published only on TestPyPI:</p>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>--index-url<span class="w"> </span>https://test.pypi.org/simple/<span class="w"> </span>--pre<span class="w"> </span>anyseg
+</code></pre></div>
+<h2 id="building-from-source">Building from source<a class="headerlink" href="#building-from-source" title="Permanent link">&para;</a></h2>
+<p>On other platforms pip builds the package from source, which requires <a href="https://www.rust-lang.org/tools/install">Rust</a> 1.88 or newer:</p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>--proto<span class="w"> </span><span class="s1">'=https'</span><span class="w"> </span>--tlsv1.2<span class="w"> </span>-sSf<span class="w"> </span>https://sh.rustup.rs<span class="w"> </span><span class="p">|</span><span class="w"> </span>sh
+pip<span class="w"> </span>install<span class="w"> </span>anyseg
+</code></pre></div>
+<p>The development environment is described in <a href="https://github.com/SergeyShk/anySeg/blob/master/CONTRIBUTING.md">CONTRIBUTING.md</a>.</p>
+<h2 id="rust">Rust<a class="headerlink" href="#rust" title="Permanent link">&para;</a></h2>
+<p>The segmenter is published on crates.io as the <a href="https://crates.io/crates/anyseg"><code>anyseg</code></a> crate, with every language behind a Cargo feature: <code>ru</code> (Russian, on by default). It gives positions in bytes of the UTF-8 string. The API documentation is on <a href="https://docs.rs/anyseg">docs.rs</a>.</p>
+<div class="highlight"><pre><span></span><code>cargo<span class="w"> </span>add<span class="w"> </span>anyseg
 </code></pre></div>
 
 

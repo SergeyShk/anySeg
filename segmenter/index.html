@@ -810,10 +810,10 @@
 <h1 id="segmenter">Segmenter<a class="headerlink" href="#segmenter" title="Permanent link">&para;</a></h1>
 <div class="signature highlight"><pre><span></span><code><span class="n">Segmenter</span><span class="p">(</span><span class="n">lang</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">abbreviations</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">tokens</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
 </code></pre></div>
-<p>Segmenter of texts in one language: it gives the tokens and the sentences of a text as spans of it, and the <a href="../document/">document</a> of a text. The text is never changed. A segmenter is immutable: create it once and use it throughout the program, from several threads at once; it can be pickled and equals the segmenters of the same language and lists.</p>
+<p>Segmenter of texts in one language: it gives the tokens and the sentences of a text as spans of it, and the <a href="../document/">document</a> of a text. The text is never changed. A segmenter is immutable: create it once and use it throughout the program, from several threads at once, which segment long texts in parallel; it can be pickled and equals the segmenters of the same language and lists.</p>
 <p>Exceptions:</p>
 <ul>
-<li><code>ValueError</code> - the language is not supported, an <a href="#lists">abbreviation</a> is not a word of letters, or a <a href="#lists">token</a> is empty, has whitespace or starts or ends with an invisible separator;</li>
+<li><code>ValueError</code> - the language is not supported, an <a href="#lists">abbreviation</a> is not a word of letters, or a <a href="#lists">token</a> is empty, has whitespace or control characters or starts or ends with an invisible separator;</li>
 <li><code>TypeError</code> - <code>abbreviations</code> or <code>tokens</code> is a string or holds something other than strings.</li>
 </ul>
 <div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">Code</label><label for="__tabbed_1_2">Result</label></div>
@@ -890,7 +890,7 @@ Segmenter('ru', abbreviations=('сущ',), tokens=('C++', 'т.н.'))
 <p class="metric-meta"><code>tokenize</code> · <code>list[Span]</code></p>
 <div class="signature highlight"><pre><span></span><code><span class="n">tokenize</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
 </code></pre></div>
-<p>The tokens of the text in order. Whitespace and the invisible separators - zero width space, word joiner, byte order mark, and a soft hyphen and zero width (non-)joiner outside a word - separate the tokens and are in none of them. How a language splits its text, see <a href="../russian/">Russian</a>.</p>
+<p>The tokens of the text in order. Whitespace, control characters and the invisible separators - zero width space, word joiner, byte order mark, and a soft hyphen and zero width (non-)joiner outside a word - separate the tokens and are in none of them. How a language splits its text, see <a href="../russian/">Russian</a>.</p>
 <table>
 <thead>
 <tr>
