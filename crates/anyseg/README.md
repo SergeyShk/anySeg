@@ -16,7 +16,7 @@ assert_eq!(doc.sentence(1).span.slice(doc.text()), "Кот спит");
 
 A `Document` holds the tokens, the words with the columns of CoNLL-U, the sentences, the paragraphs and their lines; `Document::to_conllu` and `read_conllu` write and read CoNLL-U, and a document read from CoNLL-U is written back as it was, with its comments, multiword tokens and empty nodes.
 
-The Python package with the same segmenter is [`anyseg`](https://github.com/SergeyShk/anySeg) on PyPI.
+The Python package with the same segmenter is [`anyseg`](https://pypi.org/project/anyseg/) on PyPI; the documentation is at [sergeyshk.github.io/anySeg](https://sergeyshk.github.io/anySeg/).
 
 ## License
 

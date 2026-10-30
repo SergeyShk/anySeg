@@ -23,7 +23,7 @@ keywords = [
     "russian",
 ]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 3 - Alpha",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
@@ -47,6 +47,7 @@ Homepage = "https://github.com/SergeyShk/anySeg"
 Repository = "https://github.com/SergeyShk/anySeg"
 Documentation = "https://sergeyshk.github.io/anySeg/"
 Issues = "https://github.com/SergeyShk/anySeg/issues"
+Changelog = "https://github.com/SergeyShk/anySeg/releases"
 
 [tool.maturin]
 manifest-path = "crates/anyseg-py/Cargo.toml"

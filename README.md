@@ -10,10 +10,14 @@
 
 <p align="center">
   <a href="https://sergeyshk.github.io/anySeg/">Documentation</a> ·
-  <a href="https://github.com/SergeyShk/anySeg">GitHub</a>
+  <a href="https://pypi.org/project/anyseg/">PyPI</a> ·
+  <a href="https://crates.io/crates/anyseg">crates.io</a>
 </p>
 
 <p align="center">
+  <a href="https://pypi.org/project/anyseg/"><img src="https://img.shields.io/pypi/v/anyseg?logo=pypi&logoColor=FFE873" alt="Version"></a>
+  <a href="https://pypi.org/project/anyseg/"><img src="https://img.shields.io/pypi/pyversions/anyseg.svg?logo=python&logoColor=FFE873" alt="Supported Python versions"></a>
+  <a href="https://crates.io/crates/anyseg"><img src="https://img.shields.io/crates/v/anyseg?logo=rust" alt="Crate"></a>
   <a href="https://github.com/SergeyShk/anySeg/actions/workflows/ci.yml"><img src="https://github.com/SergeyShk/anySeg/actions/workflows/ci.yml/badge.svg" alt="Build"></a>
   <a href="https://github.com/astral-sh/ruff"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json" alt="Ruff"></a>
   <a href="https://github.com/SergeyShk/anySeg/blob/master/LICENSE.txt"><img src="https://img.shields.io/github/license/sergeyshk/anyseg.svg" alt="License"></a>
@@ -23,7 +27,7 @@
 
 **anySeg** segments text into tokens, words and sentences with their positions in the source text: a Rust core and a Python package without dependencies. The text is never changed - every token and sentence is a span of the original string - and the tokens follow the conventions of [Universal Dependencies](https://universaldependencies.org/), so the results can be compared with the treebanks and with the tools trained on them. One package serves all languages: the rules are shared, and a language brings its lists. Russian comes first, Spanish and English follow.
 
-From Python, tokens and sentences come out at 2.4 M tokens per second, five times faster than razdel; the Rust crate gives 13.5 M. On the test files of the Russian treebanks of UD, token F1 is 99.1-99.8, above every other tool on Taiga, GSD and PUD, and the sentence boundaries are above razdel on all four sets.
+From Python, tokens and sentences come out at 3.1 M tokens per second, six times faster than razdel; the Rust crate gives 13.4 M. On the test files of the Russian treebanks of UD, token F1 is 99.1-99.8, above every other tool on Taiga, GSD and PUD, and the sentence boundaries are above razdel on all four sets.
 
 * **[Tokens](https://sergeyshk.github.io/anySeg/russian/#tokens)** - words with stress marks and soft hyphens, hyphenated words by the UD guidelines, numbers, dates and times, URLs, e-mail addresses, mentions, hashtags, emoticons and emoji, abbreviations and initials with their period
 * **[Sentences](https://sergeyshk.github.io/anySeg/russian/#sentences)** - final marks with the quotes and brackets after them, abbreviations that end a sentence, lines of dialogue, list items, headings and verse
@@ -37,13 +41,19 @@ From Python, tokens and sentences come out at 2.4 M tokens per second, five time
 
 ## Installation
 
-Python 3.11 or newer is required. Until the first release, the package is built from the repository, which needs [uv](https://docs.astral.sh/uv/) and [Rust](https://www.rust-lang.org/tools/install) 1.88 or newer:
+Python 3.11 or newer is required.
 
 ```bash
-git clone https://github.com/SergeyShk/anySeg.git
-cd anySeg
-uv sync
+pip install anyseg
 ```
+
+Or with [uv](https://docs.astral.sh/uv/):
+
+```bash
+uv add anyseg
+```
+
+Wheels are built for Linux (Alpine included), macOS and Windows, the free-threaded Python 3.14t and 3.15t included; installing them does not require Rust. On other platforms pip builds the package from source, which requires [Rust](https://www.rust-lang.org/tools/install) 1.88 or newer. The segmenter is also the Rust crate [`anyseg`](https://crates.io/crates/anyseg). See the [Installation](https://sergeyshk.github.io/anySeg/installation/) page.
 
 ## Quick start
 
@@ -80,14 +90,14 @@ On the test files of the Russian treebanks of Universal Dependencies 2.18, F1 (*
 
 | Tool | Tokens, SynTagRus | Tokens, Taiga | Sentence ends, SynTagRus | Sentence ends, Taiga | Tokens/s from Python |
 | :-- | --: | --: | --: | --: | --: |
-| **anySeg 0.1** | 99.61 | **99.10** | 99.46 | **95.94** | **2.42 M** |
+| **anySeg 0.1** | 99.61 | **99.10** | 99.46 | **95.94** | **3.12 M** |
 | razdel 0.5.0 | 98.73 | 95.74 | 99.41 | 85.58 | 489 k |
 | NLTK 3.10.4 | 98.93 | 96.57 | 97.61 | 82.59 | 195 k |
 | spaCy 3.8.16 | 98.38 | 96.85 | 89.60 | 76.18 | 225 k |
 | Stanza 1.15.0 * | **99.75** | 95.55 | 99.51 | 95.71 | 2.1 k |
 | trankit 1.1.2 * | 99.74 | 95.54 | **99.55** | 94.79 | 1.4 k |
 
-From Rust, the crate gives 13.5 M tokens per second with sentences. All tools and sets, and how it is measured: [Comparison](https://sergeyshk.github.io/anySeg/comparison/).
+From Rust, the crate gives 13.4 M tokens per second with sentences. All tools and sets, and how it is measured: [Comparison](https://sergeyshk.github.io/anySeg/comparison/).
 
 ## Development
 

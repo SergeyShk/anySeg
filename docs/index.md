@@ -47,7 +47,13 @@
 
 ## Installation
 
-Python 3.11 or newer is required. Until the first release, the package is built from the repository: see [Installation](installation.md).
+Python 3.11 or newer is required.
+
+``` bash
+pip install anyseg
+```
+
+Prebuilt wheels need no Rust; building from source and the Rust crate: see [Installation](installation.md).
 
 ## Quick start
 
