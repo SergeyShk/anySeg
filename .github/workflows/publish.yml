@@ -53,8 +53,8 @@ jobs:
             exit 1
           fi
 
-  # Every job builds an abi3 wheel for Python 3.11+ and a wheel for free-threaded Python 3.14t,
-  # which abi3 does not cover
+  # Every job builds an abi3 wheel for Python 3.11+ and wheels for free-threaded Python 3.14t and
+  # 3.15t, which abi3 does not cover
   wheels:
     name: wheels (${{ matrix.platform }})
     needs: check
@@ -111,6 +111,13 @@ jobs:
         with:
           python-version: "3.14t"
           architecture: ${{ matrix.architecture }}
+      - name: Setup Python 3.15t (Windows)
+        id: python-free-threaded-next
+        if: runner.os == 'Windows'
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.15t"
+          architecture: ${{ matrix.architecture }}
       - name: Setup Rust (Windows arm64)
         if: matrix.os == 'windows-11-arm'
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
@@ -122,7 +129,7 @@ jobs:
         with:
           maturin-version: v1.15.0
           target: ${{ matrix.target }}
-          args: --release --locked --compatibility pypi --out dist -i python3.11 python3.14t
+          args: --release --locked --compatibility pypi --out dist -i python3.11 python3.14t python3.15t
           manylinux: ${{ matrix.manylinux }}
       - name: Build wheels (Windows)
         if: runner.os == 'Windows'
@@ -133,20 +140,21 @@ jobs:
           args: >-
             --release --locked --compatibility pypi --out dist
             -i ${{ steps.python-abi3.outputs.python-path }} ${{ steps.python-free-threaded.outputs.python-path }}
+            ${{ steps.python-free-threaded-next.outputs.python-path }}
       - name: Build wheels (macOS x86_64)
         if: runner.os == 'macOS'
         uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
         with:
           maturin-version: v1.15.0
           target: x86_64
-          args: --release --locked --compatibility pypi --out dist -i python3.11 python3.14t
+          args: --release --locked --compatibility pypi --out dist -i python3.11 python3.14t python3.15t
       - name: Build wheels (macOS aarch64)
         if: runner.os == 'macOS'
         uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
         with:
           maturin-version: v1.15.0
           target: aarch64
-          args: --release --locked --compatibility pypi --out dist -i python3.11 python3.14t
+          args: --release --locked --compatibility pypi --out dist -i python3.11 python3.14t python3.15t
       - name: Upload wheels
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -183,7 +191,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, macos-15-intel, windows-latest, windows-11-arm]
-        python-version: ["3.11", "3.14", "3.14t"]
+        python-version: ["3.11", "3.14", "3.14t", "3.15", "3.15t"]
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -205,7 +213,7 @@ jobs:
           python scripts/smoke.py ${{ github.event_name == 'push' && github.ref_name || '' }}
         shell: bash
 
-  # The musllinux wheels are checked in the musllinux image: it has Python 3.11 and 3.14t
+  # The musllinux wheels are checked in the musllinux image: it has Python 3.11, 3.14t and 3.15t
   smoke-musl:
     name: smoke (musllinux, ${{ matrix.arch }})
     needs: wheels
@@ -234,7 +242,7 @@ jobs:
           VERSION: ${{ github.event_name == 'push' && github.ref_name || '' }}
         run: |
           docker run --rm -v "$PWD:/w" -w /w -e VERSION "$IMAGE" sh -ec '
-            for python in python3.11 python3.14t; do
+            for python in python3.11 python3.14t python3.15t; do
               "$python" -m venv "/tmp/$python"
               "/tmp/$python/bin/pip" install --quiet --no-index --find-links dist anyseg
               "/tmp/$python/bin/python" scripts/smoke.py $VERSION
@@ -319,7 +327,7 @@ jobs:
         run: |
           uvx twine@7.0.0 check --strict dist/*
           count="$(ls dist/*.whl | wc -l)"
-          [ "$count" -eq 16 ] || { echo "Expected 16 wheels, got $count"; exit 1; }
+          [ "$count" -eq 24 ] || { echo "Expected 24 wheels, got $count"; exit 1; }
           ls -l dist
           sha256sum dist/*
 
@@ -342,8 +350,20 @@ jobs:
         with:
           version: "0.13.5"
           enable-cache: false
+      # Wheels are not reproducible byte for byte, and an index rejects a file of the same name: a
+      # rerun uploads only the files the index does not have yet
       - name: Publish distribution
-        run: uv publish --publish-url https://test.pypi.org/legacy/ --trusted-publishing always dist/*
+        run: |
+          uploaded="$(curl -sf "https://test.pypi.org/pypi/anyseg/$GITHUB_REF_NAME/json" | jq -r '.urls[].filename' || true)"
+          files=()
+          for file in dist/*; do
+            grep -qxF "$(basename "$file")" <<< "$uploaded" || files+=("$file")
+          done
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "anyseg $GITHUB_REF_NAME is already on TestPyPI"
+            exit 0
+          fi
+          uv publish --publish-url https://test.pypi.org/legacy/ --trusted-publishing always "${files[@]}"
 
   pypi:
     # Versions 0.1.0.devN go to TestPyPI only
@@ -368,8 +388,19 @@ jobs:
         with:
           version: "0.13.5"
           enable-cache: false
+      # A rerun uploads only the files PyPI does not have yet, as on TestPyPI
       - name: Publish distribution
-        run: uv publish --trusted-publishing always dist/*
+        run: |
+          uploaded="$(curl -sf "https://pypi.org/pypi/anyseg/$GITHUB_REF_NAME/json" | jq -r '.urls[].filename' || true)"
+          files=()
+          for file in dist/*; do
+            grep -qxF "$(basename "$file")" <<< "$uploaded" || files+=("$file")
+          done
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "anyseg $GITHUB_REF_NAME is already on PyPI"
+            exit 0
+          fi
+          uv publish --trusted-publishing always "${files[@]}"
 
   crates:
     if: github.event_name == 'push' && !contains(github.ref_name, '.dev')
@@ -388,17 +419,22 @@ jobs:
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: stable
-      - name: Authenticate
-        id: auth
-        uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6
-      # A rerun after a failure past the upload skips a version that is already published
-      - name: Publish crate
+      # A rerun after a failure past the upload skips a version that is already published, before
+      # the authentication, which fails while crates.io has no trusted publisher for the crate
+      - name: Check crates.io
+        id: index
         run: |
           version="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "anyseg") | .version')"
           if curl -sf "https://index.crates.io/an/ys/anyseg" | grep -qF "\"vers\":\"$version\""; then
             echo "anyseg $version is already on crates.io"
-            exit 0
+            echo "published=true" >> "$GITHUB_OUTPUT"
           fi
-          cargo publish --locked -p anyseg
+      - name: Authenticate
+        id: auth
+        if: steps.index.outputs.published != 'true'
+        uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6
+      - name: Publish crate
+        if: steps.index.outputs.published != 'true'
+        run: cargo publish --locked -p anyseg
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}

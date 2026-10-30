@@ -30,7 +30,7 @@ make test-cov    # pytest with the examples and the coverage threshold, cargo te
 make docs-build  # mkdocs build --strict, if the documentation changed
 ```
 
-CI runs the same on Python 3.11-3.14 and free-threaded 3.14t (Linux), on Windows and macOS for one Python version, and checks the build on the minimum Rust version 1.88. When raising the minimum Rust version, change it in `rust-version` in `Cargo.toml`, in the `msrv` job of `ci.yml` and in the documentation.
+CI runs the same on Python 3.11-3.15 and free-threaded 3.14t and 3.15t (Linux), on Windows and macOS for one Python version, and checks the build on the minimum Rust version 1.88. When raising the minimum Rust version, change it in `rust-version` in `Cargo.toml`, in the `msrv` job of `ci.yml` and in the documentation.
 
 ## What a pull request is expected to contain
 
