@@ -517,8 +517,8 @@ def test_long_texts():
 
 
 def test_column_and_set_columns_from_threads():
-    # A list made under the lock may start a collection whose finalizers release the GIL to a writer that
-    # waits for the lock: the process hung on Python 3.11
+    # A list made under the lock may start a collection whose finalizers release the GIL; a second reader
+    # then waits for the lock with the GIL, after the writer: the process hung on Python 3.11
     script = """
 import threading, time
 from anyseg import segment
@@ -529,18 +529,20 @@ class Cycle:
     def __init__(self):
         self.me = self
     def __del__(self):
-        time.sleep(0.0001)
+        time.sleep(0)
 def reader():
-    kept = []
+    kept, calls = [], 0
     while not stop.is_set():
-        Cycle()
+        if calls % 20 == 0:
+            Cycle()
         kept.append(doc.column("upos"))
+        calls += 1
 def writer():
     values = [["NOUN"] * 50, ["VERB"] * 50]
     while not stop.is_set():
         doc.set_columns(upos=values[0])
         values.reverse()
-threads = [threading.Thread(target=work) for work in (reader, writer)]
+threads = [threading.Thread(target=work) for work in (reader, reader, writer)]
 for thread in threads:
     thread.start()
 time.sleep(3)
@@ -549,3 +551,24 @@ for thread in threads:
     thread.join()
 """
     subprocess.run([sys.executable, "-c", script], check=True, timeout=60)
+
+
+def test_text_of_a_subclass():
+    # Attributes of a subclass of str could close a cycle through the views, which the collector does not track
+    class Text(str):
+        pass
+
+    def documents():
+        return sum(type(value) is Document for value in gc.get_objects())
+
+    before = documents()
+    for _ in range(100):
+        text = Text("Ёж идёт домой. Кот спит.")
+        doc = segment(text, lang="ru")
+        text.first = doc.tokens[0]
+        assert type(doc.text) is str and doc.text == text
+    del text, doc
+    gc.collect()
+    assert documents() == before
+    plain = "Ёж идёт"
+    assert segment(plain, lang="ru").text is plain

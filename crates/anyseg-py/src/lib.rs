@@ -389,7 +389,7 @@ impl Segmenter {
                 Parts::new(self.inner.segment(text))
             }))
         })?;
-        Ok(Document::new(parts, text.unbind()))
+        Ok(Document::new(parts, &text))
     }
 
     fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
@@ -476,7 +476,14 @@ impl Parts {
 }
 
 impl Document {
-    fn new(parts: Parts, text: Py<PyString>) -> Self {
+    /// The document with the string it was made from, or a new one: a subclass of `str` may have attributes,
+    /// and a cycle through them and the untracked views would never be collected
+    fn new(parts: Parts, text: &Bound<'_, PyString>) -> Self {
+        let text = if text.is_exact_instance_of::<PyString>() {
+            text.clone().unbind()
+        } else {
+            PyString::new(text.py(), parts.inner.text()).unbind()
+        };
         Document {
             inner: RwLock::new(parts.inner),
             text,
@@ -740,7 +747,7 @@ impl Document {
         with_str(&text, |string| {
             parts_of_tokens(string, &starts, &ends, sentence_starts.as_deref())
         })
-        .map(|parts| Document::new(parts, text.unbind()))
+        .map(|parts| Document::new(parts, &text))
     }
 
     /// Document in CoNLL-U
@@ -1445,8 +1452,8 @@ fn read_conllu(py: Python<'_>, text: &Bound<'_, PyString>) -> PyResult<Vec<Docum
     Ok(documents
         .into_iter()
         .map(|parts| {
-            let text = PyString::new(py, parts.inner.text()).unbind();
-            Document::new(parts, text)
+            let text = PyString::new(py, parts.inner.text());
+            Document::new(parts, &text)
         })
         .collect())
 }

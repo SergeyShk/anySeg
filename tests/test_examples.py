@@ -17,7 +17,11 @@ ROOT = Path(__file__).parents[1]
 FLAGS = doctest.NORMALIZE_WHITESPACE | doctest.ELLIPSIS
 # A Code tab and the Result tab after it, both indented under their `=== "..."` lines
 TABS = re.compile(r'=== "Code"\n\n((?:    .*\n|\n)+?)=== "Result"\n\n((?:    .*\n|\n)+)')
-PAGES = sorted(path for path in (ROOT / "docs").glob("*.md") if '=== "Code"' in path.read_text())
+PAGES = sorted(
+    path
+    for path in (ROOT / "docs").glob("*.md")
+    if '=== "Code"' in path.read_text(encoding="utf-8")
+)
 
 
 def test_docstrings_of_the_extension_module():
