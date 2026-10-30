@@ -1,26 +1,38 @@
 # Installation
 
-## Requirements
-
-*   `python` 3.11 or newer, including free-threaded 3.14t and 3.15t
-
-The package has no dependencies. Building it from the source also needs [Rust](https://www.rust-lang.org/tools/install) 1.88 or newer.
-
-## From the repository
+Python 3.11 or newer is required.
 
 ``` bash
-git clone https://github.com/SergeyShk/anySeg.git
-cd anySeg
-uv sync
+pip install anyseg
 ```
 
-`uv sync` builds the Rust module and installs the package into the environment of the project.
+The package has no dependencies.
 
-## Rust crate
+## Prebuilt wheels
 
-The segmenter itself is the Rust crate `anyseg`, with every language behind a Cargo feature: `ru` (Russian, on by default). It gives positions in bytes of the UTF-8 string.
+PyPI hosts wheels for Linux (x86_64 and aarch64; manylinux and musllinux for Alpine), macOS (Intel and Apple Silicon) and Windows (x64 and arm64). One wheel serves every Python version starting with 3.11, and the free-threaded Python 3.14t and 3.15t have wheels of their own; Rust is not needed to install them.
 
-``` toml
-[dependencies]
-anyseg = { git = "https://github.com/SergeyShk/anySeg" }
+Pre-release versions `X.Y.Z.devN` are published only on TestPyPI:
+
+``` bash
+pip install --index-url https://test.pypi.org/simple/ --pre anyseg
+```
+
+## Building from source
+
+On other platforms pip builds the package from source, which requires [Rust](https://www.rust-lang.org/tools/install) 1.88 or newer:
+
+``` bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+pip install anyseg
+```
+
+The development environment is described in [CONTRIBUTING.md](https://github.com/SergeyShk/anySeg/blob/master/CONTRIBUTING.md).
+
+## Rust { #rust }
+
+The segmenter is published on crates.io as the [`anyseg`](https://crates.io/crates/anyseg) crate, with every language behind a Cargo feature: `ru` (Russian, on by default). It gives positions in bytes of the UTF-8 string. The API documentation is on [docs.rs](https://docs.rs/anyseg).
+
+``` bash
+cargo add anyseg
 ```

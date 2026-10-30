@@ -81,7 +81,7 @@ From Python: the time to load the tool, tokens per second, and the memory the lo
 
 | Tool | Gives | Load, s | Tokens/s | Memory, MB |
 | :-- | :-- | --: | --: | --: |
-| **anySeg 0.1** | tokens, sentences | 0.00 | **2.42 M** | 0.5 |
+| **anySeg 0.1** | tokens, sentences | 0.00 | **3.12 M** | 0.5 |
 | razdel 0.5.0 | tokens, sentences | 0.00 | 489 k | 0.1 |
 | rusenttokenize 0.0.5 | sentences | 0.00 | 317 k | 0.2 |
 | NLTK 3.10.4 | tokens, sentences | 0.85 | 195 k | 121 |
@@ -104,7 +104,7 @@ From Rust: tokens per second and the peak memory of a process that reads the tex
 
 | Crate | Gives | Tokens/s | Peak memory, MB |
 | :-- | :-- | --: | --: |
-| **anyseg 0.1** | tokens, sentences | 13.5 M | 34 |
+| **anyseg 0.1** | tokens, sentences | 13.4 M | 34 |
 | unicode-segmentation 1.13.3 | tokens, sentences | 7.7 M | 28 |
 | icu_segmenter 2.4.0 | tokens, sentences | **17.6 M** | 114 |
 | sentencex 0.1.32 | sentences | 965 k | 21 |

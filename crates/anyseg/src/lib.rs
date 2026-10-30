@@ -474,6 +474,20 @@ mod tests {
     }
 
     #[test]
+    fn documents_keep_only_what_they_hold() {
+        let doc = Segmenter::new("ru")
+            .unwrap()
+            .segment(&"Ёж идёт домой. Кот спит.\n".repeat(1000));
+        assert_eq!(doc.tokens.capacity(), doc.tokens.len());
+        assert_eq!(doc.sentence_tokens.capacity(), doc.sentence_tokens.len());
+        assert_eq!(
+            doc.paragraph_sentences.capacity(),
+            doc.paragraph_sentences.len()
+        );
+        assert_eq!(doc.lines.capacity(), doc.lines.len());
+    }
+
+    #[test]
     fn many_tokens_of_the_user() {
         // A lookup by every token of the list takes seconds here
         let strings: Vec<String> = (0..50_000).map(|number| format!("x{number}+")).collect();

@@ -123,6 +123,16 @@ impl fmt::Display for DocumentError {
 
 impl Error for DocumentError {}
 
+/// A vector that grew by doubling, copied to one of its length: a document keeps only what it holds. Shrinking it
+/// in place leaves the rest of a large block that some allocators do not reuse (macOS)
+fn fitted<T: Copy>(vector: Vec<T>) -> Vec<T> {
+    if vector.capacity() > vector.len() {
+        vector.as_slice().to_vec()
+    } else {
+        vector
+    }
+}
+
 /// The parts of CoNLL-U that a document read from it writes back as they were
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Verbatim {
@@ -216,30 +226,25 @@ impl Document {
     /// sentence of every paragraph and the lines
     pub(crate) fn segmented(
         text: String,
-        mut tokens: Vec<Span>,
+        tokens: Vec<Span>,
         mut sentence_tokens: Vec<usize>,
         mut paragraph_sentences: Vec<usize>,
-        mut lines: Vec<Line>,
+        lines: Vec<Line>,
     ) -> Self {
         let count = tokens.len();
         paragraph_sentences.push(sentence_tokens.len());
         sentence_tokens.push(count);
-        // The vectors grew by doubling: a document keeps only what it holds
-        tokens.shrink_to_fit();
-        sentence_tokens.shrink_to_fit();
-        paragraph_sentences.shrink_to_fit();
-        lines.shrink_to_fit();
         Document {
             text,
-            tokens,
+            tokens: fitted(tokens),
             token_words: (0..=count).collect(),
             word_tokens: (0..count).collect(),
             forms: Vec::new(),
             columns: Default::default(),
             heads: Vec::new(),
-            sentence_tokens,
-            paragraph_sentences,
-            lines,
+            sentence_tokens: fitted(sentence_tokens),
+            paragraph_sentences: fitted(paragraph_sentences),
+            lines: fitted(lines),
             verbatim: None,
         }
     }
@@ -630,6 +635,17 @@ mod tests {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| call(&doc)));
             assert!(result.is_err());
         }
+    }
+
+    #[test]
+    fn fitted_vectors_are_new_blocks() {
+        // Shrinking in place would keep the block, and its rest would not be reused on macOS
+        let mut vector = Vec::with_capacity(200_000);
+        vector.resize(150_000, Span { start: 0, end: 1 });
+        let block = vector.as_ptr();
+        let vector = fitted(vector);
+        assert_eq!(vector.capacity(), vector.len());
+        assert_ne!(vector.as_ptr(), block);
     }
 
     #[test]
