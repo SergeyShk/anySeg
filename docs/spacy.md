@@ -74,6 +74,7 @@ nlp.add_pipe("anyseg_sentencizer", before="parser")
 | `abbreviations` | `list[str]` | `None` | [More abbreviations](segmenter.md#lists) |
 | `tokens` | `list[str]` | `None` | [Strings that are one token each](segmenter.md#lists) |
 | `overwrite` | `bool` | `False` | Replace the sentence starts set before; `False` - set only the tokens whose start is unknown, as the `sentencizer` of spaCy does |
+| `scorer` | `Callable` | `spacy.senter_scorer.v1` | Scores of the sentences in an evaluation: `sents_p`, `sents_r` and `sents_f`, as for the `sentencizer` of spaCy |
 
 === "Code"
 
@@ -156,7 +157,7 @@ Exceptions:
 from_doc(doc)
 ```
 
-The [document](document.md) of a `Doc`, one word per token. Tokens lose the whitespace and the invisible separators at their edges, and tokens of nothing else are dropped. A sentence of the `Doc` starts at its first token left, a `Doc` without sentences is a sentence per paragraph, and every paragraph starts a sentence. `lemma_`, `pos_`, `tag_`, `morph`, the heads and `dep_` become the columns `lemma`, `upos`, `xpos`, `feats`, `head` and `deprel`, empty values `None`. The relation `ROOT` becomes `root`; a word whose head is a dropped token depends on the head of that token, and a word whose head is in another sentence becomes a root.
+The [document](document.md) of a `Doc`, one word per token. Tokens lose the whitespace and the invisible separators at their edges, and tokens of nothing else are dropped. A sentence of the `Doc` starts at its first token left, a `Doc` without sentences is a sentence per paragraph, and every paragraph starts a sentence. `lemma_`, `pos_`, `tag_`, `morph`, the heads and `dep_` become the columns `lemma`, `upos`, `xpos`, `feats`, `head` and `deprel`, empty values `None`; a token without a head has neither. The relation `ROOT` becomes `root`, and a word whose head is a dropped token depends on the head of that token. A sentence has one root: the root of the parse or, if the sentence lacks it, the first word whose head is in another sentence; the other such words depend on the root with the relation `dep`.
 
 | Parameter | Type | Default | Description |
 | :-------- | :--- | :------ | :---------- |

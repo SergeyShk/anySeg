@@ -26,7 +26,9 @@ from typing import Any
 import numpy
 from spacy.attrs import IDX, LENGTH, SENT_START
 from spacy.language import Language
+from spacy.pipeline.senter import senter_score
 from spacy.tokens import Doc
+from spacy.training import Example
 from spacy.util import registry
 from spacy.vocab import Vocab
 
@@ -138,10 +140,21 @@ class Tokenizer:
         return self
 
 
+# Scores of sentences, as the sentencizer of spaCy gives them
+Scorer = Callable[..., dict[str, Any]]
+
+
 @Language.factory(
     "anyseg_sentencizer",
-    default_config={"lang": None, "abbreviations": None, "tokens": None, "overwrite": False},
+    default_config={
+        "lang": None,
+        "abbreviations": None,
+        "tokens": None,
+        "overwrite": False,
+        "scorer": {"@scorers": "spacy.senter_scorer.v1"},
+    },
     assigns=["token.is_sent_start", "doc.sents"],
+    default_score_weights={"sents_f": 1.0, "sents_p": 0.0, "sents_r": 0.0},
 )
 def create_sentencizer(
     nlp: Language,
@@ -150,6 +163,7 @@ def create_sentencizer(
     abbreviations: list[str] | None,
     tokens: list[str] | None,
     overwrite: bool,
+    scorer: Scorer | None,
 ) -> "Sentencizer":
     """
     Component anyseg_sentencizer of a pipeline: nlp.add_pipe("anyseg_sentencizer", config={...})
@@ -161,12 +175,15 @@ def create_sentencizer(
         abbreviations (list[str] | None): More abbreviations, as for Segmenter
         tokens (list[str] | None): Strings that are one token each, as for Segmenter
         overwrite (bool): Replace the sentence starts set before
+        scorer (Scorer | None): Scores of the sentences in an evaluation
 
     Returns:
         Sentencizer: Component
     """
     language = (nlp.lang if lang is None else lang) or ""
-    return Sentencizer(language, abbreviations=abbreviations, tokens=tokens, overwrite=overwrite)
+    return Sentencizer(
+        language, abbreviations=abbreviations, tokens=tokens, overwrite=overwrite, scorer=scorer
+    )
 
 
 class Sentencizer:
@@ -191,6 +208,8 @@ class Sentencizer:
         tokens (Iterable[str] | None): Strings that are one token each, as for Segmenter
         overwrite (bool): Replace the sentence starts set before; False - set only the tokens
             whose start is unknown
+        scorer (Scorer | None): Scores of the sentences in an evaluation: precision, recall and F1
+            of sentences, as for the sentencizer of spaCy
 
     Raises:
         ValueError: If the language is not supported or a list is wrong, as for Segmenter
@@ -204,9 +223,11 @@ class Sentencizer:
         abbreviations: Iterable[str] | None = None,
         tokens: Iterable[str] | None = None,
         overwrite: bool = False,
+        scorer: Scorer | None = senter_score,
     ) -> None:
         self.segmenter = Segmenter(lang, abbreviations=abbreviations, tokens=tokens)
         self.overwrite = overwrite
+        self.scorer = scorer
 
     def __call__(self, doc: Doc) -> Doc:
         """
@@ -236,6 +257,19 @@ class Sentencizer:
             values = numpy.where(known != 0, known, values)
         doc.from_array([SENT_START], values.view(numpy.uint64))  # type: ignore[arg-type]
         return doc
+
+    def score(self, examples: Iterable[Example], **kwargs: Any) -> dict[str, Any]:
+        """
+        Scores of the sentences of examples: sents_p, sents_r and sents_f
+
+        Arguments:
+            examples (Iterable[Example]): Examples with the sentences of the component
+            kwargs (Any): Arguments of the scorer
+
+        Returns:
+            dict[str, Any]: Scores, none without a scorer
+        """
+        return self.scorer(examples, **kwargs) if self.scorer is not None else {}
 
     def __repr__(self) -> str:
         return arguments("Sentencizer", self.segmenter, overwrite=self.overwrite)
@@ -382,9 +416,11 @@ def from_doc(doc: Doc) -> Document:
         else are dropped. A sentence of the spaCy document starts at its first token left, and a
         document without sentences is a sentence per paragraph; every paragraph starts a sentence.
         Lemmas, parts of speech, tags, features, heads and relations become the columns lemma,
-        upos, xpos, feats, head and deprel, empty values None. The relation ROOT becomes root; a
-        word whose head is a dropped token depends on its head, and a word whose head is in
-        another sentence becomes a root
+        upos, xpos, feats, head and deprel, empty values None; a token without a head has neither.
+        The relation ROOT becomes root, and a word whose head is a dropped token depends on its
+        head. A sentence has one root: the root of the parse or, if the sentence lacks it, the
+        first word whose head is in another sentence; the other such words depend on the root
+        with the relation dep
 
     Arguments:
         doc (Doc): spaCy document
@@ -441,7 +477,7 @@ def from_doc(doc: Doc) -> Document:
 
 def relations(
     doc: Doc, document: Document, kept: list[int], positions: list[int]
-) -> tuple[list[int], list[str | None]]:
+) -> tuple[list[int | None], list[str | None]]:
     """
     Columns head and deprel of a document from the parse of its spaCy document
 
@@ -453,7 +489,7 @@ def relations(
             for a dropped one
 
     Returns:
-        tuple[list[int], list[str | None]]: Columns head and deprel
+        tuple[list[int | None], list[str | None]]: Columns head and deprel
     """
     first = [0] * len(kept)
     for sentence in document.sentences:
@@ -461,10 +497,16 @@ def relations(
         start = tokens[0].index
         for index in range(start, start + len(tokens)):
             first[index] = start
-    heads: list[int] = []
+    heads: list[int | None] = []
     deprels: list[str | None] = []
+    roots: dict[int, int] = {}
+    loose: list[int] = []
     for position, index in enumerate(kept):
         token = doc[index]
+        if not token.has_head():
+            heads.append(None)
+            deprels.append(None)
+            continue
         head = token.head
         # A chain of dropped heads ends at a token left or at the root
         for _ in range(len(doc)):
@@ -473,11 +515,20 @@ def relations(
             head = head.head
         target = positions[head.i]
         if head.i == index or target < 0 or first[target] != first[position]:
+            if head.i == index:
+                roots.setdefault(first[position], position)
+            loose.append(position)
             heads.append(0)
             deprels.append("root")
         else:
             heads.append(target - first[position] + 1)
             deprels.append(token.dep_ or None)
+    # One root per sentence: the root of the parse, else the first word whose head is outside
+    for position in loose:
+        root = roots.setdefault(first[position], position)
+        if root != position:
+            heads[position] = root - first[position] + 1
+            deprels[position] = "dep"
     return heads, deprels
 
 

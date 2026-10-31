@@ -11,6 +11,7 @@ from anyseg import Document, Segmenter, read_conllu
 spacy = pytest.importorskip("spacy")
 
 from spacy.tokens import Doc  # noqa: E402
+from spacy.training import Example  # noqa: E402
 from spacy.util import get_words_and_spaces  # noqa: E402
 from spacy.vocab import Vocab  # noqa: E402
 
@@ -139,6 +140,23 @@ def test_sentencizer_keeps_starts():
     assert repr(nlp.get_pipe("anyseg_sentencizer")) == "Sentencizer('ru', overwrite=True)"
     doc = sentencizer(nlp.make_doc("Это т.н. Кот"))
     assert sentences(doc) == ["Это т.н. Кот"]
+
+
+def test_sentencizer_scores(nlp):
+    reference = Doc(
+        nlp.vocab,
+        words=["Ёж", "идёт", ".", "Кот", "спит"],
+        spaces=[True, False, True, True, False],
+        sent_starts=[True, False, False, True, False],
+    )
+    scores = nlp.evaluate([Example(nlp.make_doc(reference.text), reference)])
+    assert (scores["sents_p"], scores["sents_r"], scores["sents_f"]) == (1.0, 1.0, 1.0)
+    weights = {"sents_f": 1.0, "sents_p": 0.0, "sents_r": 0.0}
+    assert nlp.get_pipe_meta("anyseg_sentencizer").default_score_weights == weights
+    assert nlp.config["components"]["anyseg_sentencizer"]["scorer"] == {
+        "@scorers": "spacy.senter_scorer.v1"
+    }
+    assert Sentencizer("ru", scorer=None).score([]) == {}
 
 
 def test_settings_in_configuration(tmp_path):
@@ -286,6 +304,37 @@ def test_from_doc_columns():
     assert document.column("feats") == ["Case=Nom", "Case=Nom", None, "Case=Acc", None]
     assert document.column("head") == [0, 2, 0, 2, 2]
     assert document.column("deprel") == ["root", "nsubj", "root", "obj", "punct"]
+
+
+def test_from_doc_one_root():
+    vocab = Vocab()
+    # A parser that joins a heading with the next paragraph, both ways
+    words = ["Глава", "первая", "\n\n", "Мама", "мыла", "раму", "."]
+    doc = Doc(
+        vocab,
+        words=words,
+        spaces=[True, False, False, True, True, False, False],
+        heads=[4, 3, 1, 0, 4, 4, 4],
+        deps=["nsubj", "amod", "dep", "appos", "ROOT", "obj", "punct"],
+    )
+    document = from_doc(doc)
+    assert [sentence.text for sentence in document.sentences] == [
+        "Глава первая",
+        "Мама мыла раму.",
+    ]
+    assert document.column("head") == [0, 1, 2, 0, 2, 2]
+    assert document.column("deprel") == ["root", "dep", "dep", "root", "obj", "punct"]
+    assert sentences(to_doc(document, vocab)) == ["Глава первая\n\n", "Мама мыла раму."]
+    # The root of the parse is whitespace, a token has no head
+    doc = Doc(
+        vocab,
+        words=["Ёж", "\n", "идёт", "тут"],
+        spaces=[False, False, True, False],
+        heads=[1, 1, 1, 3],
+        deps=["nsubj", "ROOT", "conj", ""],
+    )
+    assert from_doc(doc).column("head") == [0, 1, None]
+    assert from_doc(doc).column("deprel") == ["root", "dep", None]
 
 
 def test_from_doc_head_chains():
