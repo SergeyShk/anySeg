@@ -16,6 +16,12 @@ categories = ["text-processing"]
 default = ["ru"]
 # Russian
 ru = []
+# The anyseg command: cargo install anyseg --features cli
+cli = []
+
+[[bin]]
+name = "anyseg"
+required-features = ["cli"]
 
 [dependencies]
 unicode-normalization = "0.1.26"

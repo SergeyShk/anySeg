@@ -23,6 +23,8 @@
 use std::error::Error;
 use std::fmt;
 
+#[cfg(feature = "cli")]
+pub mod cli;
 mod conllu;
 mod document;
 mod lang;

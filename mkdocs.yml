@@ -11,6 +11,7 @@ nav:
       - Authors: authors.md
     - Segmenter: segmenter.md
     - Document: document.md
+    - Command: cli.md
     - Russian: russian.md
     - spaCy: spacy.md
 

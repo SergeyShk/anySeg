@@ -35,6 +35,7 @@ From Python, tokens and sentences come out at 3.1 M tokens per second, six times
 * **[Paragraphs and lines](https://sergeyshk.github.io/anySeg/russian/#lines)** - paragraphs between blank lines, and every line marked as a break of the author or a wrap at the width of the page, as in text from PDF
 * **[Document model](https://sergeyshk.github.io/anySeg/document/)** - tokens, words with the columns of [CoNLL-U](https://universaldependencies.org/format.html), sentences, paragraphs and lines; reading and writing CoNLL-U, a document read from it written back as it was
 * **[Lists of your own](https://sergeyshk.github.io/anySeg/segmenter/#lists)** - more abbreviations and strings that are one token each
+* **[Command](https://sergeyshk.github.io/anySeg/cli/)** - `anyseg` for the terminal and pipelines: tokens, sentences or CoNLL-U of files and the standard input
 * **[spaCy](https://sergeyshk.github.io/anySeg/spacy/)** - the tokenizer and the sentence starts of a spaCy pipeline, the conversion of documents
 * **[Comparison](https://sergeyshk.github.io/anySeg/comparison/)** - quality and speed against razdel, NLTK, spaCy, Stanza, trankit, SaT and other tools
 
@@ -86,7 +87,7 @@ A document holds the tokens, the words with the columns of CoNLL-U, the sentence
 Word(id=2, form='идёт', upos='VERB')
 ```
 
-`segmenter.pipe(texts, threads=4)` gives the documents of many texts, segmented in batches without the GIL on several threads. `doc.to_conllu()` writes a document in CoNLL-U, and `read_conllu(text)` reads documents from it. A segmenter takes more abbreviations and strings that are one token each: `Segmenter("ru", abbreviations=["сущ"], tokens=["C++"])`.
+From the terminal, `anyseg -l ru -f conllu text.txt` writes the text in CoNLL-U. `segmenter.pipe(texts, threads=4)` gives the documents of many texts, segmented in batches without the GIL on several threads. `doc.to_conllu()` writes a document in CoNLL-U, and `read_conllu(text)` reads documents from it. A segmenter takes more abbreviations and strings that are one token each: `Segmenter("ru", abbreviations=["сущ"], tokens=["C++"])`.
 
 ## Comparison
 

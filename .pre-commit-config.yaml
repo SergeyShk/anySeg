@@ -80,7 +80,7 @@ repos:
         name: cargo test
         stages: [pre-push]
         language: system
-        entry: cargo test -p anyseg
+        entry: cargo test -p anyseg --all-features
         pass_filenames: false
         always_run: true
 

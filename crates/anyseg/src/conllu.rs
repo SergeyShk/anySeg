@@ -504,10 +504,22 @@ impl Document {
 
     fn conllu(&self, id: Option<&str>) -> String {
         let mut out = String::new();
-        for sentence in 0..self.sentence_count() {
-            self.write_sentence(sentence, id, &mut out);
-        }
+        self.write_conllu(&mut out, id, 1, true);
         out
+    }
+
+    /// The sentences in CoNLL-U as [`to_conllu`](Self::to_conllu) writes them, `# sent_id` numbered from `first`
+    /// and `# newdoc` only when `newdoc`: a piece of a longer text
+    pub(crate) fn write_conllu(
+        &self,
+        out: &mut String,
+        id: Option<&str>,
+        first: usize,
+        newdoc: bool,
+    ) {
+        for sentence in 0..self.sentence_count() {
+            self.write_sentence(sentence, id, first + sentence, newdoc, out);
+        }
     }
 
     /// `# text` of a sentence: its tokens with the spaces between them as MISC gives them, line breaks turned
@@ -524,7 +536,14 @@ impl Document {
         out
     }
 
-    fn write_sentence(&self, index: usize, id: Option<&str>, out: &mut String) {
+    fn write_sentence(
+        &self,
+        index: usize,
+        id: Option<&str>,
+        number: usize,
+        newdoc: bool,
+        out: &mut String,
+    ) {
         let sentence = self.sentence(index);
         let verbatim = self.verbatim.as_deref();
         match verbatim {
@@ -541,7 +560,7 @@ impl Document {
             }
             None => {
                 let paragraph = self.sentence_paragraph(index);
-                if index == 0 {
+                if index == 0 && newdoc {
                     match id {
                         Some(id) => {
                             let _ = writeln!(out, "# newdoc id = {id}");
@@ -554,10 +573,10 @@ impl Document {
                 }
                 match id {
                     Some(id) => {
-                        let _ = writeln!(out, "# sent_id = {id}-{}", index + 1);
+                        let _ = writeln!(out, "# sent_id = {id}-{number}");
                     }
                     None => {
-                        let _ = writeln!(out, "# sent_id = {}", index + 1);
+                        let _ = writeln!(out, "# sent_id = {number}");
                     }
                 }
                 let _ = writeln!(out, "# text = {}", self.sentence_text(&sentence));

@@ -1947,6 +1947,13 @@ fn read_conllu(py: Python<'_>, text: &Bound<'_, PyString>) -> PyResult<Vec<Docum
         .collect())
 }
 
+/// The anyseg command with its arguments, without the name of the program: the exit code
+#[pyfunction]
+fn _main(py: Python<'_>, args: Vec<std::ffi::OsString>) -> u8 {
+    let version = env!("CARGO_PKG_VERSION").replace("-dev.", ".dev");
+    py.detach(|| anyseg::cli::run(args, &version))
+}
+
 #[pymodule(gil_used = false)]
 fn _anyseg(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Span>()?;
@@ -1963,6 +1970,7 @@ fn _anyseg(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Paragraphs>()?;
     m.add_class::<Lines>()?;
     m.add_function(wrap_pyfunction!(read_conllu, m)?)?;
+    m.add_function(wrap_pyfunction!(_main, m)?)?;
     m.add(
         "__version__",
         env!("CARGO_PKG_VERSION").replace("-dev.", ".dev"),
