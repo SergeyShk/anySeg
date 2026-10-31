@@ -169,6 +169,46 @@ Exceptions:
 
 </div>
 
+<div class="metric-card" markdown>
+
+### Documents of texts { #pipe }
+
+`pipe` · `Iterator[Document]`
+{ .metric-meta }
+
+``` {.python .signature}
+pipe(texts, *, threads=1, batch_size=1000)
+```
+
+The documents of many texts, as `segment` gives them, in the order of the texts. The texts are taken from the iterable as the documents are asked for, `batch_size` at a time, and every batch is segmented without the GIL, on up to `threads` threads: other Python threads run meanwhile, and several threads speed up a large collection of texts even with the GIL. A text that is not a string or holds a lone surrogate raises its error after the documents of the texts before it and ends the iteration. One iterator serves one thread at a time: a call while another runs raises `ValueError`.
+
+| Parameter | Type | Default | Description |
+| :-------- | :--- | :------ | :---------- |
+| `texts` | `Iterable[str]` | - | Texts |
+| `threads` | `int` | `1` | Number of threads that segment a batch |
+| `batch_size` | `int` | `1000` | Number of texts in a batch |
+
+Exceptions:
+
+- `ValueError` - `threads` or `batch_size` is less than 1;
+- `TypeError` - `texts` is not iterable, or a text is not a string;
+- `UnicodeEncodeError` - a text contains a lone surrogate.
+
+=== "Code"
+
+    ``` python
+    texts = ["Ёж идёт домой. Кот спит", "Утро", "Ночь  наступила"]
+    [len(doc.sentences) for doc in segmenter.pipe(texts, threads=2)]
+    ```
+
+=== "Result"
+
+    ```
+    [2, 1, 1]
+    ```
+
+</div>
+
 ## Functions
 
 `tokenize(text, *, lang)`, `sentenize(text, *, lang)` and `segment(text, *, lang)` do the same as the methods of `Segmenter(lang)`: the module keeps one segmenter per language. The language is a keyword argument and has no default.
