@@ -90,7 +90,7 @@ jobs:
         run: uv run --no-sync pytest --cov anyseg ${{ endsWith(matrix.python-version, 't') && '--cov-fail-under=0' || '' }}
       - name: Run Rust tests
         run: |
-          cargo test -p anyseg --locked
+          cargo test -p anyseg --all-features --locked
           cargo test -p anyseg --no-default-features --locked
 
   msrv:

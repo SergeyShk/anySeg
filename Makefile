@@ -62,12 +62,12 @@ endif
 
 test: deps ## Run the tests
 	uv run pytest
-	cargo test -p $(PACKAGE)
+	cargo test -p $(PACKAGE) --all-features
 	cargo test -p $(PACKAGE) --no-default-features
 
 test-cov: deps ## Run the tests with the coverage check
 	uv run pytest --cov $(PACKAGE)
-	cargo test -p $(PACKAGE)
+	cargo test -p $(PACKAGE) --all-features
 	cargo test -p $(PACKAGE) --no-default-features
 
 clean: clean-build clean-pyc clean-test ## Remove all artifacts except the Rust build
