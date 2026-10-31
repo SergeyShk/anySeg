@@ -8,7 +8,9 @@ use std::fmt::Write as _;
 use unicode_normalization::{UnicodeNormalization, is_nfc};
 
 use crate::Span;
-use crate::document::{Column, Document, DocumentError, Line, LineBreak, Sentence, Verbatim};
+use crate::document::{
+    Column, Document, DocumentError, Line, LineBreak, Sentence, TooLarge, Values, Verbatim,
+};
 use crate::layout::{self, is_separator, one_line};
 
 /// A line of CoNLL-U that cannot be read
@@ -29,11 +31,26 @@ impl fmt::Display for ConlluError {
 
 impl Error for ConlluError {}
 
-/// Columns 2-10 of a word line
+/// A word line, whose columns are read again when the document is made: a sentence keeps one string per word
 struct Word<'a> {
-    form: &'a str,
-    columns: [Option<&'a str>; 7],
+    line: &'a str,
     head: Option<u32>,
+}
+
+impl<'a> Word<'a> {
+    /// The form and the columns other than ID and HEAD; the line has 10 columns
+    fn columns(&self) -> (&'a str, [Option<&'a str>; 7]) {
+        let mut fields = self.line.split('\t').skip(1);
+        let mut next = || fields.next().unwrap_or_default();
+        let form = next();
+        let [lemma, upos, xpos, feats] = [next(), next(), next(), next()];
+        let _head = next();
+        let [deprel, deps, misc] = [next(), next(), next()];
+        (
+            form,
+            [lemma, upos, xpos, feats, deprel, deps, misc].map(field),
+        )
+    }
 }
 
 struct Token<'a> {
@@ -182,19 +199,7 @@ fn parse<'a>(
                 .map_err(|_| error(format!("cannot read the head {head:?}")))?,
         ),
     };
-    sentence.words.push(Word {
-        form: fields[1],
-        columns: [
-            field(fields[2]),
-            field(fields[3]),
-            field(fields[4]),
-            field(fields[5]),
-            field(fields[7]),
-            field(fields[8]),
-            field(fields[9]),
-        ],
-        head,
-    });
+    sentence.words.push(Word { line, head });
     match *multiword {
         Some((_, last)) => {
             if let Some(token) = sentence.tokens.last_mut() {
@@ -230,7 +235,9 @@ fn parse<'a>(
 /// sentence or a `# text` with characters that no token has, and on a text that does not end with a blank line.
 pub fn read_conllu(input: &str) -> Result<Vec<Document>, ConlluError> {
     let input = input.strip_prefix('\u{feff}').unwrap_or(input);
-    let mut sentences = Vec::new();
+    let mut documents = Vec::new();
+    // The sentences of the document being read: a document is made as soon as the next one starts
+    let mut sentences: Vec<Block<'_>> = Vec::new();
     let mut sentence = Block::default();
     let mut multiword = None;
     for (index, line) in input.lines().enumerate() {
@@ -248,6 +255,10 @@ pub fn read_conllu(input: &str) -> Result<Vec<Document>, ConlluError> {
                         line: number,
                         message: "a multiword token without all its words".to_owned(),
                     });
+                }
+                if sentence.has_comment("newdoc") && !sentences.is_empty() {
+                    documents.push(document(&sentences)?);
+                    sentences.clear();
                 }
                 sentences.push(std::mem::take(&mut sentence));
             }
@@ -273,13 +284,8 @@ pub fn read_conllu(input: &str) -> Result<Vec<Document>, ConlluError> {
             message: "the text does not end with a blank line".to_owned(),
         });
     }
-    let mut documents = Vec::new();
-    let mut start = 0;
-    for index in 1..=sentences.len() {
-        if index == sentences.len() || sentences[index].has_comment("newdoc") {
-            documents.push(document(&sentences[start..index])?);
-            start = index;
-        }
+    if !sentences.is_empty() {
+        documents.push(document(&sentences)?);
     }
     Ok(documents)
 }
@@ -318,8 +324,8 @@ fn document(sentences: &[Block<'_>]) -> Result<Document, ConlluError> {
     let mut tokens = Vec::new();
     let mut token_words = vec![0];
     let mut word_tokens = Vec::new();
-    let mut forms = Vec::new();
-    let mut columns: [Vec<Option<String>>; 7] = Default::default();
+    let mut forms = Values::default();
+    let mut columns: [Values; 7] = Default::default();
     let mut heads = Vec::new();
     let mut sentence_tokens = Vec::new();
     let mut paragraph_sentences = Vec::new();
@@ -385,11 +391,11 @@ fn document(sentences: &[Block<'_>]) -> Result<Document, ConlluError> {
                 verbatim.multiword.push((token_index, line.to_owned()));
             }
             for word in words.by_ref().take(token.words) {
-                let form = (token.multiword.is_some() || word.form != span.slice(&text))
-                    .then(|| word.form.to_owned());
-                forms.push(form);
-                for (column, value) in columns.iter_mut().zip(word.columns) {
-                    column.push(value.map(str::to_owned));
+                let (form, values) = word.columns();
+                let form = (token.multiword.is_some() || form != span.slice(&text)).then_some(form);
+                forms.push(form).map_err(|TooLarge| too_large(sentence))?;
+                for (column, value) in columns.iter_mut().zip(values) {
+                    column.push(value).map_err(|TooLarge| too_large(sentence))?;
                 }
                 heads.push(word.head);
                 word_tokens.push(token_index);
@@ -404,14 +410,17 @@ fn document(sentences: &[Block<'_>]) -> Result<Document, ConlluError> {
             });
         }
         text.push_str(rest);
-        verbatim.comments.push(
+        let comments = (!sentence.comments.is_empty()).then(|| sentence.comments.join("\n"));
+        verbatim
+            .comments
+            .push(comments.as_deref())
+            .map_err(|TooLarge| too_large(sentence))?;
+        verbatim.empty.extend(
             sentence
-                .comments
+                .empty
                 .iter()
-                .map(|&comment| comment.to_owned())
-                .collect(),
+                .map(|(lines, line)| (index, *lines, line.clone())),
         );
-        verbatim.empty.push(sentence.empty.clone());
     }
     sentence_tokens.push(tokens.len());
     paragraph_sentences.push(sentences.len());
@@ -430,30 +439,36 @@ fn document(sentences: &[Block<'_>]) -> Result<Document, ConlluError> {
             });
         }
     }
-    let sparse = |values: Vec<Option<String>>| {
-        if values.iter().all(Option::is_none) {
-            Vec::new()
-        } else {
-            values
-        }
-    };
+    // Every token one word: the maps are the identity
+    if word_tokens.len() == tokens.len() {
+        token_words = Vec::new();
+        word_tokens = Vec::new();
+    }
+    verbatim.comments = verbatim.comments.finished();
     Ok(Document {
         text,
-        tokens,
-        token_words,
-        word_tokens,
-        forms: sparse(forms),
-        columns: columns.map(sparse),
+        tokens: tokens.as_slice().to_vec(),
+        token_words: token_words.as_slice().to_vec(),
+        word_tokens: word_tokens.as_slice().to_vec(),
+        forms: forms.finished(),
+        columns: columns.map(Values::finished),
         heads: if heads.iter().all(Option::is_none) {
             Vec::new()
         } else {
-            heads
+            heads.as_slice().to_vec()
         },
         sentence_tokens,
         paragraph_sentences,
-        lines,
+        lines: lines.as_slice().to_vec(),
         verbatim: Some(Box::new(verbatim)),
     })
+}
+
+fn too_large(sentence: &Block<'_>) -> ConlluError {
+    ConlluError {
+        line: sentence.line,
+        message: "the values of a document exceed 2 GiB".to_owned(),
+    }
 }
 
 impl Document {
@@ -511,7 +526,12 @@ impl Document {
         let verbatim = self.verbatim.as_deref();
         match verbatim {
             Some(verbatim) => {
-                for comment in &verbatim.comments[index] {
+                for comment in verbatim
+                    .comments
+                    .get(index)
+                    .into_iter()
+                    .flat_map(|comments| comments.split('\n'))
+                {
                     out.push_str(comment);
                     out.push('\n');
                 }
@@ -540,11 +560,15 @@ impl Document {
                 let _ = writeln!(out, "# text = {}", self.sentence_text(&sentence));
             }
         }
-        let empty: &[(usize, String)] = verbatim.map_or(&[], |verbatim| &verbatim.empty[index]);
+        let empty: &[(usize, usize, String)] = verbatim.map_or(&[], |verbatim| {
+            let first = verbatim.empty.partition_point(|node| node.0 < index);
+            let end = verbatim.empty.partition_point(|node| node.0 <= index);
+            &verbatim.empty[first..end]
+        });
         let mut empty = empty.iter().peekable();
         let mut lines = 0;
         let mut flush = |lines: usize, out: &mut String| {
-            while let Some((_, line)) = empty.next_if(|node| node.0 <= lines) {
+            while let Some((_, _, line)) = empty.next_if(|node| node.1 <= lines) {
                 out.push_str(line);
                 out.push('\n');
             }
@@ -784,6 +808,12 @@ mod tests {
         let doc = &read_conllu(input).unwrap()[0];
         assert_eq!(doc.text(), "А, \nб");
         assert_eq!(doc.to_conllu(), input);
+        // Every token is one word: the maps are the identity and take no memory
+        assert!(doc.token_words.is_empty() && doc.word_tokens.is_empty());
+        assert_eq!(
+            (doc.word_count(), doc.token_words(2), doc.word_token(2)),
+            (3, 2..3, 2)
+        );
     }
 
     #[test]
