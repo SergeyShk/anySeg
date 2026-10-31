@@ -176,6 +176,17 @@ def test_sequences(doc):
         tokens["0"]
 
 
+def test_positions(doc):
+    for parts in (doc.tokens, doc.sentences, doc.paragraphs, doc.lines, doc.sentences[1].tokens):
+        assert parts.starts == [part.start for part in parts]
+        assert parts.ends == [part.end for part in parts]
+    assert doc.tokens.starts[-2:] == [27, 33]
+    assert doc.sentences[1:].ends == [sentence.end for sentence in doc.sentences[1:]]
+    copy = Document.from_tokens(doc.text, doc.tokens.starts, doc.tokens.ends)
+    assert [token.text for token in copy.tokens] == [token.text for token in doc.tokens]
+    assert not hasattr(doc.words, "starts")
+
+
 def test_views_compare_by_document(doc):
     other = Segmenter("ru").segment(TEXT)
     assert doc.tokens[0] == doc.tokens[0]

@@ -1,7 +1,9 @@
 import copy
+import gc
 import pickle
 import random
 import re
+import weakref
 from concurrent.futures import ThreadPoolExecutor
 from itertools import pairwise
 
@@ -170,6 +172,118 @@ def test_threads(segmenter):
     with ThreadPoolExecutor(8) as pool:
         results = list(pool.map(segmenter.tokenize, texts))
     assert results == [segmenter.tokenize(text) for text in texts]
+
+
+def test_pipe(segmenter):
+    long = f"{TEXT} " * 2000
+    texts = [
+        TEXT,
+        "",
+        " \n",
+        "Ёж идёт. Кот спит",
+        long,
+        "Утро",
+        *(f"{TEXT} {n}" for n in range(20)),
+    ]
+    expected = [segmenter.segment(text) for text in texts]
+    for threads in (1, 3):
+        for batch_size in (1, 4, 1000):
+            documents = list(segmenter.pipe(iter(texts), threads=threads, batch_size=batch_size))
+            assert [(doc.text, doc.tokens.starts, doc.sentences.starts) for doc in documents] == [
+                (doc.text, doc.tokens.starts, doc.sentences.starts) for doc in expected
+            ]
+    assert next(segmenter.pipe(texts)).text is texts[0]
+    assert list(segmenter.pipe([])) == []
+    assert CUSTOM.pipe(["сущ. C++"]).__next__().tokens[0].text == "сущ."
+
+
+def test_pipe_is_lazy(segmenter):
+    taken = []
+
+    def texts():
+        for number in range(10):
+            taken.append(number)
+            yield f"Текст {number}"
+
+    pipe = segmenter.pipe(texts(), batch_size=3)
+    assert iter(pipe) is pipe
+    assert next(pipe).text == "Текст 0"
+    assert taken == [0, 1, 2]
+    assert [doc.text for doc in pipe] == [f"Текст {number}" for number in range(1, 10)]
+
+
+def test_pipe_errors(segmenter):
+    def texts(bad):
+        yield "Ёж"
+        yield "Кот"
+        yield bad
+        yield "Утро"
+
+    for bad, error, message in [
+        (5, TypeError, "text 2 is int, not a string"),
+        ("\ud800", UnicodeEncodeError, "surrogates not allowed"),
+        ("ок\ud800" * 3000, UnicodeEncodeError, "surrogates not allowed"),
+    ]:
+        pipe = segmenter.pipe(texts(bad), batch_size=10)
+        assert [doc.text for doc in [next(pipe), next(pipe)]] == ["Ёж", "Кот"]
+        with pytest.raises(error, match=message):
+            next(pipe)
+        assert list(pipe) == []
+
+    def failing():
+        yield "Ёж"
+        raise LookupError("no more texts")
+
+    pipe = segmenter.pipe(failing())
+    assert next(pipe).text == "Ёж"
+    with pytest.raises(LookupError, match="no more texts"):
+        next(pipe)
+    with pytest.raises(TypeError, match="not iterable"):
+        segmenter.pipe(5)
+    for name in ("threads", "batch_size"):
+        with pytest.raises(ValueError, match=f"{name} must be at least 1, not 0"):
+            segmenter.pipe([], **{name: 0})
+
+
+def test_pipe_runs_once_at_a_time(segmenter):
+    def texts():
+        yield "Ёж"
+        next(pipe)
+
+    pipe = segmenter.pipe(texts())
+    assert next(pipe).text == "Ёж"
+    with pytest.raises(ValueError, match="the pipe is already running"):
+        next(pipe)
+    with pytest.raises(TypeError, match="cannot pickle"):
+        pickle.dumps(segmenter.pipe([]))
+
+
+def test_pipe_in_a_cycle(segmenter):
+    # A generator that holds its own pipe is collected with it
+    class Marker:
+        pass
+
+    markers = []
+    for _ in range(10):
+        holder, marker = [], Marker()
+        markers.append(weakref.ref(marker))
+
+        def texts(holder=holder, marker=marker):
+            yield from ["Ёж", "Кот"]
+
+        pipe = segmenter.pipe(texts(), batch_size=1)
+        holder.append(pipe)
+        next(pipe)
+    del holder, marker, pipe, texts
+    gc.collect()
+    assert all(marker() is None for marker in markers)
+
+
+def test_pipe_threads_share_a_segmenter(segmenter):
+    texts = [f"{TEXT} {number}" * 50 for number in range(64)]
+    with ThreadPoolExecutor(4) as pool:
+        results = list(pool.map(lambda text: next(segmenter.pipe([text])).tokens.starts, texts))
+    assert results == [segmenter.segment(text).tokens.starts for text in texts]
 
 
 def test_span():

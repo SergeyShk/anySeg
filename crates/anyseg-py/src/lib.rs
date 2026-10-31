@@ -1,15 +1,17 @@
 //! Python module `anyseg._anyseg`
 
+use std::collections::VecDeque;
 use std::hash::{Hash, Hasher};
+use std::ops::Range;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{PoisonError, RwLock, RwLockReadGuard};
+use std::sync::{Mutex, PoisonError, RwLock, RwLockReadGuard, TryLockError};
 
 use anyseg::Column;
 use pyo3::exceptions::{PyIndexError, PyOverflowError, PyTypeError, PyValueError};
 use pyo3::marker::Ungil;
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyList, PySlice, PyString, PyTuple, PyType};
-use pyo3::{IntoPyObjectExt, PyClass, PyClassInitializer, ffi};
+use pyo3::types::{PyBytes, PyDict, PyIterator, PyList, PySlice, PyString, PyTuple, PyType};
+use pyo3::{IntoPyObjectExt, PyClass, PyClassInitializer, PyTraverseError, PyVisit, ffi};
 
 const COLUMNS: &str = "form, lemma, upos, xpos, feats, head, deprel, deps, misc";
 
@@ -210,6 +212,7 @@ fn spans(text: &str, spans: Vec<anyseg::Span>) -> Vec<Span> {
 ///     tokenize: Tokens of a text
 ///     sentenize: Sentences of a text
 ///     segment: Document of a text
+///     pipe: Documents of texts
 ///
 /// Raises:
 ///     ValueError: If the language is not supported, an abbreviation is not a word of letters or a
@@ -392,6 +395,55 @@ impl Segmenter {
         Ok(Document::new(parts, &text))
     }
 
+    /// Documents of texts
+    ///
+    /// Description:
+    ///     The documents of segment in the order of the texts. The texts are taken from the
+    ///     iterable as the documents are asked for, batch_size at a time, and a batch is segmented
+    ///     without the GIL on up to threads threads. A text that is not a string or holds a lone
+    ///     surrogate raises its error after the documents of the texts before it, and ends the
+    ///     iteration. The iterator is not thread-safe: a call while another runs raises ValueError
+    ///
+    /// Arguments:
+    ///     texts (Iterable[str]): Texts
+    ///     threads (int): Number of threads that segment a batch
+    ///     batch_size (int): Number of texts in a batch
+    ///
+    /// Returns:
+    ///     Iterator[Document]: Documents in order
+    ///
+    /// Raises:
+    ///     ValueError: If threads or batch_size is less than 1
+    ///     TypeError: If texts is not iterable or a text is not a string
+    ///     UnicodeEncodeError: If a text contains a lone surrogate
+    #[pyo3(signature = (texts, *, threads = 1, batch_size = 1000))]
+    fn pipe<'py>(
+        slf: &Bound<'py, Self>,
+        texts: &Bound<'py, PyAny>,
+        #[pyo3(from_py_with = clamped)] threads: isize,
+        #[pyo3(from_py_with = clamped)] batch_size: isize,
+    ) -> PyResult<Bound<'py, Pipe>> {
+        for (name, value) in [("threads", threads), ("batch_size", batch_size)] {
+            if value < 1 {
+                return Err(PyValueError::new_err(format!(
+                    "{name} must be at least 1, not {value}"
+                )));
+            }
+        }
+        let pipe = Pipe {
+            segmenter: slf.clone().unbind(),
+            threads: threads as usize,
+            batch_size: batch_size as usize,
+            state: Mutex::new(Batches {
+                texts: Some(texts.try_iter()?.unbind()),
+                taken: 0,
+                ready: VecDeque::new(),
+                error: None,
+            }),
+        };
+        Bound::new(slf.py(), pipe)
+    }
+
     fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
         let mut out = format!("Segmenter({}", repr(py, self.lang())?);
         for (name, list) in [
@@ -418,6 +470,183 @@ impl Segmenter {
         let arguments = (slf.get_type(), (segmenter.lang(),), lists).into_pyobject(py)?;
         Ok((new, arguments))
     }
+}
+
+/// Iterator over the documents of texts, made by `Segmenter.pipe`
+#[pyclass(frozen, module = "anyseg")]
+struct Pipe {
+    segmenter: Py<Segmenter>,
+    threads: usize,
+    batch_size: usize,
+    state: Mutex<Batches>,
+}
+
+struct Batches {
+    /// `None` once the texts end or fail
+    texts: Option<Py<PyIterator>>,
+    /// The number of texts taken so far
+    taken: usize,
+    ready: VecDeque<Document>,
+    /// The error of the text after the ready documents
+    error: Option<PyErr>,
+}
+
+#[pymethods]
+impl Pipe {
+    fn __iter__(slf: Bound<'_, Self>) -> Bound<'_, Self> {
+        slf
+    }
+
+    fn __next__(&self, py: Python<'_>) -> PyResult<Option<Document>> {
+        // As a generator: a call while another runs, in this thread or another, is an error, not a wait
+        let mut state = match self.state.try_lock() {
+            Ok(state) => state,
+            Err(TryLockError::Poisoned(error)) => error.into_inner(),
+            Err(TryLockError::WouldBlock) => {
+                return Err(PyValueError::new_err("the pipe is already running"));
+            }
+        };
+        if state.ready.is_empty() && state.error.is_none() && state.texts.is_some() {
+            self.fill(py, &mut state)?;
+        }
+        if let Some(document) = state.ready.pop_front() {
+            return Ok(Some(document));
+        }
+        state.error.take().map_or(Ok(None), Err)
+    }
+
+    fn __reduce__(slf: &Bound<'_, Self>) -> PyResult<()> {
+        Err(not_picklable(slf.as_any())?)
+    }
+
+    // The texts are any iterator, which may hold the pipe itself
+    fn __traverse__(&self, visit: PyVisit<'_>) -> Result<(), PyTraverseError> {
+        visit.call(&self.segmenter)?;
+        if let Ok(state) = self.state.try_lock() {
+            visit.call(&state.texts)?;
+            for document in &state.ready {
+                visit.call(&document.text)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn __clear__(&self) {
+        if let Ok(mut state) = self.state.try_lock() {
+            state.texts = None;
+            state.ready.clear();
+            state.error = None;
+        }
+    }
+}
+
+impl Pipe {
+    /// Takes the next batch of texts and segments it into ready documents
+    fn fill(&self, py: Python<'_>, state: &mut Batches) -> PyResult<()> {
+        let Some(texts) = state.texts.as_ref() else {
+            return Ok(());
+        };
+        let mut texts = texts.bind(py).clone();
+        let mut strings = Vec::new();
+        let mut failure = None;
+        while strings.len() < self.batch_size {
+            match texts.next() {
+                None => break,
+                Some(Err(error)) => {
+                    failure = Some(error);
+                    break;
+                }
+                Some(Ok(item)) => match item.cast_into::<PyString>() {
+                    Ok(text) => strings.push(text),
+                    Err(error) => {
+                        let name = error.into_inner().get_type().name()?;
+                        failure = Some(PyTypeError::new_err(format!(
+                            "text {} is {name}, not a string",
+                            state.taken + strings.len()
+                        )));
+                        break;
+                    }
+                },
+            }
+        }
+        // A long text goes to a temporary `bytes`, as in `with_str`
+        let mut encoded: Vec<Option<Bound<'_, PyBytes>>> = Vec::with_capacity(strings.len());
+        for text in &strings {
+            let result = if text.len()? > DETACH {
+                text.encode_utf8().map(Some)
+            } else {
+                text.to_str().map(|_| None)
+            };
+            match result {
+                Ok(bytes) => encoded.push(bytes),
+                Err(error) => {
+                    failure = Some(error);
+                    break;
+                }
+            }
+        }
+        strings.truncate(encoded.len());
+        let views = strings
+            .iter()
+            .zip(&encoded)
+            .map(|(text, bytes)| match bytes {
+                // SAFETY: Python encodes a string to valid UTF-8 or fails on a lone surrogate
+                Some(bytes) => Ok(unsafe { std::str::from_utf8_unchecked(bytes.as_bytes()) }),
+                None => text.to_str(),
+            })
+            .collect::<PyResult<Vec<&str>>>()?;
+        let segmenter = &self.segmenter.get().inner;
+        let parts = py.detach(|| segment_all(segmenter, &views, self.threads));
+        state.taken += strings.len();
+        state.ready.extend(
+            parts
+                .into_iter()
+                .zip(&strings)
+                .map(|(parts, text)| Document::new(parts, text)),
+        );
+        if failure.is_some() || strings.len() < self.batch_size {
+            state.texts = None;
+        }
+        state.error = failure;
+        Ok(())
+    }
+}
+
+/// The parts of the documents of texts in order, segmented on up to `threads` threads
+fn segment_all(segmenter: &anyseg::Segmenter, texts: &[&str], threads: usize) -> Vec<Parts> {
+    let segment = |text: &str| Parts::new(segmenter.segment(text));
+    let threads = threads.min(texts.len());
+    if threads <= 1 {
+        return texts.iter().map(|text| segment(text)).collect();
+    }
+    // Every thread takes the next text, so that a long text does not hold up the others
+    let next = AtomicUsize::new(0);
+    let mut done: Vec<(usize, Parts)> = std::thread::scope(|scope| {
+        let workers: Vec<_> = (0..threads)
+            .map(|_| {
+                scope.spawn(|| {
+                    let mut done = Vec::new();
+                    loop {
+                        let index = next.fetch_add(1, Ordering::Relaxed);
+                        let Some(text) = texts.get(index) else {
+                            return done;
+                        };
+                        done.push((index, segment(text)));
+                    }
+                })
+            })
+            .collect();
+        workers
+            .into_iter()
+            .flat_map(|worker| {
+                worker
+                    .join()
+                    .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+            })
+            .collect()
+    });
+    done.sort_unstable_by_key(|&(index, _)| index);
+    done.into_iter().map(|(_, parts)| parts).collect()
 }
 
 /// Segmented text: tokens, words, sentences, paragraphs and lines
@@ -496,7 +725,7 @@ impl Document {
         self.inner.read().unwrap_or_else(PoisonError::into_inner)
     }
 
-    fn cover(&self, tokens: &std::ops::Range<usize>) -> (usize, usize) {
+    fn cover(&self, tokens: &Range<usize>) -> (usize, usize) {
         (self.tokens[tokens.start].0, self.tokens[tokens.end - 1].1)
     }
 }
@@ -823,6 +1052,26 @@ macro_rules! view {
 
 macro_rules! sequence {
     ($name:ident, $view:ident, $iterator:ident, $what:literal) => {
+        sequence!(@impl $name, $view, $iterator, $what, []);
+    };
+    ($name:ident, $view:ident, $iterator:ident, $what:literal, positions) => {
+        sequence!(@impl $name, $view, $iterator, $what, [
+            /// Positions of the first characters, a new list on every access
+            #[getter]
+            fn starts<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyList>> {
+                let positions = $view::positions(self.doc.get(), self.start..self.end);
+                PyList::new(py, positions.into_iter().map(|(start, _)| start))
+            }
+
+            /// Positions after the last characters, a new list on every access
+            #[getter]
+            fn ends<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyList>> {
+                let positions = $view::positions(self.doc.get(), self.start..self.end);
+                PyList::new(py, positions.into_iter().map(|(_, end)| end))
+            }
+        ]);
+    };
+    (@impl $name:ident, $view:ident, $iterator:ident, $what:literal, [$($extra:tt)*]) => {
         #[doc = concat!("Sequence of the ", $what, " of a document or of a part of it")]
         #[pyclass(frozen, sequence, module = "anyseg")]
         struct $name {
@@ -927,6 +1176,8 @@ macro_rules! sequence {
                 Err(not_picklable(slf.as_any())?)
             }
 
+            $($extra)*
+
             fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
                 let views = (self.start..self.end).map(|index| $view {
                     doc: self.doc.clone_ref(py),
@@ -992,11 +1243,58 @@ macro_rules! sequence {
     };
 }
 
-sequence!(Tokens, Token, TokenIterator, "tokens");
+sequence!(Tokens, Token, TokenIterator, "tokens", positions);
 sequence!(Words, Word, WordIterator, "words");
-sequence!(Sentences, Sentence, SentenceIterator, "sentences");
-sequence!(Paragraphs, Paragraph, ParagraphIterator, "paragraphs");
-sequence!(Lines, Line, LineIterator, "lines");
+sequence!(
+    Sentences,
+    Sentence,
+    SentenceIterator,
+    "sentences",
+    positions
+);
+sequence!(
+    Paragraphs,
+    Paragraph,
+    ParagraphIterator,
+    "paragraphs",
+    positions
+);
+sequence!(Lines, Line, LineIterator, "lines", positions);
+
+/// The character offsets of the parts of one kind of a document
+trait Positions {
+    fn positions(doc: &Document, parts: Range<usize>) -> Vec<(usize, usize)>;
+}
+
+impl Positions for Token {
+    fn positions(doc: &Document, parts: Range<usize>) -> Vec<(usize, usize)> {
+        doc.tokens[parts].to_vec()
+    }
+}
+
+impl Positions for Sentence {
+    fn positions(doc: &Document, parts: Range<usize>) -> Vec<(usize, usize)> {
+        let inner = doc.read();
+        parts
+            .map(|index| doc.cover(&inner.sentence(index).tokens))
+            .collect()
+    }
+}
+
+impl Positions for Paragraph {
+    fn positions(doc: &Document, parts: Range<usize>) -> Vec<(usize, usize)> {
+        let inner = doc.read();
+        parts
+            .map(|index| doc.cover(&inner.paragraph(index).tokens))
+            .collect()
+    }
+}
+
+impl Positions for Line {
+    fn positions(doc: &Document, parts: Range<usize>) -> Vec<(usize, usize)> {
+        doc.lines[parts].to_vec()
+    }
+}
 
 /// Token of a document: a span of its text
 ///
