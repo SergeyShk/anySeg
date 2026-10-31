@@ -133,15 +133,85 @@ fn fitted<T: Copy>(vector: Vec<T>) -> Vec<T> {
     }
 }
 
+/// The bit of an end in [`Values`] that tells that the item has a value, which may be empty
+const PRESENT: u32 = 1 << 31;
+
+/// Optional strings, one per item, in one buffer: the end of every item in it, with the bit [`PRESENT`]. No items
+/// at all when none has a value
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Values {
+    text: String,
+    ends: Vec<u32>,
+}
+
+/// The values of one document overflow the buffer of [`Values`]: 2 GiB
+#[derive(Debug)]
+pub(crate) struct TooLarge;
+
+impl Values {
+    /// The values of the items in order
+    pub(crate) fn collect<'a>(
+        items: impl IntoIterator<Item = Option<&'a str>>,
+    ) -> Result<Self, TooLarge> {
+        let mut values = Values::default();
+        for item in items {
+            values.push(item)?;
+        }
+        Ok(values.finished())
+    }
+
+    pub(crate) fn push(&mut self, item: Option<&str>) -> Result<(), TooLarge> {
+        let mut end = self.text.len();
+        if let Some(value) = item {
+            end += value.len();
+            if end >= PRESENT as usize {
+                return Err(TooLarge);
+            }
+            self.text.push_str(value);
+        }
+        // Fits: the buffer stays below PRESENT
+        let end = end as u32;
+        self.ends
+            .push(if item.is_some() { end | PRESENT } else { end });
+        Ok(())
+    }
+
+    /// The values with no spare capacity, or none if no item has a value
+    pub(crate) fn finished(self) -> Self {
+        if self.ends.iter().all(|end| end & PRESENT == 0) {
+            return Values::default();
+        }
+        Values {
+            text: self.text.as_str().to_owned(),
+            ends: fitted(self.ends),
+        }
+    }
+
+    pub(crate) fn get(&self, item: usize) -> Option<&str> {
+        let end = *self.ends.get(item)?;
+        if end & PRESENT == 0 {
+            return None;
+        }
+        let start = item
+            .checked_sub(1)
+            .map_or(0, |previous| self.ends[previous] & !PRESENT);
+        Some(&self.text[start as usize..(end & !PRESENT) as usize])
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.ends.is_empty()
+    }
+}
+
 /// The parts of CoNLL-U that a document read from it writes back as they were
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Verbatim {
-    /// The comment lines of every sentence
-    pub(crate) comments: Vec<Vec<String>>,
+    /// The comment lines of every sentence, joined by line breaks
+    pub(crate) comments: Values,
     /// Columns 2-10 of the line of every multiword token, by token
     pub(crate) multiword: Vec<(usize, String)>,
-    /// The empty nodes of every sentence, with the number of token and word lines before each
-    pub(crate) empty: Vec<Vec<(usize, String)>>,
+    /// The empty nodes: the sentence, the number of its token and word lines before the node, and the line
+    pub(crate) empty: Vec<(usize, usize, String)>,
 }
 
 /// A segmented text. Tokens are spans of the text, which is never changed; a token holds one word or, for a
@@ -151,13 +221,13 @@ pub(crate) struct Verbatim {
 pub struct Document {
     pub(crate) text: String,
     pub(crate) tokens: Vec<Span>,
-    /// The first word of every token, and the number of words
+    /// The first word of every token, and the number of words; both empty when every token is one word
     pub(crate) token_words: Vec<usize>,
     pub(crate) word_tokens: Vec<usize>,
-    /// Empty when every word is the text of its token
-    pub(crate) forms: Vec<Option<String>>,
-    /// Every column is empty until set
-    pub(crate) columns: [Vec<Option<String>>; 7],
+    /// The forms that differ from the text of their token; empty when there are none
+    pub(crate) forms: Values,
+    /// The columns, none until one is set: a document of a short text stays small
+    pub(crate) columns: Option<Box<[Values; 7]>>,
     pub(crate) heads: Vec<Option<u32>>,
     /// The first token of every sentence, and the number of tokens
     pub(crate) sentence_tokens: Vec<usize>,
@@ -237,10 +307,10 @@ impl Document {
         Document {
             text,
             tokens: fitted(tokens),
-            token_words: (0..=count).collect(),
-            word_tokens: (0..count).collect(),
-            forms: Vec::new(),
-            columns: Default::default(),
+            token_words: Vec::new(),
+            word_tokens: Vec::new(),
+            forms: Values::default(),
+            columns: None,
             heads: Vec::new(),
             sentence_tokens: fitted(sentence_tokens),
             paragraph_sentences: fitted(paragraph_sentences),
@@ -290,19 +360,18 @@ impl Document {
             .map(|first| starts.partition_point(|start| start < first))
             .chain([starts.len()])
             .collect();
-        let count = tokens.len();
-        starts.push(count);
+        starts.push(tokens.len());
         Ok(Document {
             text,
-            tokens,
-            token_words: (0..=count).collect(),
-            word_tokens: (0..count).collect(),
-            forms: Vec::new(),
-            columns: Default::default(),
+            tokens: fitted(tokens),
+            token_words: Vec::new(),
+            word_tokens: Vec::new(),
+            forms: Values::default(),
+            columns: None,
             heads: Vec::new(),
-            sentence_tokens: starts,
+            sentence_tokens: fitted(starts),
             paragraph_sentences,
-            lines,
+            lines: fitted(lines),
             verbatim: None,
         })
     }
@@ -323,12 +392,34 @@ impl Document {
     ///
     /// If there is no such token.
     pub fn token_words(&self, token: usize) -> Range<usize> {
-        self.token_words[token]..self.token_words[token + 1]
+        self.check_token(token);
+        self.first_word(token)..self.first_word(token + 1)
+    }
+
+    /// The first word of a token, or the number of words after the last token
+    fn first_word(&self, token: usize) -> usize {
+        if self.token_words.is_empty() {
+            token
+        } else {
+            self.token_words[token]
+        }
+    }
+
+    fn check_token(&self, token: usize) {
+        let count = self.tokens.len();
+        assert!(
+            token < count,
+            "token {token} is out of range for {count} tokens"
+        );
     }
 
     /// The number of words
     pub fn word_count(&self) -> usize {
-        self.word_tokens.len()
+        if self.word_tokens.is_empty() {
+            self.tokens.len()
+        } else {
+            self.word_tokens.len()
+        }
     }
 
     /// The token that holds a word.
@@ -337,7 +428,12 @@ impl Document {
     ///
     /// If there is no such word.
     pub fn word_token(&self, word: usize) -> usize {
-        self.word_tokens[word]
+        self.check_word(word);
+        if self.word_tokens.is_empty() {
+            word
+        } else {
+            self.word_tokens[word]
+        }
     }
 
     /// The form of a word: the text of its token unless it is a word of a multiword token.
@@ -347,8 +443,8 @@ impl Document {
     /// If there is no such word.
     pub fn form(&self, word: usize) -> &str {
         match self.forms.get(word) {
-            Some(Some(form)) => form,
-            _ => self.tokens[self.word_tokens[word]].slice(&self.text),
+            Some(form) => form,
+            None => self.tokens[self.word_token(word)].slice(&self.text),
         }
     }
 
@@ -359,9 +455,7 @@ impl Document {
     /// If there is no such word.
     pub fn column(&self, column: Column, word: usize) -> Option<&str> {
         self.check_word(word);
-        self.columns[column as usize]
-            .get(word)
-            .and_then(Option::as_deref)
+        self.columns.as_ref()?[column as usize].get(word)
     }
 
     /// The head of a word: the ID of a word of its sentence or 0 for the root, `None` until set.
@@ -396,7 +490,7 @@ impl Document {
         let tokens = self.sentence_tokens[index]..self.sentence_tokens[index + 1];
         Sentence {
             span: self.cover(&tokens),
-            words: self.token_words[tokens.start]..self.token_words[tokens.end],
+            words: self.first_word(tokens.start)..self.first_word(tokens.end),
             tokens,
         }
     }
@@ -407,11 +501,7 @@ impl Document {
     ///
     /// If there is no such token.
     pub fn token_sentence(&self, token: usize) -> usize {
-        let count = self.tokens.len();
-        assert!(
-            token < count,
-            "token {token} is out of range for {count} tokens"
-        );
+        self.check_token(token);
         self.sentence_tokens
             .partition_point(|&start| start <= token)
             - 1
@@ -423,7 +513,7 @@ impl Document {
     ///
     /// If there is no such word.
     pub fn word_sentence(&self, word: usize) -> usize {
-        self.token_sentence(self.word_tokens[word])
+        self.token_sentence(self.word_token(word))
     }
 
     /// The ID of a word in its sentence, from 1.
@@ -433,7 +523,7 @@ impl Document {
     /// If there is no such word.
     pub fn word_id(&self, word: usize) -> usize {
         let first = self.sentence_tokens[self.word_sentence(word)];
-        word - self.token_words[first] + 1
+        word - self.first_word(first) + 1
     }
 
     /// The number of paragraphs
@@ -538,13 +628,21 @@ impl Document {
                 }
             }
         }
+        let columns = columns
+            .into_iter()
+            .map(|(column, values)| {
+                Values::collect(values.iter().map(Option::as_deref))
+                    .map(|values| (column, values))
+                    .map_err(|TooLarge| {
+                        DocumentError(format!("{} of the document exceeds 2 GiB", column.name()))
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut all = self.columns.take().map(|all| *all).unwrap_or_default();
         for (column, values) in columns {
-            self.columns[column as usize] = if values.iter().all(Option::is_none) {
-                Vec::new()
-            } else {
-                values
-            };
+            all[column as usize] = values;
         }
+        self.columns = (!all.iter().all(Values::is_empty)).then(|| Box::new(all));
         if let Some(heads) = heads {
             self.heads = if heads.iter().all(Option::is_none) {
                 Vec::new()
@@ -649,6 +747,20 @@ mod tests {
     }
 
     #[test]
+    fn values() {
+        let values = Values::collect([Some("NOUN"), None, Some(""), Some("VERB")]).unwrap();
+        assert_eq!(
+            (0..5).map(|item| values.get(item)).collect::<Vec<_>>(),
+            [Some("NOUN"), None, Some(""), Some("VERB"), None]
+        );
+        assert!(Values::collect([None, None]).unwrap().is_empty());
+        let mut values = Values::default();
+        let large = "x".repeat(1 << 30);
+        values.push(Some(&large)).unwrap();
+        assert!(values.push(Some(&large)).is_err());
+    }
+
+    #[test]
     fn blank_text() {
         let doc = document(" \n\n ", None);
         assert_eq!(
@@ -741,6 +853,7 @@ mod tests {
         assert_eq!(doc.column(Column::Upos, 0), Some("NOUN"));
         doc.set_columns(vec![(Column::Upos, vec![None, None, None])], None)
             .unwrap();
-        assert!(doc.columns[Column::Upos as usize].is_empty());
+        assert!(doc.columns.is_none());
+        assert!(doc.token_words.is_empty() && doc.word_tokens.is_empty());
     }
 }

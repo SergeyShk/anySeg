@@ -383,12 +383,28 @@ def test_read_conllu():
     assert doc.words[3].misc == "SpaceAfter=No"
     assert [sentence.text for sentence in doc.sentences] == ["Vino  del norte.", "Sí."]
     assert len(doc.paragraphs) == len(doc.lines) == 2
+    assert [len(token.words) for token in doc.tokens] == [1, 2, 1, 1, 1, 1]
+    assert [word.sentence.index for word in doc.words] == [0, 0, 0, 0, 0, 1, 1]
+    assert [word.form for word in doc.sentences[0].words] == ["Vino", "de", "el", "norte", "."]
+    assert [token.sentence.index for token in doc.paragraphs[1].tokens] == [1, 1]
     assert docs[1].tokens[0].text == "10 000"
     doc.set_columns(upos=["AUX", *doc.column("upos")[1:]])
     assert (
         doc.to_conllu()
         == UD.split("\n\n# newdoc\n")[0].replace("VERB\t_\tMood", "AUX\t_\tMood", 1) + "\n\n"
     )
+
+
+def test_conllu_forms_and_empty_fields():
+    # A form other than the text of its token, and an empty field, written back as they were
+    text = conllu(
+        ["# text = 10\u00a0000 руб", ("1", "10 000", "", *["_"] * 7), ("2", "руб", *["_"] * 8)]
+    )
+    doc = read_conllu(text)[0]
+    assert [token.text for token in doc.tokens] == ["10\u00a0000", "руб"]
+    assert [word.form for word in doc.words] == ["10 000", "руб"]
+    assert (doc.words[0].lemma, doc.words[1].lemma) == ("", None)
+    assert doc.to_conllu() == text
 
 
 @pytest.mark.parametrize(
