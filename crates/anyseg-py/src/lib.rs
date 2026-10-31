@@ -45,6 +45,23 @@ fn length(text: &Bound<'_, PyString>) -> usize {
     unsafe { ffi::PyUnicode_GetLength(text.as_ptr()) as usize }
 }
 
+/// The piece of a string between two character offsets
+fn substring<'py>(
+    text: &Bound<'py, PyString>,
+    start: usize,
+    end: usize,
+) -> PyResult<Bound<'py, PyString>> {
+    // SAFETY: the object is a live string, and the function returns a new string or null with an error set
+    unsafe {
+        let piece = ffi::PyUnicode_Substring(
+            text.as_ptr(),
+            start as ffi::Py_ssize_t,
+            end as ffi::Py_ssize_t,
+        );
+        Ok(Bound::from_owned_ptr_or_err(text.py(), piece)?.cast_into_unchecked())
+    }
+}
+
 /// A new object that the cycle collector does not track: spans and views hold no references that could
 /// close a cycle, and tracking them makes every collection walk all of them
 fn untracked<T: PyClass + Into<PyClassInitializer<T>>>(
@@ -707,28 +724,153 @@ fn segment_all(segmenter: &anyseg::Segmenter, texts: &[&str], threads: usize) ->
 ///     to_conllu: Document in CoNLL-U
 #[pyclass(frozen, module = "anyseg")]
 struct Document {
+    /// The columns, the forms of words that differ from their tokens and CoNLL-U; the views read the rest from
+    /// the fields that never change, without the lock, which threads would contend for
     inner: RwLock<anyseg::Document>,
     text: Py<PyString>,
     /// Character offsets of the tokens and the lines
     tokens: Vec<(usize, usize)>,
     lines: Vec<(usize, usize)>,
+    structure: Structure,
 }
 
-/// A document of the core with the character offsets of its tokens and lines, made without the GIL
+/// The parts of a document that never change
+struct Structure {
+    /// The first token of every sentence, and the number of tokens
+    sentence_tokens: Vec<usize>,
+    /// The first sentence of every paragraph, and the number of sentences
+    paragraph_sentences: Vec<usize>,
+    /// The first word of every token and the number of words, and the token of every word; both empty when every
+    /// token is one word
+    token_words: Vec<usize>,
+    word_tokens: Vec<usize>,
+    breaks: Vec<Option<anyseg::LineBreak>>,
+    /// Some word has a form other than the text of its token: found when a form is first read
+    forms: OnceLock<bool>,
+}
+
+impl Structure {
+    fn new(inner: &anyseg::Document) -> Self {
+        let (tokens, words) = (inner.tokens().len(), inner.word_count());
+        let sentences = inner.sentence_count();
+        let (token_words, word_tokens) = if words == tokens {
+            (Vec::new(), Vec::new())
+        } else {
+            (
+                (0..tokens)
+                    .map(|token| inner.token_words(token).start)
+                    .chain([words])
+                    .collect(),
+                (0..words).map(|word| inner.word_token(word)).collect(),
+            )
+        };
+        Structure {
+            sentence_tokens: (0..sentences)
+                .map(|sentence| inner.sentence(sentence).tokens.start)
+                .chain([tokens])
+                .collect(),
+            paragraph_sentences: (0..inner.paragraph_count())
+                .map(|paragraph| inner.paragraph(paragraph).sentences.start)
+                .chain([sentences])
+                .collect(),
+            token_words,
+            word_tokens,
+            breaks: inner.lines().iter().map(|line| line.break_before).collect(),
+            forms: OnceLock::new(),
+        }
+    }
+
+    fn token_count(&self) -> usize {
+        self.sentence_tokens.last().copied().unwrap_or(0)
+    }
+
+    fn word_count(&self) -> usize {
+        if self.word_tokens.is_empty() {
+            self.token_count()
+        } else {
+            self.word_tokens.len()
+        }
+    }
+
+    fn sentence_count(&self) -> usize {
+        self.sentence_tokens.len().saturating_sub(1)
+    }
+
+    fn paragraph_count(&self) -> usize {
+        self.paragraph_sentences.len().saturating_sub(1)
+    }
+
+    /// The first word of a token, or the number of words after the last token
+    fn first_word(&self, token: usize) -> usize {
+        if self.token_words.is_empty() {
+            token
+        } else {
+            self.token_words[token]
+        }
+    }
+
+    fn token_words(&self, token: usize) -> Range<usize> {
+        self.first_word(token)..self.first_word(token + 1)
+    }
+
+    fn word_token(&self, word: usize) -> usize {
+        if self.word_tokens.is_empty() {
+            word
+        } else {
+            self.word_tokens[word]
+        }
+    }
+
+    fn sentence_tokens(&self, sentence: usize) -> Range<usize> {
+        self.sentence_tokens[sentence]..self.sentence_tokens[sentence + 1]
+    }
+
+    fn sentence_words(&self, sentence: usize) -> Range<usize> {
+        let tokens = self.sentence_tokens(sentence);
+        self.first_word(tokens.start)..self.first_word(tokens.end)
+    }
+
+    fn token_sentence(&self, token: usize) -> usize {
+        self.sentence_tokens
+            .partition_point(|&start| start <= token)
+            - 1
+    }
+
+    fn paragraph_sentences(&self, paragraph: usize) -> Range<usize> {
+        self.paragraph_sentences[paragraph]..self.paragraph_sentences[paragraph + 1]
+    }
+
+    fn paragraph_tokens(&self, paragraph: usize) -> Range<usize> {
+        let sentences = self.paragraph_sentences(paragraph);
+        self.sentence_tokens[sentences.start]..self.sentence_tokens[sentences.end]
+    }
+
+    fn sentence_paragraph(&self, sentence: usize) -> usize {
+        self.paragraph_sentences
+            .partition_point(|&start| start <= sentence)
+            - 1
+    }
+}
+
+/// A document of the core with the character offsets of its tokens and lines and its structure, made without the
+/// GIL
 struct Parts {
     inner: anyseg::Document,
     tokens: Vec<(usize, usize)>,
     lines: Vec<(usize, usize)>,
+    structure: Structure,
 }
 
 impl Parts {
     fn new(inner: anyseg::Document) -> Self {
         let tokens = char_offsets(inner.text(), inner.tokens().iter().copied());
         let lines = char_offsets(inner.text(), inner.lines().iter().map(|line| line.span));
+        let structure = Structure::new(&inner);
         Parts {
             inner,
             tokens,
             lines,
+            structure,
         }
     }
 }
@@ -747,7 +889,17 @@ impl Document {
             text,
             tokens: parts.tokens,
             lines: parts.lines,
+            structure: parts.structure,
         }
+    }
+
+    /// The text of the document between two character offsets
+    fn piece<'py>(
+        &self,
+        py: Python<'py>,
+        (start, end): (usize, usize),
+    ) -> PyResult<Bound<'py, PyString>> {
+        substring(self.text.bind(py), start, end)
     }
 
     fn read(&self) -> RwLockReadGuard<'_, anyseg::Document> {
@@ -823,19 +975,19 @@ impl Document {
 
     #[getter]
     fn words<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, Words>> {
-        let end = slf.get().read().word_count();
+        let end = slf.get().structure.word_count();
         untracked(slf.py(), Words::new(slf, 0..end))
     }
 
     #[getter]
     fn sentences<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, Sentences>> {
-        let end = slf.get().read().sentence_count();
+        let end = slf.get().structure.sentence_count();
         untracked(slf.py(), Sentences::new(slf, 0..end))
     }
 
     #[getter]
     fn paragraphs<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, Paragraphs>> {
-        let end = slf.get().read().paragraph_count();
+        let end = slf.get().structure.paragraph_count();
         untracked(slf.py(), Paragraphs::new(slf, 0..end))
     }
 
@@ -1032,7 +1184,7 @@ impl Document {
     ///     ValueError: If the ID is empty or holds whitespace
     #[pyo3(signature = (*, doc_id=None))]
     fn to_conllu(&self, py: Python<'_>, doc_id: Option<&str>) -> PyResult<String> {
-        let long = self.read().text().len() > DETACH;
+        let long = length(self.text.bind(py)) > DETACH;
         detached(py, long, || {
             let inner = self.read();
             match doc_id {
@@ -1048,13 +1200,13 @@ impl Document {
     }
 
     fn __repr__(&self) -> String {
-        let inner = self.read();
+        let structure = &self.structure;
         format!(
             "Document(tokens={}, words={}, sentences={}, paragraphs={})",
-            inner.tokens().len(),
-            inner.word_count(),
-            inner.sentence_count(),
-            inner.paragraph_count()
+            self.tokens.len(),
+            structure.word_count(),
+            structure.sentence_count(),
+            structure.paragraph_count()
         )
     }
 }
@@ -1303,18 +1455,16 @@ impl Positions for Token {
 
 impl Positions for Sentence {
     fn positions(doc: &Document, parts: Range<usize>) -> Vec<(usize, usize)> {
-        let inner = doc.read();
         parts
-            .map(|index| doc.cover(&inner.sentence(index).tokens))
+            .map(|index| doc.cover(&doc.structure.sentence_tokens(index)))
             .collect()
     }
 }
 
 impl Positions for Paragraph {
     fn positions(doc: &Document, parts: Range<usize>) -> Vec<(usize, usize)> {
-        let inner = doc.read();
         parts
-            .map(|index| doc.cover(&inner.paragraph(index).tokens))
+            .map(|index| doc.cover(&doc.structure.paragraph_tokens(index)))
             .collect()
     }
 }
@@ -1365,31 +1515,31 @@ impl Token {
     }
 
     #[getter]
-    fn text<'py>(&self, py: Python<'py>) -> Bound<'py, PyString> {
-        let inner = self.doc.get().read();
-        PyString::new(py, inner.tokens()[self.index].slice(inner.text()))
+    fn text<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyString>> {
+        let doc = self.doc.get();
+        doc.piece(py, doc.tokens[self.index])
     }
 
     /// Text between the token and the next one, or the end of the text
     #[getter]
-    fn spaces_after<'py>(&self, py: Python<'py>) -> Bound<'py, PyString> {
-        let inner = self.doc.get().read();
-        let tokens = inner.tokens();
-        let end = tokens
+    fn spaces_after<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyString>> {
+        let doc = self.doc.get();
+        let end = doc
+            .tokens
             .get(self.index + 1)
-            .map_or(inner.text().len(), |next| next.start);
-        PyString::new(py, &inner.text()[tokens[self.index].end..end])
+            .map_or_else(|| length(doc.text.bind(py)), |next| next.0);
+        doc.piece(py, (doc.tokens[self.index].1, end))
     }
 
     #[getter]
     fn words<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, Words>> {
-        let words = self.doc.get().read().token_words(self.index);
+        let words = self.doc.get().structure.token_words(self.index);
         untracked(py, Words::new(self.doc.bind(py), words))
     }
 
     #[getter]
     fn sentence<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, Sentence>> {
-        let index = self.doc.get().read().token_sentence(self.index);
+        let index = self.doc.get().structure.token_sentence(self.index);
         let doc = self.doc.clone_ref(py);
         untracked(py, Sentence { doc, index })
     }
@@ -1403,7 +1553,7 @@ impl Token {
             "Token(start={}, end={}, text={})",
             self.start(),
             self.end(),
-            self.text(py).repr()?
+            self.text(py)?.repr()?
         ))
     }
 }
@@ -1448,12 +1598,25 @@ impl Word {
     /// ID of the word in its sentence, from 1
     #[getter]
     fn id(&self) -> usize {
-        self.doc.get().read().word_id(self.index)
+        let structure = &self.doc.get().structure;
+        let sentence = structure.token_sentence(structure.word_token(self.index));
+        self.index - structure.sentence_words(sentence).start + 1
     }
 
     #[getter]
-    fn form<'py>(&self, py: Python<'py>) -> Bound<'py, PyString> {
-        PyString::new(py, self.doc.get().read().form(self.index))
+    fn form<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyString>> {
+        let doc = self.doc.get();
+        let forms = *doc.structure.forms.get_or_init(|| {
+            let inner = doc.read();
+            (0..inner.word_count()).any(|word| {
+                let token = inner.tokens()[inner.word_token(word)].slice(inner.text());
+                !std::ptr::eq(inner.form(word), token)
+            })
+        });
+        if forms {
+            return Ok(PyString::new(py, doc.read().form(self.index)));
+        }
+        doc.piece(py, doc.tokens[doc.structure.word_token(self.index)])
     }
 
     #[getter]
@@ -1499,14 +1662,15 @@ impl Word {
 
     #[getter]
     fn token<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, Token>> {
-        let index = self.doc.get().read().word_token(self.index);
+        let index = self.doc.get().structure.word_token(self.index);
         let doc = self.doc.clone_ref(py);
         untracked(py, Token { doc, index })
     }
 
     #[getter]
     fn sentence<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, Sentence>> {
-        let index = self.doc.get().read().word_sentence(self.index);
+        let structure = &self.doc.get().structure;
+        let index = structure.token_sentence(structure.word_token(self.index));
         let doc = self.doc.clone_ref(py);
         untracked(py, Sentence { doc, index })
     }
@@ -1571,37 +1735,37 @@ impl Sentence {
     #[getter]
     fn start(&self) -> usize {
         let doc = self.doc.get();
-        doc.cover(&doc.read().sentence(self.index).tokens).0
+        doc.cover(&doc.structure.sentence_tokens(self.index)).0
     }
 
     /// Position after the last character
     #[getter]
     fn end(&self) -> usize {
         let doc = self.doc.get();
-        doc.cover(&doc.read().sentence(self.index).tokens).1
+        doc.cover(&doc.structure.sentence_tokens(self.index)).1
     }
 
     #[getter]
-    fn text<'py>(&self, py: Python<'py>) -> Bound<'py, PyString> {
-        let inner = self.doc.get().read();
-        PyString::new(py, inner.sentence(self.index).span.slice(inner.text()))
+    fn text<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyString>> {
+        let doc = self.doc.get();
+        doc.piece(py, doc.cover(&doc.structure.sentence_tokens(self.index)))
     }
 
     #[getter]
     fn tokens<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, Tokens>> {
-        let tokens = self.doc.get().read().sentence(self.index).tokens;
+        let tokens = self.doc.get().structure.sentence_tokens(self.index);
         untracked(py, Tokens::new(self.doc.bind(py), tokens))
     }
 
     #[getter]
     fn words<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, Words>> {
-        let words = self.doc.get().read().sentence(self.index).words;
+        let words = self.doc.get().structure.sentence_words(self.index);
         untracked(py, Words::new(self.doc.bind(py), words))
     }
 
     #[getter]
     fn paragraph<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, Paragraph>> {
-        let index = self.doc.get().read().sentence_paragraph(self.index);
+        let index = self.doc.get().structure.sentence_paragraph(self.index);
         let doc = self.doc.clone_ref(py);
         untracked(py, Paragraph { doc, index })
     }
@@ -1615,7 +1779,7 @@ impl Sentence {
             "Sentence(start={}, end={}, text={})",
             self.start(),
             self.end(),
-            self.text(py).repr()?
+            self.text(py)?.repr()?
         ))
     }
 }
@@ -1652,31 +1816,31 @@ impl Paragraph {
     #[getter]
     fn start(&self) -> usize {
         let doc = self.doc.get();
-        doc.cover(&doc.read().paragraph(self.index).tokens).0
+        doc.cover(&doc.structure.paragraph_tokens(self.index)).0
     }
 
     /// Position after the last character
     #[getter]
     fn end(&self) -> usize {
         let doc = self.doc.get();
-        doc.cover(&doc.read().paragraph(self.index).tokens).1
+        doc.cover(&doc.structure.paragraph_tokens(self.index)).1
     }
 
     #[getter]
-    fn text<'py>(&self, py: Python<'py>) -> Bound<'py, PyString> {
-        let inner = self.doc.get().read();
-        PyString::new(py, inner.paragraph(self.index).span.slice(inner.text()))
+    fn text<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyString>> {
+        let doc = self.doc.get();
+        doc.piece(py, doc.cover(&doc.structure.paragraph_tokens(self.index)))
     }
 
     #[getter]
     fn sentences<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, Sentences>> {
-        let sentences = self.doc.get().read().paragraph(self.index).sentences;
+        let sentences = self.doc.get().structure.paragraph_sentences(self.index);
         untracked(py, Sentences::new(self.doc.bind(py), sentences))
     }
 
     #[getter]
     fn tokens<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, Tokens>> {
-        let tokens = self.doc.get().read().paragraph(self.index).tokens;
+        let tokens = self.doc.get().structure.paragraph_tokens(self.index);
         untracked(py, Tokens::new(self.doc.bind(py), tokens))
     }
 
@@ -1689,7 +1853,7 @@ impl Paragraph {
             "Paragraph(start={}, end={}, text={})",
             self.start(),
             self.end(),
-            self.text(py).repr()?
+            self.text(py)?.repr()?
         ))
     }
 }
@@ -1735,17 +1899,15 @@ impl Line {
     }
 
     #[getter]
-    fn text<'py>(&self, py: Python<'py>) -> Bound<'py, PyString> {
-        let inner = self.doc.get().read();
-        PyString::new(py, inner.lines()[self.index].span.slice(inner.text()))
+    fn text<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyString>> {
+        let doc = self.doc.get();
+        doc.piece(py, doc.lines[self.index])
     }
 
     /// How the line begins: None for the first line of a paragraph, "author" or "typeset"
     #[getter]
     fn break_before(&self) -> Option<&'static str> {
-        self.doc.get().read().lines()[self.index]
-            .break_before
-            .map(anyseg::LineBreak::name)
+        self.doc.get().structure.breaks[self.index].map(anyseg::LineBreak::name)
     }
 
     fn __reduce__(slf: &Bound<'_, Self>) -> PyResult<()> {
@@ -1761,7 +1923,7 @@ impl Line {
             "Line(start={}, end={}, text={}, break_before={break_before})",
             self.start(),
             self.end(),
-            self.text(py).repr()?
+            self.text(py)?.repr()?
         ))
     }
 }
