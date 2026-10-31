@@ -16,6 +16,7 @@ __all__ = [
     "Word",
     "Words",
     "__version__",
+    "_main",
     "read_conllu",
 ]
 __version__: str
@@ -280,3 +281,4 @@ class Lines(Sequence[Line]):
     def count(self, value: object, /) -> int: ...
 
 def read_conllu(text: str) -> list[Document]: ...
+def _main(args: list[str]) -> int: ...

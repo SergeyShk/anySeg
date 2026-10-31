@@ -14,5 +14,5 @@ name = "_anyseg"
 crate-type = ["cdylib"]
 
 [dependencies]
-anyseg = { path = "../anyseg" }
+anyseg = { path = "../anyseg", features = ["cli"] }
 pyo3 = { version = "0.30.1", features = ["abi3-py311"] }

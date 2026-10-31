@@ -46,6 +46,9 @@ dependencies = []
 [project.optional-dependencies]
 spacy = ["spacy>=3.8,<4"]
 
+[project.scripts]
+anyseg = "anyseg.__main__:main"
+
 [project.entry-points.spacy_tokenizers]
 "anyseg.Tokenizer.v1" = "anyseg.spacy:create_tokenizer"
 
