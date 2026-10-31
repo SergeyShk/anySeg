@@ -198,7 +198,6 @@ impl Values {
         Some(&self.text[start as usize..(end & !PRESENT) as usize])
     }
 
-    #[cfg(test)]
     pub(crate) fn is_empty(&self) -> bool {
         self.ends.is_empty()
     }
@@ -227,8 +226,8 @@ pub struct Document {
     pub(crate) word_tokens: Vec<usize>,
     /// The forms that differ from the text of their token; empty when there are none
     pub(crate) forms: Values,
-    /// Every column is empty until set
-    pub(crate) columns: [Values; 7],
+    /// The columns, none until one is set: a document of a short text stays small
+    pub(crate) columns: Option<Box<[Values; 7]>>,
     pub(crate) heads: Vec<Option<u32>>,
     /// The first token of every sentence, and the number of tokens
     pub(crate) sentence_tokens: Vec<usize>,
@@ -311,7 +310,7 @@ impl Document {
             token_words: Vec::new(),
             word_tokens: Vec::new(),
             forms: Values::default(),
-            columns: Default::default(),
+            columns: None,
             heads: Vec::new(),
             sentence_tokens: fitted(sentence_tokens),
             paragraph_sentences: fitted(paragraph_sentences),
@@ -368,7 +367,7 @@ impl Document {
             token_words: Vec::new(),
             word_tokens: Vec::new(),
             forms: Values::default(),
-            columns: Default::default(),
+            columns: None,
             heads: Vec::new(),
             sentence_tokens: fitted(starts),
             paragraph_sentences,
@@ -456,7 +455,7 @@ impl Document {
     /// If there is no such word.
     pub fn column(&self, column: Column, word: usize) -> Option<&str> {
         self.check_word(word);
-        self.columns[column as usize].get(word)
+        self.columns.as_ref()?[column as usize].get(word)
     }
 
     /// The head of a word: the ID of a word of its sentence or 0 for the root, `None` until set.
@@ -639,9 +638,11 @@ impl Document {
                     })
             })
             .collect::<Result<Vec<_>, _>>()?;
+        let mut all = self.columns.take().map(|all| *all).unwrap_or_default();
         for (column, values) in columns {
-            self.columns[column as usize] = values;
+            all[column as usize] = values;
         }
+        self.columns = (!all.iter().all(Values::is_empty)).then(|| Box::new(all));
         if let Some(heads) = heads {
             self.heads = if heads.iter().all(Option::is_none) {
                 Vec::new()
@@ -852,7 +853,7 @@ mod tests {
         assert_eq!(doc.column(Column::Upos, 0), Some("NOUN"));
         doc.set_columns(vec![(Column::Upos, vec![None, None, None])], None)
             .unwrap();
-        assert!(doc.columns[Column::Upos as usize].is_empty());
+        assert!(doc.columns.is_none());
         assert!(doc.token_words.is_empty() && doc.word_tokens.is_empty());
     }
 }

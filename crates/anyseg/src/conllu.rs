@@ -451,7 +451,10 @@ fn document(sentences: &[Block<'_>]) -> Result<Document, ConlluError> {
         token_words: token_words.as_slice().to_vec(),
         word_tokens: word_tokens.as_slice().to_vec(),
         forms: forms.finished(),
-        columns: columns.map(Values::finished),
+        columns: {
+            let columns = columns.map(Values::finished);
+            (!columns.iter().all(Values::is_empty)).then(|| Box::new(columns))
+        },
         heads: if heads.iter().all(Option::is_none) {
             Vec::new()
         } else {
