@@ -27,6 +27,14 @@
 
     [:octicons-arrow-right-24: Document](document.md)
 
+-   :material-console:{ .lg .middle } __Command__
+
+    ---
+
+    `anyseg` for the terminal and pipelines: tokens, sentences or CoNLL-U of files and the standard input
+
+    [:octicons-arrow-right-24: Command](cli.md)
+
 -   :material-alphabet-cyrillic:{ .lg .middle } __Russian__
 
     ---

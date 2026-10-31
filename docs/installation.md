@@ -40,3 +40,9 @@ The segmenter is published on crates.io as the [`anyseg`](https://crates.io/crat
 ``` bash
 cargo add anyseg
 ```
+
+The [command](cli.md) `anyseg` comes with the Python package; without Python, the crate installs it:
+
+``` bash
+cargo install anyseg --features cli
+```
