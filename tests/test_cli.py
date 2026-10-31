@@ -89,3 +89,37 @@ def test_paragraph_by_paragraph():
     process.stdin.close()
     assert process.stdout.read() == "\nУтро\n"
     assert process.wait(timeout=10) == 0
+
+
+def test_complete_paragraphs_before_waiting():
+    # A blank line and the next text in one read: the paragraph before it comes out while the command waits
+    process = subprocess.Popen(
+        [sys.executable, "-m", "anyseg", "-l", "ru", "-f", "sentences"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        encoding="utf-8",
+    )
+    assert process.stdin is not None and process.stdout is not None
+    process.stdin.write("Ёж идёт.\n\nКот")
+    process.stdin.flush()
+    assert process.stdout.readline() == "Ёж идёт.\n"
+    process.stdin.close()
+    assert process.stdout.read() == "\nКот\n"
+    assert process.wait(timeout=10) == 0
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="/dev/stdin")
+def test_output_is_the_standard_input(tmp_path):
+    path = tmp_path / "text.txt"
+    path.write_text(TEXT, encoding="utf-8")
+    with path.open(encoding="utf-8") as stdin:
+        result = subprocess.run(
+            [sys.executable, "-m", "anyseg", "-l", "ru", "-o", str(path), "/dev/stdin"],
+            stdin=stdin,
+            capture_output=True,
+            encoding="utf-8",
+            check=False,
+        )
+    assert result.returncode == 1
+    assert "the output file is an input file" in result.stderr
+    assert path.read_text(encoding="utf-8") == TEXT

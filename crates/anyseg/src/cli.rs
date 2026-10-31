@@ -39,19 +39,44 @@ Options:
 pub fn run(args: Vec<OsString>, version: &str) -> u8 {
     let stdout = io::stdout();
     let interactive = stdout.is_terminal();
+    let closed = closed_stdout();
     let mut output = BufWriter::new(stdout.lock());
     execute(
         args,
         version,
         interactive,
+        closed,
         &mut io::stdin().lock(),
         &mut output,
         &mut io::stderr(),
     )
 }
 
+/// The standard output is closed (`>&-`): writing to it would fail without an error
+#[cfg(unix)]
+fn closed_stdout() -> bool {
+    use std::os::fd::AsFd;
+    // EBADF, the same number on Linux, macOS and the BSDs: a closed descriptor, not a lack of descriptors
+    io::stdout()
+        .as_fd()
+        .try_clone_to_owned()
+        .is_err_and(|err| err.raw_os_error() == Some(9))
+}
+
+#[cfg(not(unix))]
+fn closed_stdout() -> bool {
+    false
+}
+
 /// The buffer of the input: the output is flushed when it is empty and the next read may wait for input
 const INPUT_BUFFER: usize = 1 << 16;
+
+/// The longest text without blank lines that is segmented at once; a longer one is cut after a line, so that the
+/// memory stays bounded
+#[cfg(not(test))]
+const PARAGRAPH: usize = 1 << 24;
+#[cfg(test)]
+const PARAGRAPH: usize = 1 << 12;
 
 /// Output format
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -160,10 +185,12 @@ fn parse(args: Vec<OsString>) -> Result<Command, String> {
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn execute(
     args: Vec<OsString>,
     version: &str,
     interactive: bool,
+    closed: bool,
     stdin: &mut dyn Read,
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
@@ -214,6 +241,10 @@ fn execute(
     } else {
         files
     };
+    if closed && output_path.is_none() {
+        report("the standard output is closed".to_owned());
+        return 1;
+    }
     let mut file_output;
     let output: &mut dyn Write = match &output_path {
         Some(path) => {
@@ -258,6 +289,8 @@ fn execute(
         sentences: 0,
         paragraphs: 0,
         newdoc: false,
+        text: String::new(),
+        ready: 0,
     };
     let mut code = 0;
     for file in files {
@@ -372,17 +405,32 @@ fn same_file(output: &Path, source: Option<&Path>) -> bool {
     use std::os::unix::fs::MetadataExt;
     let id = |metadata: std::fs::Metadata| (metadata.dev(), metadata.ino());
     let metadata = match source {
-        Some(path) => std::fs::metadata(path),
+        Some(path) => opened_metadata(path),
         // By the descriptor: /dev/stdin on macOS is a file of devfs, not the redirected file
         None => io::stdin()
             .as_fd()
             .try_clone_to_owned()
             .and_then(|descriptor| File::from(descriptor).metadata()),
     };
-    match (std::fs::metadata(output), metadata) {
+    match (opened_metadata(output), metadata) {
         (Ok(output), Ok(source)) => id(output) == id(source),
         _ => false,
     }
+}
+
+/// The metadata of the file a path opens: on macOS /dev/stdin and /dev/fd/N are files of devfs with a device of
+/// their own, which stand for the files open in the process. A pipe or a socket is not opened, which could wait
+#[cfg(unix)]
+fn opened_metadata(path: &Path) -> io::Result<std::fs::Metadata> {
+    use std::os::unix::fs::FileTypeExt;
+    let metadata = std::fs::metadata(path)?;
+    let kind = metadata.file_type();
+    if kind.is_fifo() || kind.is_socket() {
+        return Ok(metadata);
+    }
+    File::open(path)
+        .and_then(|file| file.metadata())
+        .or(Ok(metadata))
 }
 
 /// The output file is the input `source` (`None` - the standard input). On Windows a file is its canonical path,
@@ -451,6 +499,10 @@ struct Writer<'a> {
     paragraphs: usize,
     /// The next paragraph starts a file: `# newdoc` of CoNLL-U
     newdoc: bool,
+    /// The text read and not yet written, and its length up to the last blank line: the paragraphs before it are
+    /// complete
+    text: String,
+    ready: usize,
 }
 
 impl Writer<'_> {
@@ -476,8 +528,10 @@ impl Writer<'_> {
             return Ok(None);
         }
         self.newdoc = true;
+        self.text.clear();
+        self.ready = 0;
         let mut bytes = Vec::new();
-        let mut paragraph = String::new();
+        let mut end = false;
         let mut number = 0;
         let mut invalid = None;
         // A line of UTF-8 with non-ASCII bytes was read: before it, wrong bytes and NUL mean another encoding of
@@ -485,7 +539,7 @@ impl Writer<'_> {
         let mut utf8 = false;
         loop {
             bytes.clear();
-            if self.read_line(&mut reader, &mut bytes)? == 0 {
+            if self.read_line(&mut reader, &mut bytes, &mut end)? == 0 {
                 break;
             }
             number += 1;
@@ -504,29 +558,45 @@ impl Writer<'_> {
             if number == 1 {
                 line = line.strip_prefix('\u{feff}').unwrap_or(line);
             }
-            // A blank line ends the paragraphs before it, and they are segmented as in the whole text: a piece of
-            // INPUT_BUFFER at once, or less when the next read may wait for input
-            let blank = line.chars().all(is_separator);
-            if blank && (reader.buffer().is_empty() || paragraph.len() >= INPUT_BUFFER) {
-                self.write_text(&paragraph).map_err(Failure::Write)?;
-                paragraph.clear();
-            } else if !blank || !paragraph.is_empty() {
-                paragraph.push_str(line);
+            // A blank line ends the paragraphs before it, which are segmented as in the whole text: in pieces of
+            // about INPUT_BUFFER, or as soon as the next read may wait. A text without blank lines is cut after a
+            // line once it reaches PARAGRAPH
+            if line.chars().all(is_separator) {
+                if !self.text.is_empty() {
+                    self.text.push_str(line);
+                    self.ready = self.text.len();
+                }
+                if self.ready >= INPUT_BUFFER {
+                    self.write_ready().map_err(Failure::Write)?;
+                }
+            } else {
+                self.text.push_str(line);
+                if self.text.len() >= PARAGRAPH {
+                    self.ready = self.text.len();
+                    self.write_ready().map_err(Failure::Write)?;
+                }
             }
         }
-        self.write_text(&paragraph).map_err(Failure::Write)?;
+        self.ready = self.text.len();
+        self.write_ready().map_err(Failure::Write)?;
         Ok(invalid)
     }
 
-    /// A line of the input with its line break; before a read that may wait for input (an empty buffer), the
-    /// output is flushed, so that the command can be kept open and fed text
+    /// A line of the input with its line break (LF, CR or CRLF); before a read that may wait for input (an empty
+    /// buffer), the output is flushed, so that the command can be kept open and fed text. After the end of the
+    /// input (`end`) nothing is read: in a terminal a line without a line break ends with one Ctrl+D
     fn read_line(
         &mut self,
         reader: &mut BufReader<&mut dyn Read>,
         bytes: &mut Vec<u8>,
+        end: &mut bool,
     ) -> Result<usize, Failure> {
-        loop {
+        // A CR ended the buffer: the line feed of CRLF may begin the next one
+        let mut after_cr = false;
+        while !*end {
+            // The next read may wait for input: the complete paragraphs go out first
             if reader.buffer().is_empty() {
+                self.write_ready().map_err(Failure::Write)?;
                 self.flush_pending().map_err(Failure::Write)?;
             }
             let available = match reader.fill_buf() {
@@ -535,56 +605,86 @@ impl Writer<'_> {
                 Err(err) => return Err(Failure::Read(err)),
             };
             if available.is_empty() {
-                return Ok(bytes.len());
+                *end = true;
+                break;
             }
-            let (end, done) = match available.iter().position(|&byte| byte == b'\n') {
+            if after_cr {
+                if available[0] == b'\n' {
+                    bytes.push(b'\n');
+                    reader.consume(1);
+                }
+                break;
+            }
+            let (length, done) = match available
+                .iter()
+                .position(|&byte| byte == b'\n' || byte == b'\r')
+            {
+                Some(at) if available[at] == b'\r' => match available.get(at + 1) {
+                    Some(b'\n') => (at + 2, true),
+                    Some(_) => (at + 1, true),
+                    None => {
+                        after_cr = true;
+                        (at + 1, false)
+                    }
+                },
                 Some(at) => (at + 1, true),
                 None => (available.len(), false),
             };
-            bytes.extend_from_slice(&available[..end]);
-            reader.consume(end);
+            bytes.extend_from_slice(&available[..length]);
+            reader.consume(length);
             if done {
-                return Ok(bytes.len());
+                break;
             }
         }
+        Ok(bytes.len())
     }
 
-    /// The paragraphs of a piece of text in the format of the output
-    fn write_text(&mut self, text: &str) -> io::Result<()> {
+    /// The text up to its last blank line, whose paragraphs are complete
+    fn write_ready(&mut self) -> io::Result<()> {
+        if self.ready == 0 {
+            return Ok(());
+        }
+        let rest = self.text.split_off(self.ready);
+        let ready = std::mem::replace(&mut self.text, rest);
+        self.ready = 0;
+        self.write_text(ready)
+    }
+
+    /// The paragraphs of a piece of text in the format of the output, written sentence by sentence
+    fn write_text(&mut self, text: String) -> io::Result<()> {
         if text.chars().all(is_separator) {
             return Ok(());
         }
-        let doc = self.segmenter.segment(text);
+        let doc = self.segmenter.segment_string(text);
         let mut out = String::new();
-        match self.format {
-            Format::Tokens => {
-                for sentence in 0..doc.sentence_count() {
-                    for token in doc.sentence(sentence).tokens {
-                        out.push_str(doc.tokens()[token].slice(doc.text()));
-                        out.push('\n');
-                    }
-                    out.push('\n');
-                }
+        for paragraph in 0..doc.paragraph_count() {
+            if self.format == Format::Sentences && self.paragraphs > 0 {
+                out.push('\n');
             }
-            Format::Sentences => {
-                for paragraph in 0..doc.paragraph_count() {
-                    if self.paragraphs > 0 {
+            self.paragraphs += 1;
+            for sentence in doc.paragraph(paragraph).sentences {
+                match self.format {
+                    Format::Tokens => {
+                        for token in doc.sentence(sentence).tokens {
+                            out.push_str(doc.tokens()[token].slice(doc.text()));
+                            out.push('\n');
+                        }
                         out.push('\n');
                     }
-                    self.paragraphs += 1;
-                    for sentence in doc.paragraph(paragraph).sentences {
+                    Format::Sentences => {
                         let text = doc.sentence(sentence).span.slice(doc.text());
                         let _ = writeln!(out, "{}", one_line(text));
                     }
+                    Format::Conllu => {
+                        self.sentences += 1;
+                        doc.write_sentence(sentence, None, self.sentences, self.newdoc, &mut out);
+                    }
                 }
-            }
-            Format::Conllu => {
-                doc.write_conllu(&mut out, None, self.sentences + 1, self.newdoc);
-                self.newdoc = false;
+                self.output.write_all(out.as_bytes())?;
+                out.clear();
             }
         }
-        self.sentences += doc.sentence_count();
-        self.output.write_all(out.as_bytes())?;
+        self.newdoc = false;
         self.pending = true;
         if self.interactive {
             self.flush_pending()?;
@@ -633,6 +733,7 @@ mod tests {
         let code = execute(
             args.iter().map(OsString::from).collect(),
             "1.2.3",
+            false,
             false,
             &mut &input[..],
             &mut stdout,
@@ -722,13 +823,81 @@ mod tests {
             OsString::from("ru"),
             OsString::from_vec(b"--output=\xff.out".to_vec()),
         ];
-        let code = execute(args, "", false, &mut &b""[..], &mut stdout, &mut stderr);
+        let code = execute(
+            args,
+            "",
+            false,
+            false,
+            &mut &b""[..],
+            &mut stdout,
+            &mut stderr,
+        );
         let message = String::from_utf8_lossy(&stderr);
         assert_eq!(code, 2);
         assert!(
             message.contains("cannot read the option --output="),
             "{message}"
         );
+    }
+
+    #[test]
+    fn long_text_without_blank_lines() {
+        // A sentence per line, with LF and with CR only: cut after a line, the same sentences as the whole text
+        for end in ["\n", "\r"] {
+            let text: String = (0..2_000)
+                .map(|number| format!("Строка {number}.{end}"))
+                .collect();
+            assert!(text.len() > 4 * PARAGRAPH);
+            let (code, out, _) = command(&["-l", "ru", "-f", "sentences"], text.as_bytes());
+            let expected: String = (0..2_000)
+                .map(|number| format!("Строка {number}.\n"))
+                .collect();
+            assert_eq!(code, 0);
+            assert_eq!(out.replace("\n\n", "\n"), expected);
+        }
+    }
+
+    #[test]
+    fn end_of_input_read_once() {
+        // In a terminal every read after the end would wait for another Ctrl+D
+        struct Terminal(Vec<&'static [u8]>);
+        impl Read for Terminal {
+            fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+                let piece = self.0.pop().expect("a read after the end of the input");
+                buffer[..piece.len()].copy_from_slice(piece);
+                Ok(piece.len())
+            }
+        }
+        let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
+        let mut terminal = Terminal(vec![b"", "Кот спит".as_bytes()]);
+        let args = vec![OsString::from("-l"), OsString::from("ru")];
+        let code = execute(
+            args,
+            "",
+            false,
+            false,
+            &mut terminal,
+            &mut stdout,
+            &mut stderr,
+        );
+        assert_eq!((code, stdout.as_slice()), (0, "Кот\nспит\n\n".as_bytes()));
+    }
+
+    #[test]
+    fn closed_standard_output() {
+        let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
+        let args = vec![OsString::from("-l"), OsString::from("ru")];
+        let code = execute(
+            args,
+            "",
+            false,
+            true,
+            &mut &b"Text"[..],
+            &mut stdout,
+            &mut stderr,
+        );
+        assert_eq!(code, 1);
+        assert!(String::from_utf8_lossy(&stderr).contains("the standard output is closed"));
     }
 
     #[test]
@@ -844,6 +1013,7 @@ mod tests {
         let code = execute(
             vec!["-l".into(), "ru".into()],
             "",
+            false,
             false,
             &mut &b"Text"[..],
             &mut Closed,
