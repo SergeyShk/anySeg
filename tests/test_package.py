@@ -40,6 +40,13 @@ def test_extension():
     assert Path(extension.__file__).parent == Path(anyseg.__file__).parent
 
 
+def test_spacy_bridge_without_spacy(monkeypatch):
+    monkeypatch.setitem(sys.modules, "spacy", None)
+    monkeypatch.delitem(sys.modules, "anyseg.spacy", raising=False)
+    with pytest.raises(ImportError, match='pip install "anyseg\\[spacy\\]"'):
+        importlib.import_module("anyseg.spacy")
+
+
 def test_package_data():
     assert (Path(anyseg.__file__).parent / "py.typed").is_file()
 
