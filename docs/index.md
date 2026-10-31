@@ -15,7 +15,7 @@
 
     ---
 
-    Tokens and sentences with their positions, a document of a text, lists of your own abbreviations and tokens
+    Tokens and sentences with their positions, documents of texts in batches on several threads, lists of your own abbreviations and tokens
 
     [:octicons-arrow-right-24: Segmenter](segmenter.md)
 

@@ -32,7 +32,7 @@ from spacy.training import Example
 from spacy.util import registry
 from spacy.vocab import Vocab
 
-from ._anyseg import Document, Segmenter, Span, Token
+from ._anyseg import Document, Segmenter
 
 __all__ = ["Sentencizer", "Tokenizer", "from_doc", "to_doc"]
 
@@ -120,7 +120,8 @@ class Tokenizer:
         Raises:
             UnicodeEncodeError: If the text contains a lone surrogate
         """
-        words, spaces, _ = layout(text, self.segmenter.tokenize(text))
+        tokens = self.segmenter.segment(text).tokens
+        words, spaces, _ = layout(text, tokens.starts, tokens.ends)
         return Doc(self.vocab, words=words, spaces=spaces)
 
     def __repr__(self) -> str:
@@ -329,7 +330,7 @@ def to_doc(document: Document, vocab: Vocab) -> Doc:
     tokens = document.tokens
     if len(document.words) != len(tokens):
         raise ValueError("a document with multiword tokens cannot be converted")
-    words, spaces, indices = layout(document.text, tokens)
+    words, spaces, indices = layout(document.text, tokens.starts, tokens.ends)
     sentence_starts: list[bool | int | None] = [not index for index in range(len(words))]
     for sentence in document.sentences[1:]:
         sentence_starts[indices[sentence.tokens[0].index]] = True
@@ -532,28 +533,30 @@ def relations(
     return heads, deprels
 
 
-def layout(text: str, spans: Iterable[Span | Token]) -> tuple[list[str], list[bool], list[int]]:
+def layout(
+    text: str, starts: list[int], ends: list[int]
+) -> tuple[list[str], list[bool], list[int]]:
     """
-    Words and spaces of a spaCy document of the spans of a text
+    Words and spaces of a spaCy document of the tokens of a text
 
     Description:
-        One space after a span is its whitespace, and the rest of the text between spans is a
+        One space after a token is its whitespace, and the rest of the text between tokens is a
         word of its own, as spaCy keeps whitespace
 
     Arguments:
         text (str): Text
-        spans (Iterable[Span | Token]): Spans of the text in order, without overlaps
+        starts (list[int]): Positions of the first characters of the tokens, in order
+        ends (list[int]): Positions after their last characters
 
     Returns:
-        tuple[list[str], list[bool], list[int]]: Words, spaces and the index of every span among
+        tuple[list[str], list[bool], list[int]]: Words, spaces and the index of every token among
             the words
     """
     words: list[str] = []
     spaces: list[bool] = []
     indices: list[int] = []
     position = 0
-    for span in spans:
-        start = span.start
+    for start, end in zip(starts, ends, strict=True):
         if start > position:
             gap = text[position:start]
             if words and gap[0] == " ":
@@ -563,9 +566,9 @@ def layout(text: str, spans: Iterable[Span | Token]) -> tuple[list[str], list[bo
                 words.append(gap)
                 spaces.append(False)
         indices.append(len(words))
-        words.append(span.text)
+        words.append(text[start:end])
         spaces.append(False)
-        position = span.end
+        position = end
     if position < len(text):
         gap = text[position:]
         if words and gap[0] == " ":

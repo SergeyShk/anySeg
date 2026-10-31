@@ -86,7 +86,7 @@ A document holds the tokens, the words with the columns of CoNLL-U, the sentence
 Word(id=2, form='идёт', upos='VERB')
 ```
 
-`doc.to_conllu()` writes a document in CoNLL-U, and `read_conllu(text)` reads documents from it. A segmenter takes more abbreviations and strings that are one token each: `Segmenter("ru", abbreviations=["сущ"], tokens=["C++"])`.
+`segmenter.pipe(texts, threads=4)` gives the documents of many texts, segmented in batches without the GIL on several threads. `doc.to_conllu()` writes a document in CoNLL-U, and `read_conllu(text)` reads documents from it. A segmenter takes more abbreviations and strings that are one token each: `Segmenter("ru", abbreviations=["сущ"], tokens=["C++"])`.
 
 ## Comparison
 
