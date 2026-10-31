@@ -238,6 +238,24 @@ def test_pipe_errors(segmenter):
     assert next(pipe).text == "Ёж"
     with pytest.raises(LookupError, match="no more texts"):
         next(pipe)
+
+    def interrupted():
+        yield from ["Ёж", "Кот"]
+        raise KeyboardInterrupt
+
+    # An interrupt comes at once, and the documents of the texts before it remain
+    pipe = segmenter.pipe(interrupted())
+    with pytest.raises(KeyboardInterrupt):
+        next(pipe)
+    assert [doc.text for doc in pipe] == ["Ёж", "Кот"]
+
+    class Text(str):
+        def __len__(self):
+            raise LookupError
+
+    texts = ["Ёж", Text("Утро"), Text("Ночь " * 2000), "День"]
+    assert [doc.text for doc in segmenter.pipe(texts, batch_size=3)] == texts
+    assert segmenter.segment(Text("Ночь " * 2000)).text == "Ночь " * 2000
     with pytest.raises(TypeError, match="not iterable"):
         segmenter.pipe(5)
     for name in ("threads", "batch_size"):

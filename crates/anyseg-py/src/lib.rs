@@ -4,10 +4,10 @@ use std::collections::VecDeque;
 use std::hash::{Hash, Hasher};
 use std::ops::Range;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Mutex, PoisonError, RwLock, RwLockReadGuard, TryLockError};
+use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError, RwLock, RwLockReadGuard, TryLockError};
 
 use anyseg::Column;
-use pyo3::exceptions::{PyIndexError, PyOverflowError, PyTypeError, PyValueError};
+use pyo3::exceptions::{PyException, PyIndexError, PyOverflowError, PyTypeError, PyValueError};
 use pyo3::marker::Ungil;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict, PyIterator, PyList, PySlice, PyString, PyTuple, PyType};
@@ -31,12 +31,18 @@ fn detached<T: Ungil>(py: Python<'_>, long: bool, work: impl Ungil + FnOnce() ->
 /// Runs the work on the text of a string in UTF-8. A long text goes to a temporary `bytes`: `&str` would leave
 /// a copy of it cached in the string for its lifetime
 fn with_str<R>(text: &Bound<'_, PyString>, work: impl FnOnce(&str) -> PyResult<R>) -> PyResult<R> {
-    if text.len()? <= DETACH {
+    if length(text) <= DETACH {
         return work(text.to_str()?);
     }
     let bytes = text.encode_utf8()?;
     // SAFETY: Python encodes a string to valid UTF-8 or fails on a lone surrogate
     work(unsafe { std::str::from_utf8_unchecked(bytes.as_bytes()) })
+}
+
+/// The number of characters of a string, without `__len__` of a subclass
+fn length(text: &Bound<'_, PyString>) -> usize {
+    // SAFETY: the object is a live string, for which the function cannot fail
+    unsafe { ffi::PyUnicode_GetLength(text.as_ptr()) as usize }
 }
 
 /// A new object that the cycle collector does not track: spans and views hold no references that could
@@ -400,9 +406,11 @@ impl Segmenter {
     /// Description:
     ///     The documents of segment in the order of the texts. The texts are taken from the
     ///     iterable as the documents are asked for, batch_size at a time, and a batch is segmented
-    ///     without the GIL on up to threads threads. A text that is not a string or holds a lone
-    ///     surrogate raises its error after the documents of the texts before it, and ends the
-    ///     iteration. The iterator is not thread-safe: a call while another runs raises ValueError
+    ///     without the GIL on up to threads threads, at most one per core and per 4 KB of the
+    ///     batch. A text that is not a string or holds a lone surrogate raises its error after the
+    ///     documents of the texts before it, and ends the iteration; so does an error of the
+    ///     iterable, except that an interrupt comes at once. The iterator is not thread-safe: a
+    ///     call while another runs raises ValueError
     ///
     /// Arguments:
     ///     texts (Iterable[str]): Texts
@@ -499,15 +507,18 @@ impl Pipe {
 
     fn __next__(&self, py: Python<'_>) -> PyResult<Option<Document>> {
         // As a generator: a call while another runs, in this thread or another, is an error, not a wait
-        let mut state = match self.state.try_lock() {
-            Ok(state) => state,
-            Err(TryLockError::Poisoned(error)) => error.into_inner(),
-            Err(TryLockError::WouldBlock) => {
-                return Err(PyValueError::new_err("the pipe is already running"));
-            }
+        let Some(mut state) = self.state() else {
+            return Err(PyValueError::new_err("the pipe is already running"));
         };
         if state.ready.is_empty() && state.error.is_none() && state.texts.is_some() {
             self.fill(py, &mut state)?;
+        }
+        // An interrupt or an exit does not wait for the documents of the texts before it
+        if let Some(error) = state
+            .error
+            .take_if(|error| !error.is_instance_of::<PyException>(py))
+        {
+            return Err(error);
         }
         if let Some(document) = state.ready.pop_front() {
             return Ok(Some(document));
@@ -522,7 +533,7 @@ impl Pipe {
     // The texts are any iterator, which may hold the pipe itself
     fn __traverse__(&self, visit: PyVisit<'_>) -> Result<(), PyTraverseError> {
         visit.call(&self.segmenter)?;
-        if let Ok(state) = self.state.try_lock() {
+        if let Some(state) = self.state() {
             visit.call(&state.texts)?;
             for document in &state.ready {
                 visit.call(&document.text)?;
@@ -532,7 +543,7 @@ impl Pipe {
     }
 
     fn __clear__(&self) {
-        if let Ok(mut state) = self.state.try_lock() {
+        if let Some(mut state) = self.state() {
             state.texts = None;
             state.ready.clear();
             state.error = None;
@@ -541,6 +552,15 @@ impl Pipe {
 }
 
 impl Pipe {
+    /// The state, unless a call holds it
+    fn state(&self) -> Option<MutexGuard<'_, Batches>> {
+        match self.state.try_lock() {
+            Ok(state) => Some(state),
+            Err(TryLockError::Poisoned(error)) => Some(error.into_inner()),
+            Err(TryLockError::WouldBlock) => None,
+        }
+    }
+
     /// Takes the next batch of texts and segments it into ready documents
     fn fill(&self, py: Python<'_>, state: &mut Batches) -> PyResult<()> {
         let Some(texts) = state.texts.as_ref() else {
@@ -572,7 +592,7 @@ impl Pipe {
         // A long text goes to a temporary `bytes`, as in `with_str`
         let mut encoded: Vec<Option<Bound<'_, PyBytes>>> = Vec::with_capacity(strings.len());
         for text in &strings {
-            let result = if text.len()? > DETACH {
+            let result = if length(text) > DETACH {
                 text.encode_utf8().map(Some)
             } else {
                 text.to_str().map(|_| None)
@@ -612,38 +632,47 @@ impl Pipe {
     }
 }
 
+/// The number of threads that run at once on this machine
+fn cores() -> usize {
+    static CORES: OnceLock<usize> = OnceLock::new();
+    *CORES.get_or_init(|| std::thread::available_parallelism().map_or(1, usize::from))
+}
+
 /// The parts of the documents of texts in order, segmented on up to `threads` threads
 fn segment_all(segmenter: &anyseg::Segmenter, texts: &[&str], threads: usize) -> Vec<Parts> {
     let segment = |text: &str| Parts::new(segmenter.segment(text));
-    let threads = threads.min(texts.len());
+    // A thread costs about as much as segmenting a short text: at most one per core and per DETACH bytes
+    let size: usize = texts.iter().map(|text| text.len()).sum();
+    let threads = threads.min(cores()).min(texts.len()).min(size / DETACH + 1);
     if threads <= 1 {
         return texts.iter().map(|text| segment(text)).collect();
     }
     // Every thread takes the next text, so that a long text does not hold up the others
     let next = AtomicUsize::new(0);
+    let work = || {
+        let mut done = Vec::new();
+        loop {
+            let index = next.fetch_add(1, Ordering::Relaxed);
+            let Some(text) = texts.get(index) else {
+                return done;
+            };
+            done.push((index, segment(text)));
+        }
+    };
     let mut done: Vec<(usize, Parts)> = std::thread::scope(|scope| {
-        let workers: Vec<_> = (0..threads)
-            .map(|_| {
-                scope.spawn(|| {
-                    let mut done = Vec::new();
-                    loop {
-                        let index = next.fetch_add(1, Ordering::Relaxed);
-                        let Some(text) = texts.get(index) else {
-                            return done;
-                        };
-                        done.push((index, segment(text)));
-                    }
-                })
-            })
+        // The calling thread works too, and a thread that the system refuses is one less
+        let workers: Vec<_> = (1..threads)
+            .filter_map(|_| std::thread::Builder::new().spawn_scoped(scope, work).ok())
             .collect();
-        workers
-            .into_iter()
-            .flat_map(|worker| {
+        let mut done = work();
+        for worker in workers {
+            done.extend(
                 worker
                     .join()
-                    .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
-            })
-            .collect()
+                    .unwrap_or_else(|panic| std::panic::resume_unwind(panic)),
+            );
+        }
+        done
     });
     done.sort_unstable_by_key(|&(index, _)| index);
     done.into_iter().map(|(_, parts)| parts).collect()

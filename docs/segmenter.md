@@ -180,7 +180,7 @@ Exceptions:
 pipe(texts, *, threads=1, batch_size=1000)
 ```
 
-The documents of many texts, as `segment` gives them, in the order of the texts. The texts are taken from the iterable as the documents are asked for, `batch_size` at a time, and every batch is segmented without the GIL, on up to `threads` threads: other Python threads run meanwhile, and several threads speed up a large collection of texts even with the GIL. A text that is not a string or holds a lone surrogate raises its error after the documents of the texts before it and ends the iteration. One iterator serves one thread at a time: a call while another runs raises `ValueError`.
+The documents of many texts, as `segment` gives them, in the order of the texts. The texts are taken from the iterable as the documents are asked for, `batch_size` at a time, and every batch is segmented without the GIL, on up to `threads` threads - at most one per core and per 4 KB of the batch: other Python threads run meanwhile, and several threads speed up a large collection of texts even with the GIL. A text that is not a string or holds a lone surrogate raises its error after the documents of the texts before it and ends the iteration, as does an error of the iterable; an interrupt such as `KeyboardInterrupt` comes at once. One iterator serves one thread at a time: a call while another runs raises `ValueError`.
 
 | Parameter | Type | Default | Description |
 | :-------- | :--- | :------ | :---------- |
