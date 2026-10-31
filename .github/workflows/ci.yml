@@ -33,7 +33,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Install dependencies
-        run: uv sync --locked --no-default-groups --group lint
+        run: uv sync --locked --no-default-groups --group lint --group spacy
       - name: Ruff
         run: |
           uv run --no-sync ruff check python scripts tests
@@ -85,9 +85,9 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Install dependencies
-        run: uv sync --locked --no-default-groups --group test
+        run: uv sync --locked --no-default-groups --group test ${{ !endsWith(matrix.python-version, 't') && '--group spacy' || '' }}
       - name: Run tests
-        run: uv run --no-sync pytest --cov anyseg
+        run: uv run --no-sync pytest --cov anyseg ${{ endsWith(matrix.python-version, 't') && '--cov-fail-under=0' || '' }}
       - name: Run Rust tests
         run: |
           cargo test -p anyseg --locked

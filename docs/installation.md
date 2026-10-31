@@ -6,7 +6,11 @@ Python 3.11 or newer is required.
 pip install anyseg
 ```
 
-The package has no dependencies.
+The package has no dependencies. The tokenizer and the sentence starts for [spaCy](spacy.md) come with the extra `spacy`:
+
+``` bash
+pip install "anyseg[spacy]"
+```
 
 ## Prebuilt wheels
 

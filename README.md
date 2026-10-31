@@ -21,6 +21,7 @@
   <a href="https://github.com/SergeyShk/anySeg/actions/workflows/ci.yml"><img src="https://github.com/SergeyShk/anySeg/actions/workflows/ci.yml/badge.svg" alt="Build"></a>
   <a href="https://github.com/astral-sh/ruff"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json" alt="Ruff"></a>
   <a href="https://github.com/SergeyShk/anySeg/blob/master/LICENSE.txt"><img src="https://img.shields.io/github/license/sergeyshk/anyseg.svg" alt="License"></a>
+  <a href="https://doi.org/10.5281/zenodo.23788634"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.23788634.svg" alt="DOI"></a>
 </p>
 
 ---
@@ -34,6 +35,7 @@ From Python, tokens and sentences come out at 3.1 M tokens per second, six times
 * **[Paragraphs and lines](https://sergeyshk.github.io/anySeg/russian/#lines)** - paragraphs between blank lines, and every line marked as a break of the author or a wrap at the width of the page, as in text from PDF
 * **[Document model](https://sergeyshk.github.io/anySeg/document/)** - tokens, words with the columns of [CoNLL-U](https://universaldependencies.org/format.html), sentences, paragraphs and lines; reading and writing CoNLL-U, a document read from it written back as it was
 * **[Lists of your own](https://sergeyshk.github.io/anySeg/segmenter/#lists)** - more abbreviations and strings that are one token each
+* **[spaCy](https://sergeyshk.github.io/anySeg/spacy/)** - the tokenizer and the sentence starts of a spaCy pipeline, the conversion of documents
 * **[Comparison](https://sergeyshk.github.io/anySeg/comparison/)** - quality and speed against razdel, NLTK, spaCy, Stanza, trankit, SaT and other tools
 
 > [!NOTE]
@@ -52,6 +54,8 @@ Or with [uv](https://docs.astral.sh/uv/):
 ```bash
 uv add anyseg
 ```
+
+The tokenizer and the sentence starts for [spaCy](https://sergeyshk.github.io/anySeg/spacy/) come with the extra `spacy`: `pip install "anyseg[spacy]"`.
 
 Wheels are built for Linux (Alpine included), macOS and Windows, the free-threaded Python 3.14t and 3.15t included; installing them does not require Rust. On other platforms pip builds the package from source, which requires [Rust](https://www.rust-lang.org/tools/install) 1.88 or newer. The segmenter is also the Rust crate [`anyseg`](https://crates.io/crates/anyseg). See the [Installation](https://sergeyshk.github.io/anySeg/installation/) page.
 
@@ -146,13 +150,14 @@ The code and the lists of the languages are distributed under the [MIT](https://
 
 ## Citation
 
-If you use **anySeg** in research or software, please cite it with the following BibTeX entry - citations help the development and support of the project. The same metadata is in [CITATION.cff](https://github.com/SergeyShk/anySeg/blob/master/CITATION.cff), which GitHub shows under the "Cite this repository" button.
+If you use **anySeg** in research or software, please cite it with the following BibTeX entry - citations help the development and support of the project. The same metadata is in [CITATION.cff](https://github.com/SergeyShk/anySeg/blob/master/CITATION.cff), which GitHub shows under the "Cite this repository" button. The concept DOI [10.5281/zenodo.23788634](https://doi.org/10.5281/zenodo.23788634) on Zenodo points to all versions of the package; the DOI of a version is on the page of its release.
 
 ```bibtex
 @software{anySeg,
   author = {Sergey Shkarin},
   title = {{anySeg, fast segmentation of text into tokens and sentences}},
   year = 2026,
+  doi = {10.5281/zenodo.23788634},
   url = {https://github.com/SergeyShk/anySeg}
 }
 ```

@@ -12,6 +12,7 @@ nav:
     - Segmenter: segmenter.md
     - Document: document.md
     - Russian: russian.md
+    - spaCy: spacy.md
 
 theme:
   name: material
