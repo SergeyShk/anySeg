@@ -229,10 +229,7 @@ fn execute(
                         .map(|path| Some(path.as_path())),
                 );
             let regular = std::fs::metadata(path).is_ok_and(|metadata| metadata.is_file());
-            if regular
-                && file_id(Some(path))
-                    .is_some_and(|id| sources.any(|source| file_id(source).as_ref() == Some(&id)))
-            {
+            if regular && sources.any(|source| same_file(path, source)) {
                 report(format!(
                     "{}: the output file is an input file or a list",
                     path.display()
@@ -367,45 +364,67 @@ fn open_error(path: &Path, err: &io::Error) -> String {
     }
 }
 
-/// A file on the disk (`None` - the standard input): on Unix the device and the number, so that a hard link and
-/// a symbolic link are the same file
+/// The output file is the input `source` (`None` - the standard input). On Unix the device and the number of the
+/// file decide, so that a hard link and a symbolic link are the same file
 #[cfg(unix)]
-fn file_id(path: Option<&Path>) -> Option<(u64, u64)> {
+fn same_file(output: &Path, source: Option<&Path>) -> bool {
     use std::os::fd::AsFd;
     use std::os::unix::fs::MetadataExt;
-    let metadata = match path {
-        Some(path) => std::fs::metadata(path).ok()?,
+    let id = |metadata: std::fs::Metadata| (metadata.dev(), metadata.ino());
+    let metadata = match source {
+        Some(path) => std::fs::metadata(path),
         // By the descriptor: /dev/stdin on macOS is a file of devfs, not the redirected file
-        None => File::from(io::stdin().as_fd().try_clone_to_owned().ok()?)
-            .metadata()
-            .ok()?,
+        None => io::stdin()
+            .as_fd()
+            .try_clone_to_owned()
+            .and_then(|descriptor| File::from(descriptor).metadata()),
     };
-    Some((metadata.dev(), metadata.ino()))
+    match (std::fs::metadata(output), metadata) {
+        (Ok(output), Ok(source)) => id(output) == id(source),
+        _ => false,
+    }
 }
 
-/// A file on the disk (`None` - the standard input) on Windows: its times and size, as the index of a file needs an
+/// The output file is the input `source` (`None` - the standard input). On Windows a file is its canonical path,
+/// and the standard input, which has none, is compared by its times and size: the index of a file needs an
 /// unstable API
 #[cfg(windows)]
-fn file_id(path: Option<&Path>) -> Option<(u64, u64, u64)> {
+fn same_file(output: &Path, source: Option<&Path>) -> bool {
     use std::os::windows::fs::MetadataExt;
     use std::os::windows::io::AsHandle;
-    let metadata = match path {
-        Some(path) => std::fs::metadata(path).ok()?,
-        None => File::from(io::stdin().as_handle().try_clone_to_owned().ok()?)
-            .metadata()
-            .ok()?,
+    let Some(source) = source else {
+        let stamp = |metadata: std::fs::Metadata| {
+            (
+                metadata.creation_time(),
+                metadata.last_write_time(),
+                metadata.file_size(),
+            )
+        };
+        let stdin = io::stdin()
+            .as_handle()
+            .try_clone_to_owned()
+            .and_then(|handle| File::from(handle).metadata());
+        return match (std::fs::metadata(output), stdin) {
+            (Ok(output), Ok(stdin)) => stamp(output) == stamp(stdin),
+            _ => false,
+        };
     };
-    Some((
-        metadata.creation_time(),
-        metadata.last_write_time(),
-        metadata.file_size(),
-    ))
+    match (std::fs::canonicalize(output), std::fs::canonicalize(source)) {
+        (Ok(output), Ok(source)) => output == source,
+        _ => false,
+    }
 }
 
-/// A file on the disk elsewhere: its canonical path; the standard input is not known
+/// The output file is the input `source` elsewhere: by the canonical path; the standard input is not known
 #[cfg(not(any(unix, windows)))]
-fn file_id(path: Option<&Path>) -> Option<PathBuf> {
-    std::fs::canonicalize(path?).ok()
+fn same_file(output: &Path, source: Option<&Path>) -> bool {
+    match (
+        std::fs::canonicalize(output),
+        source.map(std::fs::canonicalize),
+    ) {
+        (Ok(output), Some(Ok(source))) => output == source,
+        _ => false,
+    }
 }
 
 enum Failure {
