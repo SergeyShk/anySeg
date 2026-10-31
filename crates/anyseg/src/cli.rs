@@ -89,12 +89,17 @@ fn parse(args: Vec<OsString>) -> Result<Command, String> {
     let mut options = true;
     let mut args = args.into_iter();
     while let Some(arg) = args.next() {
-        let option = match arg.to_str() {
-            Some(text) if options && text.starts_with('-') && text != "-" => text.to_owned(),
-            _ => {
-                files.push(arg);
-                continue;
-            }
+        let bytes = arg.as_encoded_bytes();
+        if !options || !bytes.starts_with(b"-") || bytes == b"-" {
+            files.push(arg);
+            continue;
+        }
+        // An option with an attached value not in UTF-8 would be taken for a file
+        let Some(option) = arg.to_str().map(str::to_owned) else {
+            return Err(format!(
+                "cannot read the option {}: give its value as a separate argument",
+                arg.to_string_lossy()
+            ));
         };
         let (name, inline) = match option.split_once('=') {
             Some((name, value)) if option.starts_with("--") => (name, Some(value)),
@@ -363,7 +368,7 @@ fn open_error(path: &Path, err: &io::Error) -> String {
 }
 
 /// A file on the disk (`None` - the standard input): on Unix the device and the number, so that a hard link and
-/// a symbolic link are the same file; elsewhere the canonical path
+/// a symbolic link are the same file
 #[cfg(unix)]
 fn file_id(path: Option<&Path>) -> Option<(u64, u64)> {
     use std::os::fd::AsFd;
@@ -378,7 +383,27 @@ fn file_id(path: Option<&Path>) -> Option<(u64, u64)> {
     Some((metadata.dev(), metadata.ino()))
 }
 
-#[cfg(not(unix))]
+/// A file on the disk (`None` - the standard input) on Windows: its times and size, as the index of a file needs an
+/// unstable API
+#[cfg(windows)]
+fn file_id(path: Option<&Path>) -> Option<(u64, u64, u64)> {
+    use std::os::windows::fs::MetadataExt;
+    use std::os::windows::io::AsHandle;
+    let metadata = match path {
+        Some(path) => std::fs::metadata(path).ok()?,
+        None => File::from(io::stdin().as_handle().try_clone_to_owned().ok()?)
+            .metadata()
+            .ok()?,
+    };
+    Some((
+        metadata.creation_time(),
+        metadata.last_write_time(),
+        metadata.file_size(),
+    ))
+}
+
+/// A file on the disk elsewhere: its canonical path; the standard input is not known
+#[cfg(not(any(unix, windows)))]
 fn file_id(path: Option<&Path>) -> Option<PathBuf> {
     std::fs::canonicalize(path?).ok()
 }
@@ -460,11 +485,13 @@ impl Writer<'_> {
             if number == 1 {
                 line = line.strip_prefix('\u{feff}').unwrap_or(line);
             }
-            // A blank line ends the paragraphs before it: they are segmented as in the whole text
-            if line.chars().all(is_separator) {
+            // A blank line ends the paragraphs before it, and they are segmented as in the whole text: a piece of
+            // INPUT_BUFFER at once, or less when the next read may wait for input
+            let blank = line.chars().all(is_separator);
+            if blank && (reader.buffer().is_empty() || paragraph.len() >= INPUT_BUFFER) {
                 self.write_text(&paragraph).map_err(Failure::Write)?;
                 paragraph.clear();
-            } else {
+            } else if !blank || !paragraph.is_empty() {
                 paragraph.push_str(line);
             }
         }
@@ -650,6 +677,39 @@ mod tests {
             expected.push('\n');
         }
         assert_eq!(out, expected);
+    }
+
+    #[test]
+    fn pieces_of_many_paragraphs() {
+        // Paragraphs are segmented in pieces of about the input buffer, with the same result
+        let text = (0..20_000)
+            .map(|number| format!("Абзац {number}. Ещё\n\n"))
+            .collect::<String>();
+        assert!(text.len() > 4 * INPUT_BUFFER);
+        let (_, out, _) = command(&["-l", "ru", "-f", "conllu"], text.as_bytes());
+        assert_eq!(
+            out,
+            Segmenter::new("ru").unwrap().segment(&text).to_conllu()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn option_not_in_utf8() {
+        use std::os::unix::ffi::OsStringExt;
+        let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
+        let args = vec![
+            OsString::from("-l"),
+            OsString::from("ru"),
+            OsString::from_vec(b"--output=\xff.out".to_vec()),
+        ];
+        let code = execute(args, "", false, &mut &b""[..], &mut stdout, &mut stderr);
+        let message = String::from_utf8_lossy(&stderr);
+        assert_eq!(code, 2);
+        assert!(
+            message.contains("cannot read the option --output="),
+            "{message}"
+        );
     }
 
     #[test]
