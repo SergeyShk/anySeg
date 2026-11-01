@@ -20,8 +20,16 @@ Description:
 """
 
 import unicodedata
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
 from typing import Any
+
+try:
+    import spacy  # noqa: F401
+except ModuleNotFoundError as error:
+    # A broken spaCy fails with its own error
+    if error.name != "spacy":
+        raise
+    raise ImportError('anyseg.spacy needs spaCy: pip install "anyseg[spacy]"') from error
 
 import numpy
 from spacy.attrs import IDX, LENGTH, SENT_START
@@ -123,6 +131,27 @@ class Tokenizer:
         tokens = self.segmenter.segment(text).tokens
         words, spaces, _ = layout(text, tokens.starts, tokens.ends)
         return Doc(self.vocab, words=words, spaces=spaces)
+
+    def pipe(self, texts: Iterable[str], batch_size: int = 1000) -> Iterator[Doc]:
+        """
+        Documents of texts, segmented in batches without the GIL as Segmenter.pipe does
+
+        Arguments:
+            texts (Iterable[str]): Texts
+            batch_size (int): Number of texts in a batch
+
+        Returns:
+            Iterator[Doc]: Documents in order
+
+        Raises:
+            ValueError: If batch_size is less than 1
+            TypeError: If texts is a string or not iterable, or a text is not a string
+            UnicodeEncodeError: If a text contains a lone surrogate
+        """
+        for document in self.segmenter.pipe(texts, batch_size=batch_size):
+            tokens = document.tokens
+            words, spaces, _ = layout(document.text, tokens.starts, tokens.ends)
+            yield Doc(self.vocab, words=words, spaces=spaces)
 
     def __repr__(self) -> str:
         return arguments("Tokenizer", self.segmenter)
@@ -313,7 +342,8 @@ def to_doc(document: Document, vocab: Vocab) -> Doc:
         The text of the spaCy document is the text of the document, with whitespace between the
         tokens as the tokenizer makes it. Sentences come from the document, and lemmas, parts of
         speech, tags and features from its columns where set. Heads and relations are set when
-        every word has a head: the relation root becomes ROOT, a word without a relation gets dep
+        every word has a head, and the heads of every sentence must form a tree with one root:
+        the relation root becomes ROOT, a word without a relation gets dep
         (a root - ROOT), and a whitespace token depends on the token before it with dep. A
         whitespace token has its text for a lemma and SPACE for a part of speech
 
@@ -325,7 +355,8 @@ def to_doc(document: Document, vocab: Vocab) -> Doc:
         Doc: spaCy document
 
     Raises:
-        ValueError: If the document has a multiword token or a part of speech unknown to spaCy
+        ValueError: If the document has a multiword token or a part of speech unknown to spaCy, or
+            the heads of a sentence do not form a tree with one root
     """
     tokens = document.tokens
     if len(document.words) != len(tokens):
@@ -382,11 +413,18 @@ def dependencies(
 
     Returns:
         tuple[list[int], list[str]]: Heads and relations of the words
+
+    Raises:
+        ValueError: If the heads of a sentence do not form a tree with one root
     """
     # A whitespace token depends on the token before it, at the start of the text - on the next
     heads = [index - 1 if index else index + 1 for index in range(count)]
     relations = ["dep"] * count
     for sentence in document.sentences:
+        if not tree([word.head or 0 for word in sentence.words]):
+            raise ValueError(
+                f"the heads of sentence {sentence.index} do not form a tree with one root"
+            )
         first = sentence.tokens[0].index
         for word in sentence.words:
             index = indices[word.index]
@@ -398,6 +436,37 @@ def dependencies(
             else:
                 relations[index] = relation or "dep"
     return heads, relations
+
+
+def tree(heads: list[int]) -> bool:
+    """
+    Whether the heads of the words of a sentence form a tree: one root and no cycles
+
+    Arguments:
+        heads (list[int]): Head of every word, its ID from 1 or 0 for the root
+
+    Returns:
+        bool: The heads form a tree
+    """
+    # A head read from CoNLL-U may point past its sentence
+    if heads.count(0) != 1 or max(heads) > len(heads):
+        return False
+    # 0 - not seen, 1 - on the current path, 2 - reaches the root
+    state = [0] * len(heads)
+    for start in range(len(heads)):
+        path = []
+        word = start
+        while state[word] == 0:
+            state[word] = 1
+            path.append(word)
+            if heads[word] == 0:
+                break
+            word = heads[word] - 1
+        if state[word] == 1 and heads[word] != 0:
+            return False
+        for seen in path:
+            state[seen] = 2
+    return True
 
 
 def from_doc(doc: Doc) -> Document:
@@ -417,7 +486,8 @@ def from_doc(doc: Doc) -> Document:
         else are dropped. A sentence of the spaCy document starts at its first token left, and a
         document without sentences is a sentence per paragraph; every paragraph starts a sentence.
         Lemmas, parts of speech, tags, features, heads and relations become the columns lemma,
-        upos, xpos, feats, head and deprel, empty values None; a token without a head has neither.
+        upos, xpos, feats, head and deprel, empty values None, the features in the order of UD; a
+        token without a head has neither.
         The relation ROOT becomes root, and a word whose head is a dropped token depends on its
         head. A sentence has one root: the root of the parse or, if the sentence lacks it, the
         first word whose head is in another sentence; the other such words depend on the root
@@ -465,7 +535,7 @@ def from_doc(doc: Doc) -> Document:
         ("lemma", "LEMMA", lambda token: token.lemma_),
         ("upos", "POS", lambda token: token.pos_),
         ("xpos", "TAG", lambda token: token.tag_),
-        ("feats", "MORPH", lambda token: str(token.morph)),
+        ("feats", "MORPH", lambda token: features(str(token.morph))),
     ):
         if doc.has_annotation(attribute):
             columns[column] = [value(doc[index]) or None for index in kept]
@@ -474,6 +544,19 @@ def from_doc(doc: Doc) -> Document:
     if columns:
         document.set_columns(**columns)
     return document
+
+
+def features(morph: str) -> str:
+    """
+    FEATS of UD from the features of spaCy: sorted by name regardless of case, as UD orders them
+
+    Arguments:
+        morph (str): Features of a spaCy token
+
+    Returns:
+        str: Features
+    """
+    return "|".join(sorted(morph.split("|"), key=lambda feature: feature.split("=")[0].lower()))
 
 
 def relations(

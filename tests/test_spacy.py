@@ -64,6 +64,15 @@ def test_tokenizer(nlp):
     assert layout(nlp.make_doc("Ёж  ")) == [("Ёж", " "), (" ", "")]
 
 
+def test_tokenizer_pipe(nlp):
+    texts = [TEXT, "", "Кот спит", " "]
+    assert [layout(doc) for doc in nlp.tokenizer.pipe(texts, batch_size=2)] == [
+        layout(nlp.make_doc(text)) for text in texts
+    ]
+    with pytest.raises(TypeError, match="not a string"):
+        list(nlp.tokenizer.pipe("Кот"))
+
+
 def test_tokenizer_whitespace_as_spacy():
     # One space after a token is its whitespace, the rest of the gap is a token
     segmenter = Segmenter("ru")
@@ -304,6 +313,25 @@ def test_from_doc_columns():
     assert document.column("feats") == ["Case=Nom", "Case=Nom", None, "Case=Acc", None]
     assert document.column("head") == [0, 2, 0, 2, 2]
     assert document.column("deprel") == ["root", "nsubj", "root", "obj", "punct"]
+
+
+def test_from_doc_features_in_the_order_of_ud():
+    # spaCy sorts the features with their case, UD without it
+    doc = Doc(Vocab(), words=["5"], morphs=["Number=Sing|NumForm=Digit|Case=Nom"])
+    assert str(doc[0].morph) == "Case=Nom|NumForm=Digit|Number=Sing"
+    assert from_doc(doc).column("feats") == ["Case=Nom|Number=Sing|NumForm=Digit"]
+
+
+def test_to_doc_of_heads_that_are_not_a_tree():
+    for heads in ([0, 0, 2], [2, 3, 1], [2, 1, 0]):
+        document = Segmenter("ru").segment("Ёж идёт домой")
+        document.set_columns(head=heads)
+        with pytest.raises(ValueError, match="sentence 0 do not form a tree"):
+            to_doc(document, Vocab())
+    # CoNLL-U may hold a head past its sentence
+    conllu = "1\tЁж\t_\t_\t_\t_\t5\tx\t_\t_\n2\tидёт\t_\t_\t_\t_\t0\troot\t_\t_\n\n"
+    with pytest.raises(ValueError, match="do not form a tree"):
+        to_doc(read_conllu(conllu)[0], Vocab())
 
 
 def test_from_doc_one_root():

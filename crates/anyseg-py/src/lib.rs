@@ -62,8 +62,8 @@ fn substring<'py>(
     }
 }
 
-/// A new object that the cycle collector does not track: spans and views hold no references that could
-/// close a cycle, and tracking them makes every collection walk all of them
+/// A new object that the cycle collector does not track: spans, views and documents (which hold an exact `str`)
+/// hold no references that could close a cycle, and tracking them makes every collection walk all of them
 fn untracked<T: PyClass + Into<PyClassInitializer<T>>>(
     py: Python<'_>,
     value: T,
@@ -409,13 +409,17 @@ impl Segmenter {
     ///
     /// Raises:
     ///     UnicodeEncodeError: If the text contains a lone surrogate
-    fn segment(&self, py: Python<'_>, text: Bound<'_, PyString>) -> PyResult<Document> {
+    fn segment<'py>(
+        &self,
+        py: Python<'py>,
+        text: Bound<'py, PyString>,
+    ) -> PyResult<Bound<'py, Document>> {
         let parts = with_str(&text, |text| {
             Ok(detached(py, text.len() > DETACH, || {
                 Parts::new(self.inner.segment(text))
             }))
         })?;
-        Ok(Document::new(parts, &text))
+        untracked(py, Document::new(parts, &text))
     }
 
     /// Documents of texts
@@ -439,7 +443,7 @@ impl Segmenter {
     ///
     /// Raises:
     ///     ValueError: If threads or batch_size is less than 1
-    ///     TypeError: If texts is not iterable or a text is not a string
+    ///     TypeError: If texts is a string or not iterable, or a text is not a string
     ///     UnicodeEncodeError: If a text contains a lone surrogate
     #[pyo3(signature = (texts, *, threads = 1, batch_size = 1000))]
     fn pipe<'py>(
@@ -448,6 +452,11 @@ impl Segmenter {
         #[pyo3(from_py_with = clamped)] threads: isize,
         #[pyo3(from_py_with = clamped)] batch_size: isize,
     ) -> PyResult<Bound<'py, Pipe>> {
+        if texts.is_instance_of::<PyString>() {
+            return Err(PyTypeError::new_err(
+                "texts must be an iterable of strings, not a string",
+            ));
+        }
         for (name, value) in [("threads", threads), ("batch_size", batch_size)] {
             if value < 1 {
                 return Err(PyValueError::new_err(format!(
@@ -522,7 +531,7 @@ impl Pipe {
         slf
     }
 
-    fn __next__(&self, py: Python<'_>) -> PyResult<Option<Document>> {
+    fn __next__<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, Document>>> {
         // As a generator: a call while another runs, in this thread or another, is an error, not a wait
         let Some(mut state) = self.state() else {
             return Err(PyValueError::new_err("the pipe is already running"));
@@ -538,7 +547,7 @@ impl Pipe {
             return Err(error);
         }
         if let Some(document) = state.ready.pop_front() {
-            return Ok(Some(document));
+            return untracked(py, document).map(Some);
         }
         state.error.take().map_or(Ok(None), Err)
     }
@@ -1127,12 +1136,12 @@ impl Document {
     ///     TypeError: If a list holds something other than integers
     #[staticmethod]
     #[pyo3(signature = (text, starts, ends, *, sentence_starts=None))]
-    fn from_tokens(
-        text: Bound<'_, PyString>,
+    fn from_tokens<'py>(
+        text: Bound<'py, PyString>,
         #[pyo3(from_py_with = clamped_list)] starts: Vec<isize>,
         #[pyo3(from_py_with = clamped_list)] ends: Vec<isize>,
         #[pyo3(from_py_with = optional_clamped_list)] sentence_starts: Option<Vec<isize>>,
-    ) -> PyResult<Document> {
+    ) -> PyResult<Bound<'py, Document>> {
         if starts.len() != ends.len() {
             return Err(PyValueError::new_err(format!(
                 "{} starts and {} ends",
@@ -1154,10 +1163,10 @@ impl Document {
                     .collect::<PyResult<Vec<_>>>()
             })
             .transpose()?;
-        with_str(&text, |string| {
+        let parts = with_str(&text, |string| {
             parts_of_tokens(string, &starts, &ends, sentence_starts.as_deref())
-        })
-        .map(|parts| Document::new(parts, &text))
+        })?;
+        untracked(text.py(), Document::new(parts, &text))
     }
 
     /// Document in CoNLL-U
@@ -1930,7 +1939,10 @@ impl Line {
 
 /// Documents of a text in CoNLL-U, described by `anyseg.read_conllu`
 #[pyfunction]
-fn read_conllu(py: Python<'_>, text: &Bound<'_, PyString>) -> PyResult<Vec<Document>> {
+fn read_conllu<'py>(
+    py: Python<'py>,
+    text: &Bound<'py, PyString>,
+) -> PyResult<Vec<Bound<'py, Document>>> {
     let documents = with_str(text, |text| {
         detached(py, text.len() > DETACH, || {
             anyseg::read_conllu(text)
@@ -1938,13 +1950,13 @@ fn read_conllu(py: Python<'_>, text: &Bound<'_, PyString>) -> PyResult<Vec<Docum
         })
         .map_err(|error| PyValueError::new_err(error.to_string()))
     })?;
-    Ok(documents
+    documents
         .into_iter()
         .map(|parts| {
             let text = PyString::new(py, parts.inner.text());
-            Document::new(parts, &text)
+            untracked(py, Document::new(parts, &text))
         })
-        .collect())
+        .collect()
 }
 
 /// The anyseg command with its arguments, without the name of the program: the exit code

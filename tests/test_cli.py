@@ -1,9 +1,11 @@
 """The anyseg command: segmentation of text from files and the standard input"""
 
+import io
 import shutil
 import signal
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -58,19 +60,61 @@ def test_main_in_process(tmp_path, monkeypatch, capfd):
     path = tmp_path / "text.txt"
     path.write_text(TEXT, encoding="utf-8")
     handlers = []
-    monkeypatch.setattr(signal, "signal", lambda *args: handlers.append(args))
+
+    def install(*args):
+        handlers.append(args)
+        return signal.default_int_handler
+
+    monkeypatch.setattr(signal, "signal", install)
     monkeypatch.setattr(sys, "argv", ["anyseg", "-l", "ru", "-f", "sentences", str(path)])
     with pytest.raises(SystemExit) as exit_info:
         command.main()
     assert exit_info.value.code == 0
-    assert handlers == [(signal.SIGINT, signal.SIG_DFL)]
+    # The handler of Python comes back after the command
+    assert handlers == [
+        (signal.SIGINT, signal.SIG_DFL),
+        (signal.SIGINT, signal.default_int_handler),
+    ]
     assert capfd.readouterr().out == "Ёж идёт домой.\nКот спит\n\nУтро настало\n"
-    # An ignored SIGINT stays ignored
+    # An ignored SIGINT stays ignored, and another thread does not touch the handlers
     handlers.clear()
     monkeypatch.setattr(signal, "getsignal", lambda _: signal.SIG_IGN)
     with pytest.raises(SystemExit):
         command.main()
-    assert handlers == []
+    monkeypatch.setattr(signal, "getsignal", lambda _: signal.default_int_handler)
+    codes = []
+
+    def run_in_thread():
+        try:
+            command.main()
+        except SystemExit as error:
+            codes.append(error.code)
+
+    thread = threading.Thread(target=run_in_thread)
+    thread.start()
+    thread.join()
+    assert (codes, handlers) == ([0], [])
+
+
+def test_main_writes_after_python(tmp_path, monkeypatch, capfd):
+    # What Python printed before the command comes before its output
+    path = tmp_path / "text.txt"
+    path.write_text("Кот спит", encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["anyseg", "-l", "ru", "-f", "sentences", str(path)])
+    print("header", end="\n")
+    with pytest.raises(SystemExit):
+        command.main()
+    assert capfd.readouterr().out == "header\nКот спит\n"
+    # Without sys.stdout, as under pythonw, with it closed or without flush, the command writes to the
+    # descriptor all the same
+    closed = io.StringIO()
+    closed.close()
+    for stream in (None, closed, object()):
+        monkeypatch.setattr(sys, "stdout", stream)
+        with pytest.raises(SystemExit) as exit_info:
+            command.main()
+        assert exit_info.value.code == 0
+        assert capfd.readouterr().out == "Кот спит\n"
 
 
 def test_paragraph_by_paragraph():

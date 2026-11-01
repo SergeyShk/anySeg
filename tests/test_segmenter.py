@@ -197,6 +197,17 @@ def test_pipe(segmenter):
     assert CUSTOM.pipe(["сущ. C++"]).__next__().tokens[0].text == "сущ."
 
 
+def test_documents_are_not_tracked(segmenter):
+    # A document holds an exact str and closes no cycle: the collector does not walk it
+    documents = [
+        segmenter.segment(TEXT),
+        next(segmenter.pipe([TEXT])),
+        anyseg.Document.from_tokens("Ёж идёт", [0, 3], [2, 7]),
+        *anyseg.read_conllu("1\tЁж\t_\t_\t_\t_\t_\t_\t_\t_\n\n"),
+    ]
+    assert not any(gc.is_tracked(document) for document in documents)
+
+
 def test_pipe_is_lazy(segmenter):
     taken = []
 
@@ -258,6 +269,8 @@ def test_pipe_errors(segmenter):
     assert segmenter.segment(Text("Ночь " * 2000)).text == "Ночь " * 2000
     with pytest.raises(TypeError, match="not iterable"):
         segmenter.pipe(5)
+    with pytest.raises(TypeError, match="not a string"):
+        segmenter.pipe("Кот спит")
     for name in ("threads", "batch_size"):
         with pytest.raises(ValueError, match=f"{name} must be at least 1, not 0"):
             segmenter.pipe([], **{name: 0})
