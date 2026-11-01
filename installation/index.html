@@ -566,6 +566,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Command
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../russian/" class="md-nav__link">
         
   
@@ -574,6 +601,33 @@
     
   
     Russian
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../spacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    spaCy
   
 
     
@@ -669,7 +723,9 @@
 <p>Python 3.11 or newer is required.</p>
 <div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>anyseg
 </code></pre></div>
-<p>The package has no dependencies.</p>
+<p>The package has no dependencies. The tokenizer and the sentence starts for <a href="../spacy/">spaCy</a> come with the extra <code>spacy</code>:</p>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"anyseg[spacy]"</span>
+</code></pre></div>
 <h2 id="prebuilt-wheels">Prebuilt wheels<a class="headerlink" href="#prebuilt-wheels" title="Permanent link">&para;</a></h2>
 <p>PyPI hosts wheels for Linux (x86_64 and aarch64; manylinux and musllinux for Alpine), macOS (Intel and Apple Silicon) and Windows (x64 and arm64). One wheel serves every Python version starting with 3.11, and the free-threaded Python 3.14t and 3.15t have wheels of their own; Rust is not needed to install them.</p>
 <p>Pre-release versions <code>X.Y.Z.devN</code> are published only on TestPyPI:</p>
@@ -684,6 +740,9 @@ pip<span class="w"> </span>install<span class="w"> </span>anyseg
 <h2 id="rust">Rust<a class="headerlink" href="#rust" title="Permanent link">&para;</a></h2>
 <p>The segmenter is published on crates.io as the <a href="https://crates.io/crates/anyseg"><code>anyseg</code></a> crate, with every language behind a Cargo feature: <code>ru</code> (Russian, on by default). It gives positions in bytes of the UTF-8 string. The API documentation is on <a href="https://docs.rs/anyseg">docs.rs</a>.</p>
 <div class="highlight"><pre><span></span><code>cargo<span class="w"> </span>add<span class="w"> </span>anyseg
+</code></pre></div>
+<p>The <a href="../cli/">command</a> <code>anyseg</code> comes with the Python package; without Python, the crate installs it:</p>
+<div class="highlight"><pre><span></span><code>cargo<span class="w"> </span>install<span class="w"> </span>anyseg<span class="w"> </span>--features<span class="w"> </span>cli
 </code></pre></div>
 
 

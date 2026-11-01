@@ -556,6 +556,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#pipe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Documents of texts
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -636,6 +647,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Command
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../russian/" class="md-nav__link">
         
   
@@ -644,6 +682,33 @@
     
   
     Russian
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../spacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    spaCy
   
 
     
@@ -743,6 +808,17 @@
     <span class="md-ellipsis">
       
         Document of a text
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pipe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Documents of texts
       
     </span>
   </a>
@@ -1012,9 +1088,65 @@ Segmenter('ru', abbreviations=('сущ',), tokens=('C++', 'т.н.'))
 </div>
 </div>
 </div>
+<div class="metric-card">
+<h3 id="pipe">Documents of texts<a class="headerlink" href="#pipe" title="Permanent link">&para;</a></h3>
+<p class="metric-meta"><code>pipe</code> · <code>Iterator[Document]</code></p>
+<div class="signature highlight"><pre><span></span><code><span class="n">pipe</span><span class="p">(</span><span class="n">texts</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">threads</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="mi">1000</span><span class="p">)</span>
+</code></pre></div>
+<p>The documents of many texts, as <code>segment</code> gives them, in the order of the texts. The texts are taken from the iterable as the documents are asked for, <code>batch_size</code> at a time, and every batch is segmented without the GIL, on up to <code>threads</code> threads - at most one per core and per 4 KB of the batch: other Python threads run meanwhile, and several threads speed up a large collection of texts even with the GIL. A text that is not a string or holds a lone surrogate raises its error after the documents of the texts before it and ends the iteration, as does an error of the iterable; an interrupt such as <code>KeyboardInterrupt</code> comes at once. One iterator serves one thread at a time: a call while another runs raises <code>ValueError</code>.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Parameter</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Default</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>texts</code></td>
+<td style="text-align: left;"><code>Iterable[str]</code></td>
+<td style="text-align: left;">-</td>
+<td style="text-align: left;">Texts</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>threads</code></td>
+<td style="text-align: left;"><code>int</code></td>
+<td style="text-align: left;"><code>1</code></td>
+<td style="text-align: left;">Number of threads that segment a batch</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>batch_size</code></td>
+<td style="text-align: left;"><code>int</code></td>
+<td style="text-align: left;"><code>1000</code></td>
+<td style="text-align: left;">Number of texts in a batch</td>
+</tr>
+</tbody>
+</table>
+<p>Exceptions:</p>
+<ul>
+<li><code>ValueError</code> - <code>threads</code> or <code>batch_size</code> is less than 1;</li>
+<li><code>TypeError</code> - <code>texts</code> is a string or not iterable, or a text is not a string;</li>
+<li><code>UnicodeEncodeError</code> - a text contains a lone surrogate.</li>
+</ul>
+<div class="tabbed-set tabbed-alternate" data-tabs="6:2"><input checked="checked" id="__tabbed_6_1" name="__tabbed_6" type="radio" /><input id="__tabbed_6_2" name="__tabbed_6" type="radio" /><div class="tabbed-labels"><label for="__tabbed_6_1">Code</label><label for="__tabbed_6_2">Result</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><span class="n">texts</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"Ёж идёт домой. Кот спит"</span><span class="p">,</span> <span class="s2">"Утро"</span><span class="p">,</span> <span class="s2">"Ночь  наступила"</span><span class="p">]</span>
+<span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">doc</span><span class="o">.</span><span class="n">sentences</span><span class="p">)</span> <span class="k">for</span> <span class="n">doc</span> <span class="ow">in</span> <span class="n">segmenter</span><span class="o">.</span><span class="n">pipe</span><span class="p">(</span><span class="n">texts</span><span class="p">,</span> <span class="n">threads</span><span class="o">=</span><span class="mi">2</span><span class="p">)]</span>
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code>[2, 1, 1]
+</code></pre></div>
+</div>
+</div>
+</div>
+</div>
 <h2 id="functions">Functions<a class="headerlink" href="#functions" title="Permanent link">&para;</a></h2>
 <p><code>tokenize(text, *, lang)</code>, <code>sentenize(text, *, lang)</code> and <code>segment(text, *, lang)</code> do the same as the methods of <code>Segmenter(lang)</code>: the module keeps one segmenter per language. The language is a keyword argument and has no default.</p>
-<div class="tabbed-set tabbed-alternate" data-tabs="6:2"><input checked="checked" id="__tabbed_6_1" name="__tabbed_6" type="radio" /><input id="__tabbed_6_2" name="__tabbed_6" type="radio" /><div class="tabbed-labels"><label for="__tabbed_6_1">Code</label><label for="__tabbed_6_2">Result</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="7:2"><input checked="checked" id="__tabbed_7_1" name="__tabbed_7" type="radio" /><input id="__tabbed_7_2" name="__tabbed_7" type="radio" /><div class="tabbed-labels"><label for="__tabbed_7_1">Code</label><label for="__tabbed_7_2">Result</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">anyseg</span><span class="w"> </span><span class="kn">import</span> <span class="n">sentenize</span><span class="p">,</span> <span class="n">tokenize</span>
@@ -1034,7 +1166,7 @@ Segmenter('ru', abbreviations=('сущ',), tokens=('C++', 'т.н.'))
 <div class="signature highlight"><pre><span></span><code><span class="n">Span</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
 </code></pre></div>
 <p>A piece of a text with its position: <code>start</code> is the position of its first character, <code>end</code> the position after the last one, and <code>text</code> the piece. Positions are offsets in the characters of the Python string, as in its slices: <code>text[span.start:span.end] == span.text</code>. Spans are immutable, compare by all three attributes and can be pickled.</p>
-<div class="tabbed-set tabbed-alternate" data-tabs="7:2"><input checked="checked" id="__tabbed_7_1" name="__tabbed_7" type="radio" /><input id="__tabbed_7_2" name="__tabbed_7" type="radio" /><div class="tabbed-labels"><label for="__tabbed_7_1">Code</label><label for="__tabbed_7_2">Result</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="8:2"><input checked="checked" id="__tabbed_8_1" name="__tabbed_8" type="radio" /><input id="__tabbed_8_2" name="__tabbed_8" type="radio" /><div class="tabbed-labels"><label for="__tabbed_8_1">Code</label><label for="__tabbed_8_2">Result</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">anyseg</span><span class="w"> </span><span class="kn">import</span> <span class="n">Span</span>

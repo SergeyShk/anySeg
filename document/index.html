@@ -16,7 +16,7 @@
         <link rel="prev" href="../segmenter/">
       
       
-        <link rel="next" href="../russian/">
+        <link rel="next" href="../cli/">
       
       
         
@@ -675,6 +675,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Command
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../russian/" class="md-nav__link">
         
   
@@ -683,6 +710,33 @@
     
   
     Russian
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../spacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    spaCy
   
 
     
@@ -953,17 +1007,20 @@
 </tbody>
 </table>
 <p>The parts are views of the document, made when they are read; iterating over a collection makes them one at a time. <code>Tokens</code>, <code>Words</code> and the other collections are sequences (<code>collections.abc.Sequence</code>): they have a length, indices from the end and slices, and a slice with step 1 is a collection of the same kind. Two tokens, words, sentences, paragraphs or lines are equal when they are the same part of the same document; the collections compare by identity. A document and its parts cannot be pickled.</p>
+<p>The collections of tokens, sentences, paragraphs and lines have <code>starts</code> and <code>ends</code>: the positions of their parts as lists of integers, made at once on every access. They are much faster than reading the parts one by one, and <code>Document.from_tokens(doc.text, doc.tokens.starts, doc.tokens.ends)</code> takes back the tokens of a document of the segmenter.</p>
 <div class="tabbed-set tabbed-alternate" data-tabs="2:2"><input checked="checked" id="__tabbed_2_1" name="__tabbed_2" type="radio" /><input id="__tabbed_2_2" name="__tabbed_2" type="radio" /><div class="tabbed-labels"><label for="__tabbed_2_1">Code</label><label for="__tabbed_2_2">Result</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code><span class="n">token</span> <span class="o">=</span> <span class="n">doc</span><span class="o">.</span><span class="n">tokens</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
 <span class="n">token</span><span class="p">,</span> <span class="n">token</span><span class="o">.</span><span class="n">spaces_after</span><span class="p">,</span> <span class="n">token</span><span class="o">.</span><span class="n">sentence</span>
 <span class="n">doc</span><span class="o">.</span><span class="n">tokens</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">:],</span> <span class="n">doc</span><span class="o">.</span><span class="n">sentences</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="o">.</span><span class="n">paragraph</span>
+<span class="n">doc</span><span class="o">.</span><span class="n">sentences</span><span class="o">.</span><span class="n">starts</span><span class="p">,</span> <span class="n">doc</span><span class="o">.</span><span class="n">sentences</span><span class="o">.</span><span class="n">ends</span>
 </code></pre></div>
 </div>
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code>(Token(start=3, end=7, text='идёт'), ' ', Sentence(start=0, end=14, text='Ёж идёт домой.'))
 (Tokens([Token(start=25, end=29, text='Утро'), Token(start=31, end=40, text='наступило')]), Paragraph(start=25, end=40, text='Утро  наступило'))
+([0, 15, 25], [14, 23, 40])
 </code></pre></div>
 </div>
 </div>
