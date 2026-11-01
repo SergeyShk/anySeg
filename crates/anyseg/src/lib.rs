@@ -278,9 +278,14 @@ impl Segmenter {
     /// line that does not start a sentence is a wrap at the width of the page; other lines are
     /// breaks of the author
     pub fn segment(&self, text: &str) -> Document {
-        let split = self.split(text, true);
+        self.segment_string(text.to_owned())
+    }
+
+    /// The document of a text it keeps, without a copy
+    pub(crate) fn segment_string(&self, text: String) -> Document {
+        let split = self.split(&text, true);
         Document::segmented(
-            text.to_owned(),
+            text,
             split.tokens,
             split.starts,
             split.paragraphs,

@@ -528,15 +528,18 @@ impl Document {
         let mut out = String::new();
         for token in sentence.tokens.clone() {
             if token > sentence.tokens.start {
-                let gap = &self.text[self.tokens[token - 1].end..self.tokens[token].start];
-                out.push_str(&one_line(&normalize(gap)));
+                match &self.text[self.tokens[token - 1].end..self.tokens[token].start] {
+                    " " => out.push(' '),
+                    gap => out.push_str(&one_line(&normalize(gap))),
+                }
             }
             out.push_str(&nfc(&clean(self.tokens[token].slice(&self.text))));
         }
         out
     }
 
-    fn write_sentence(
+    /// A sentence in CoNLL-U, `# sent_id` numbered `number` and `# newdoc` before the first one when `newdoc`
+    pub(crate) fn write_sentence(
         &self,
         index: usize,
         id: Option<&str>,
@@ -638,19 +641,25 @@ impl Document {
                     _ => misc.map(Cow::into_owned),
                 };
                 let value = |column| written(generated, self.column(column, word).unwrap_or("_"));
-                let head = self
-                    .head(word)
-                    .map_or_else(|| "_".to_owned(), |head| head.to_string());
-                let _ = writeln!(
+                let _ = write!(
                     out,
-                    "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                    "{}\t{}\t{}\t{}\t{}\t{}\t",
                     word - sentence.words.start + 1,
                     written(generated, &clean(self.form(word))),
                     value(Column::Lemma),
                     value(Column::Upos),
                     value(Column::Xpos),
                     value(Column::Feats),
-                    head,
+                );
+                match self.head(word) {
+                    Some(head) => {
+                        let _ = write!(out, "{head}");
+                    }
+                    None => out.push('_'),
+                }
+                let _ = writeln!(
+                    out,
+                    "\t{}\t{}\t{}",
                     value(Column::Deprel),
                     value(Column::Deps),
                     misc.as_deref().unwrap_or("_"),
@@ -672,7 +681,11 @@ impl Document {
                 return None;
             }
         }
-        match normalize(&self.text[self.tokens[token].end..next.start]).as_str() {
+        let gap = &self.text[self.tokens[token].end..next.start];
+        if gap == " " {
+            return None;
+        }
+        match normalize(gap).as_str() {
             "" => Some("SpaceAfter=No".to_owned()),
             " " => None,
             spaces => Some(format!("SpacesAfter={}", escape_spaces(spaces))),
@@ -711,7 +724,7 @@ fn merge(misc: Option<&str>, layout: &str) -> String {
 
 /// A text in Unicode NFC
 fn nfc(text: &str) -> Cow<'_, str> {
-    if is_nfc(text) {
+    if text.is_ascii() || is_nfc(text) {
         Cow::Borrowed(text)
     } else {
         Cow::Owned(text.nfc().collect())
