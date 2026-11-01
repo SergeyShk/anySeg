@@ -135,7 +135,7 @@ Bug reports, ideas and pull requests are welcome - the [issues](https://github.c
 *   **crates/anyseg** - the core in Rust: tokens, sentences, the document model and CoNLL-U, with the lists of every language in `data/` behind a Cargo feature
 *   **crates/anyseg-py** - the Python module `anyseg._anyseg` built with PyO3
 *   **python/anyseg** - the Python package
-*   **scripts** - checking the installed package before publishing
+*   **scripts** - checking the installed package before publishing, and the licenses of the compiled crates
 *   **docs** - MkDocs documentation
 *   **tests** - tests of the Python package
 
