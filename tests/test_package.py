@@ -92,6 +92,8 @@ def test_wheel_contents(tmp_path):
         "anyseg/py.typed",
         "anyseg/spacy.py",
     } <= names
+    licenses = {name.rsplit("/", 1)[-1] for name in names if "/licenses/" in name}
+    assert licenses == {"LICENSE.txt", "THIRD-PARTY-NOTICES.txt"}
     modules = [
         name for name in names if re.fullmatch(r"anyseg/_anyseg(\.[\w-]+)?\.(so|pyd)", name)
     ]
