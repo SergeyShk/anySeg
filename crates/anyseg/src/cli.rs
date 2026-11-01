@@ -52,7 +52,8 @@ pub fn run(args: Vec<OsString>, version: &str) -> u8 {
     )
 }
 
-/// The standard output is closed (`>&-`): writing to it would fail without an error
+/// The standard output is closed (`>&-`): writing to it would fail without an error. A Rust program finds it open
+/// on /dev/null, as the runtime opens the closed standard descriptors there; the module of Python finds it closed
 #[cfg(unix)]
 fn closed_stdout() -> bool {
     use std::os::fd::AsFd;
@@ -72,9 +73,9 @@ fn closed_stdout() -> bool {
 const INPUT_BUFFER: usize = 1 << 16;
 
 /// The longest text without blank lines that is segmented at once; a longer one is cut after a line, so that the
-/// memory stays bounded
+/// memory stays bounded: with pieces of 4 MiB and more, the allocator of macOS keeps a share of every one
 #[cfg(not(test))]
-const PARAGRAPH: usize = 1 << 24;
+const PARAGRAPH: usize = 1 << 21;
 #[cfg(test)]
 const PARAGRAPH: usize = 1 << 12;
 
@@ -206,6 +207,10 @@ fn execute(
             tokens,
             files,
         }) => (lang, format, output, abbreviations, tokens, files),
+        Ok(Command::Help | Command::Version) if closed => {
+            report("the standard output is closed".to_owned());
+            return 1;
+        }
         Ok(Command::Help) => {
             let help = HELP.replace("LANGUAGES", &languages());
             let written = stdout
@@ -707,7 +712,7 @@ fn foreign_encoding(head: &[u8]) -> Option<usize> {
     if head.starts_with(&[0xFF, 0xFE]) || head.starts_with(&[0xFE, 0xFF]) {
         return Some(1);
     }
-    for (index, line) in head.split(|&byte| byte == b'\n').enumerate() {
+    for (index, line) in lines(head).enumerate() {
         if line.contains(&0) {
             return Some(index + 1);
         }
@@ -721,6 +726,24 @@ fn foreign_encoding(head: &[u8]) -> Option<usize> {
         };
     }
     None
+}
+
+/// The lines of bytes as the command reads them: each ends after LF, CR or CRLF
+fn lines(bytes: &[u8]) -> impl Iterator<Item = &[u8]> {
+    let mut rest = bytes;
+    std::iter::from_fn(move || {
+        if rest.is_empty() {
+            return None;
+        }
+        let end = match rest.iter().position(|&byte| byte == b'\n' || byte == b'\r') {
+            Some(at) if rest[at] == b'\r' && rest.get(at + 1) == Some(&b'\n') => at + 2,
+            Some(at) => at + 1,
+            None => rest.len(),
+        };
+        let (line, after) = rest.split_at(end);
+        rest = after;
+        Some(line)
+    })
 }
 
 #[cfg(all(test, feature = "ru"))]
@@ -960,6 +983,13 @@ mod tests {
         // cp1251 before any UTF-8: another encoding
         let (code, _, err) = command(&["-l", "ru"], b"ok\n\xcf\xf0\xe8\xe2\xe5\xf2\n");
         assert!(code == 1 && err.contains("not in UTF-8 (line 2)"), "{err}");
+        // The same with CR line ends: the lines of the check are those of the reading
+        let (code, out, err) = command(&["-l", "ru"], b"\xd0\x81\xd0\xb6\r\xcf\xf0\xe8\r");
+        assert!(
+            code == 1 && out == "Ёж\n\n\u{fffd}\n\u{fffd}\n\u{fffd}\n\n",
+            "{out:?}"
+        );
+        assert!(err.contains("line 2: not UTF-8"), "{err}");
         // A damaged line after UTF-8: replaced
         let (code, out, err) = command(
             &["-l", "ru"],
