@@ -68,4 +68,5 @@ def notices() -> str:
 
 if __name__ == "__main__":
     path = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "THIRD-PARTY-NOTICES.txt"
-    path.write_text(notices(), encoding="utf-8")
+    # LF on every system, as the file of the repository has
+    path.write_text(notices(), encoding="utf-8", newline="\n")
