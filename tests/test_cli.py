@@ -1,5 +1,6 @@
 """The anyseg command: segmentation of text from files and the standard input"""
 
+import io
 import shutil
 import signal
 import subprocess
@@ -104,11 +105,16 @@ def test_main_writes_after_python(tmp_path, monkeypatch, capfd):
     with pytest.raises(SystemExit):
         command.main()
     assert capfd.readouterr().out == "header\nКот спит\n"
-    # Without sys.stdout, as under pythonw, the command writes to the descriptor all the same
-    monkeypatch.setattr(sys, "stdout", None)
-    with pytest.raises(SystemExit):
-        command.main()
-    assert capfd.readouterr().out == "Кот спит\n"
+    # Without sys.stdout, as under pythonw, with it closed or without flush, the command writes to the
+    # descriptor all the same
+    closed = io.StringIO()
+    closed.close()
+    for stream in (None, closed, object()):
+        monkeypatch.setattr(sys, "stdout", stream)
+        with pytest.raises(SystemExit) as exit_info:
+            command.main()
+        assert exit_info.value.code == 0
+        assert capfd.readouterr().out == "Кот спит\n"
 
 
 def test_paragraph_by_paragraph():

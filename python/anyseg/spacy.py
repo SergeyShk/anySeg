@@ -25,7 +25,10 @@ from typing import Any
 
 try:
     import spacy  # noqa: F401
-except ImportError as error:
+except ModuleNotFoundError as error:
+    # A broken spaCy fails with its own error
+    if error.name != "spacy":
+        raise
     raise ImportError('anyseg.spacy needs spaCy: pip install "anyseg[spacy]"') from error
 
 import numpy
@@ -445,7 +448,8 @@ def tree(heads: list[int]) -> bool:
     Returns:
         bool: The heads form a tree
     """
-    if heads.count(0) != 1:
+    # A head read from CoNLL-U may point past its sentence
+    if heads.count(0) != 1 or max(heads) > len(heads):
         return False
     # 0 - not seen, 1 - on the current path, 2 - reaches the root
     state = [0] * len(heads)
@@ -482,7 +486,8 @@ def from_doc(doc: Doc) -> Document:
         else are dropped. A sentence of the spaCy document starts at its first token left, and a
         document without sentences is a sentence per paragraph; every paragraph starts a sentence.
         Lemmas, parts of speech, tags, features, heads and relations become the columns lemma,
-        upos, xpos, feats, head and deprel, empty values None; a token without a head has neither.
+        upos, xpos, feats, head and deprel, empty values None, the features in the order of UD; a
+        token without a head has neither.
         The relation ROOT becomes root, and a word whose head is a dropped token depends on its
         head. A sentence has one root: the root of the parse or, if the sentence lacks it, the
         first word whose head is in another sentence; the other such words depend on the root

@@ -328,6 +328,10 @@ def test_to_doc_of_heads_that_are_not_a_tree():
         document.set_columns(head=heads)
         with pytest.raises(ValueError, match="sentence 0 do not form a tree"):
             to_doc(document, Vocab())
+    # CoNLL-U may hold a head past its sentence
+    conllu = "1\tЁж\t_\t_\t_\t_\t5\tx\t_\t_\n2\tидёт\t_\t_\t_\t_\t0\troot\t_\t_\n\n"
+    with pytest.raises(ValueError, match="do not form a tree"):
+        to_doc(read_conllu(conllu)[0], Vocab())
 
 
 def test_from_doc_one_root():

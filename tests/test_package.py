@@ -47,6 +47,21 @@ def test_spacy_bridge_without_spacy(monkeypatch):
         importlib.import_module("anyseg.spacy")
 
 
+def test_broken_spacy(monkeypatch):
+    # An error inside spaCy is its own, not a missing extra
+    class Broken:
+        @staticmethod
+        def find_spec(name, path=None, target=None):
+            if name == "spacy":
+                raise ModuleNotFoundError("No module named 'numpy'", name="numpy")
+
+    monkeypatch.delitem(sys.modules, "spacy", raising=False)
+    monkeypatch.delitem(sys.modules, "anyseg.spacy", raising=False)
+    monkeypatch.setattr(sys, "meta_path", [Broken(), *sys.meta_path])
+    with pytest.raises(ModuleNotFoundError, match="numpy"):
+        importlib.import_module("anyseg.spacy")
+
+
 def test_package_data():
     assert (Path(anyseg.__file__).parent / "py.typed").is_file()
 

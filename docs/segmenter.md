@@ -191,7 +191,7 @@ The documents of many texts, as `segment` gives them, in the order of the texts.
 Exceptions:
 
 - `ValueError` - `threads` or `batch_size` is less than 1;
-- `TypeError` - `texts` is not iterable, or a text is not a string;
+- `TypeError` - `texts` is a string or not iterable, or a text is not a string;
 - `UnicodeEncodeError` - a text contains a lone surrogate.
 
 === "Code"

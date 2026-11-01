@@ -6,6 +6,7 @@ Example:
     python -m anyseg --help
 """
 
+import contextlib
 import signal
 import sys
 import threading
@@ -26,8 +27,9 @@ def main() -> None:
         SystemExit: Always, with the exit code of the command
     """
     # The core writes to the descriptors: what Python holds in its buffers goes first
+    # The descriptors stay open when a stream of Python is closed or replaced
     for stream in (sys.stdout, sys.stderr):
-        if stream is not None:
+        with contextlib.suppress(AttributeError, ValueError):
             stream.flush()
     handler = None
     main_thread = threading.current_thread() is threading.main_thread()
