@@ -91,6 +91,19 @@ def test_paragraph_by_paragraph():
     assert process.wait(timeout=10) == 0
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="a closed descriptor of a shell")
+def test_closed_standard_output():
+    for args in ("-l ru", "--version"):
+        result = subprocess.run(
+            ["sh", "-c", f'"{sys.executable}" -m anyseg {args} >&-'],
+            input=TEXT,
+            capture_output=True,
+            encoding="utf-8",
+            check=False,
+        )
+        assert (result.returncode, result.stderr) == (1, "anyseg: the standard output is closed\n")
+
+
 def test_complete_paragraphs_before_waiting():
     # A blank line and the next text in one read: the paragraph before it comes out while the command waits
     process = subprocess.Popen(
