@@ -95,7 +95,7 @@ On the test files of the Russian treebanks of Universal Dependencies 2.18, F1 (*
 
 | Tool | Tokens, SynTagRus | Tokens, Taiga | Sentence ends, SynTagRus | Sentence ends, Taiga | Tokens/s from Python |
 | :-- | --: | --: | --: | --: | --: |
-| **anySeg 0.1** | 99.61 | **99.10** | 99.46 | **95.94** | **3.12 M** |
+| **anySeg 0.2** | 99.61 | **99.10** | 99.46 | **95.94** | **3.12 M** |
 | razdel 0.5.0 | 98.73 | 95.74 | 99.41 | 85.58 | 489 k |
 | NLTK 3.10.4 | 98.93 | 96.57 | 97.61 | 82.59 | 195 k |
 | spaCy 3.8.16 | 98.38 | 96.85 | 89.60 | 76.18 | 225 k |

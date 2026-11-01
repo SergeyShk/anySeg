@@ -18,7 +18,7 @@ F1 of the CoNLL 2018 script.
 
 | Tool | SynTagRus | Taiga | GSD | PUD |
 | :-- | --: | --: | --: | --: |
-| **anySeg 0.1** | 99.61 | **99.10** | **99.14** | **99.78** |
+| **anySeg 0.2** | 99.61 | **99.10** | **99.14** | **99.78** |
 | razdel 0.5.0 | 98.73 | 95.74 | 92.64 | 99.26 |
 | NLTK 3.10.4, `word_tokenize` | 98.93 | 96.57 | 94.45 | 99.60 |
 | spaCy 3.8.16, `ru` | 98.38 | 96.85 | 94.66 | 98.46 |
@@ -36,7 +36,7 @@ F1 of the positions of the sentence ends.
 
 | Tool | SynTagRus | Taiga | GSD | PUD |
 | :-- | --: | --: | --: | --: |
-| **anySeg 0.1** | 99.46 | **95.94** | 98.66 | 99.75 |
+| **anySeg 0.2** | 99.46 | **95.94** | 98.66 | 99.75 |
 | razdel 0.5.0 | 99.41 | 85.58 | 96.94 | 99.65 |
 | rusenttokenize 0.0.5 | 99.36 | 84.11 | 98.07 | 99.60 |
 | NLTK 3.10.4, Punkt | 97.61 | 82.59 | 96.92 | 99.04 |
@@ -63,7 +63,7 @@ F1 of the CoNLL 2018 script: a sentence counts when both of its ends match, so t
 
 | Tool | SynTagRus | Taiga | GSD | PUD |
 | :-- | --: | --: | --: | --: |
-| **anySeg 0.1** | 98.53 | **89.92** | **96.32** | 99.25 |
+| **anySeg 0.2** | 98.53 | **89.92** | **96.32** | 99.25 |
 | razdel 0.5.0 | 98.37 | 70.73 | 91.33 | 98.95 |
 | NLTK 3.10.4 | 93.26 | 63.96 | 91.30 | 97.23 |
 | spaCy 3.8.16, `ru` | 82.19 | 56.65 | 91.99 | 91.06 |
@@ -81,7 +81,7 @@ From Python: the time to load the tool, tokens per second, and the memory the lo
 
 | Tool | Gives | Load, s | Tokens/s | Memory, MB |
 | :-- | :-- | --: | --: | --: |
-| **anySeg 0.1** | tokens, sentences | 0.00 | **3.12 M** | 0.5 |
+| **anySeg 0.2** | tokens, sentences | 0.00 | **3.12 M** | 0.5 |
 | razdel 0.5.0 | tokens, sentences | 0.00 | 489 k | 0.1 |
 | rusenttokenize 0.0.5 | sentences | 0.00 | 317 k | 0.2 |
 | NLTK 3.10.4 | tokens, sentences | 0.85 | 195 k | 121 |
@@ -104,7 +104,7 @@ From Rust: tokens per second and the peak memory of a process that reads the tex
 
 | Crate | Gives | Tokens/s | Peak memory, MB |
 | :-- | :-- | --: | --: |
-| **anyseg 0.1** | tokens, sentences | 13.4 M | 34 |
+| **anyseg 0.2** | tokens, sentences | 13.4 M | 34 |
 | unicode-segmentation 1.13.3 | tokens, sentences | 7.7 M | 28 |
 | icu_segmenter 2.4.0 | tokens, sentences | **17.6 M** | 114 |
 | sentencex 0.1.32 | sentences | 965 k | 21 |
