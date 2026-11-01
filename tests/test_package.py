@@ -62,6 +62,19 @@ def test_broken_spacy(monkeypatch):
         importlib.import_module("anyseg.spacy")
 
 
+@pytest.mark.skipif(shutil.which("cargo") is None, reason="the crates are read with cargo")
+def test_third_party_notices(tmp_path):
+    # The notices follow Cargo.lock: after a change of it, run python scripts/notices.py
+    path = tmp_path / "notices.txt"
+    subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "notices.py"), str(path)],
+        capture_output=True,
+        check=True,
+    )
+    expected = (ROOT / "THIRD-PARTY-NOTICES.txt").read_text(encoding="utf-8")
+    assert path.read_text(encoding="utf-8") == expected, "run python scripts/notices.py"
+
+
 def test_package_data():
     assert (Path(anyseg.__file__).parent / "py.typed").is_file()
 
@@ -92,6 +105,8 @@ def test_wheel_contents(tmp_path):
         "anyseg/py.typed",
         "anyseg/spacy.py",
     } <= names
+    licenses = {name.rsplit("/", 1)[-1] for name in names if "/licenses/" in name}
+    assert licenses == {"LICENSE.txt", "THIRD-PARTY-NOTICES.txt"}
     modules = [
         name for name in names if re.fullmatch(r"anyseg/_anyseg(\.[\w-]+)?\.(so|pyd)", name)
     ]

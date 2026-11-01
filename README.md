@@ -95,7 +95,7 @@ On the test files of the Russian treebanks of Universal Dependencies 2.18, F1 (*
 
 | Tool | Tokens, SynTagRus | Tokens, Taiga | Sentence ends, SynTagRus | Sentence ends, Taiga | Tokens/s from Python |
 | :-- | --: | --: | --: | --: | --: |
-| **anySeg 0.1** | 99.61 | **99.10** | 99.46 | **95.94** | **3.12 M** |
+| **anySeg 0.2** | 99.61 | **99.10** | 99.46 | **95.94** | **3.12 M** |
 | razdel 0.5.0 | 98.73 | 95.74 | 99.41 | 85.58 | 489 k |
 | NLTK 3.10.4 | 98.93 | 96.57 | 97.61 | 82.59 | 195 k |
 | spaCy 3.8.16 | 98.38 | 96.85 | 89.60 | 76.18 | 225 k |
@@ -135,7 +135,7 @@ Bug reports, ideas and pull requests are welcome - the [issues](https://github.c
 *   **crates/anyseg** - the core in Rust: tokens, sentences, the document model and CoNLL-U, with the lists of every language in `data/` behind a Cargo feature
 *   **crates/anyseg-py** - the Python module `anyseg._anyseg` built with PyO3
 *   **python/anyseg** - the Python package
-*   **scripts** - checking the installed package before publishing
+*   **scripts** - checking the installed package before publishing, and the licenses of the compiled crates
 *   **docs** - MkDocs documentation
 *   **tests** - tests of the Python package
 

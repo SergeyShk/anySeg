@@ -4,12 +4,12 @@ build-backend = "maturin"
 
 [project]
 name = "anyseg"
-version = "0.2.0.dev6"
+version = "0.2.0"
 description = "Fast segmentation of text into tokens and sentences, written in Rust with a Python API"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
-license-files = ["LICENSE.txt"]
+license-files = ["LICENSE.txt", "THIRD-PARTY-NOTICES.txt"]
 authors = [{ name = "Sergey Shkarin", email = "kouki.sergey@gmail.com" }]
 maintainers = [{ name = "Sergey Shkarin", email = "kouki.sergey@gmail.com" }]
 keywords = [

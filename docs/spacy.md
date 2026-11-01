@@ -91,7 +91,7 @@ nlp.add_pipe("anyseg_sentencizer", before="parser")
     ['Кот спит в 1914 г.', 'Затем\n\n', 'Утро']
     ```
 
-With the tokenizer and the component, `ru_core_news_sm` 3.8.0 finds sentences and parses better. F1 of sentences and LAS on the test parts of the Russian treebanks of UD 2.18, from their raw text:
+With the tokenizer and the component, `ru_core_news_sm` 3.8.0 finds sentences and parses better. F1 of sentences and LAS on the test parts of the Russian treebanks of UD 2.18, from their raw text, every paragraph a document, scored with the evaluation script of CoNLL 2018. [Comparison](comparison.md) segments every test file as one text, so its F1 of sentences of the same pipeline is lower on Taiga, whose paragraphs often end without a final mark:
 
 | Test set | Sentences, spaCy | Sentences, anySeg | LAS, spaCy | LAS, anySeg |
 | :------- | ---------------: | ----------------: | ---------: | ----------: |
@@ -100,7 +100,7 @@ With the tokenizer and the component, `ru_core_news_sm` 3.8.0 finds sentences an
 | GSD | 85.85 | **96.32** | 75.80 | **79.34** |
 | PUD | 96.45 | **99.25** | 86.14 | **87.26** |
 
-The tokenizer gives 2.3 M tokens per second, eight times as many as the tokenizer of spaCy; with the component, 1.4 M against 0.27 M with the `sentencizer` of spaCy (SynTagRus test, one thread, Apple M3 Pro).
+The tokenizer gives 2.7 M tokens per second, nearly ten times as many as the tokenizer of spaCy; with the component, 1.5 M against 0.26 M with the `sentencizer` of spaCy (SynTagRus test, one thread, Apple M3 Pro).
 
 ## Documents { #documents }
 
