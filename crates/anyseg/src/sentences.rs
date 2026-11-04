@@ -3,7 +3,7 @@
 use crate::Span;
 use crate::document::{Line, LineBreak};
 use crate::lang::Tables;
-use crate::tokens::{EMOTICONS, Exceptions, is_alpha, is_emoji, is_mark, is_word};
+use crate::tokens::{Exceptions, is_alpha, is_emoji, is_mark, is_word};
 
 /// Marks that start a list item at the beginning of a line
 const BULLETS: &str = "-‐‒–—―−•·*▪◦‣●■►▸→✓✔";
@@ -42,15 +42,14 @@ fn is_dash(piece: &str) -> bool {
 }
 
 /// An emoji or an emoticon: «😀», «:)», «)))»; decided by the first byte, as it runs for every token
-fn is_emoticon(piece: &str) -> bool {
+fn is_emoticon(piece: &str, tables: &Tables) -> bool {
     let bytes = piece.as_bytes();
     match bytes.first() {
         Some(b':' | b';' | b'=') => bytes.len() > 1,
         Some(&bracket @ (b')' | b'(')) => bytes.len() > 1 && bytes.iter().all(|&b| b == bracket),
-        // The first bytes of «^_^», «-_-», «<3», «o_O» and «о_О»
-        Some(b'^' | b'-' | b'<' | b'o' | b'O' | 0xD0) => EMOTICONS.contains(&piece),
         Some(0xE2 | 0xF0) => piece.chars().next().is_some_and(is_emoji),
-        _ => false,
+        Some(_) => tables.is_listed_emoticon(piece),
+        None => false,
     }
 }
 
@@ -212,7 +211,11 @@ pub(crate) fn split(
                 _ => {}
             }
             let ends = position == last && (boundary || last + 1 == tokens.len());
-            if ends && is_abbreviation(piece) && !exceptions.tokens.contains(piece) {
+            if ends
+                && tables.conventions.final_period_token
+                && is_abbreviation(piece)
+                && !exceptions.tokens.contains(piece)
+            {
                 out.tokens.push(Span {
                     start: span.start,
                     end: span.end - 1,
@@ -300,7 +303,7 @@ impl Splitter<'_> {
                 .filter(|&c| is_alpha(c))
                 .nth(1)
                 .is_some();
-        let emoticon = smile || is_emoticon(piece);
+        let emoticon = smile || is_emoticon(piece, self.tables);
         if !candidate && !stars && !emoticon {
             return (index, false);
         }
@@ -332,7 +335,7 @@ impl Splitter<'_> {
         // Emoticons after final marks stay in the sentence: «Ура! :)»
         while marks
             && last + 1 < count
-            && is_emoticon(self.piece(last + 1))
+            && is_emoticon(self.piece(last + 1), self.tables)
             && !self.line_start(last + 1)
         {
             last += 1;
@@ -457,14 +460,14 @@ impl Splitter<'_> {
     }
 
     /// Whether a single letter with a period before the capital letter at `next` is not an initial: a letter of
-    /// another script before a Cyrillic word, as a variable or a name («через x. Тогда», «Витамин C. Его»), or a
-    /// capital letter after a quantity, as a unit («5 А. Напряжение»)
+    /// another script before a word of the language, as a variable or a name («через x. Тогда», «Витамин C. Его»), or
+    /// a capital letter after a quantity, as a unit («5 А. Напряжение»)
     fn not_initial(&self, index: usize, next: usize) -> bool {
         let mut chars = self.piece(index).chars();
         let (Some(letter), Some('.'), None) = (chars.next(), chars.next(), chars.next()) else {
             return false;
         };
-        let cyrillic = |c: char| matches!(c, '\u{400}'..='\u{52f}');
+        let script = self.tables.conventions.script;
         let capital = self.tokens[next..]
             .iter()
             .take(2)
@@ -472,7 +475,7 @@ impl Splitter<'_> {
         let previous = index.checked_sub(1).map(|position| self.piece(position));
         let initials =
             previous.is_some_and(|piece| is_abbreviation(piece) && piece.chars().count() == 2);
-        (!initials && !cyrillic(letter) && capital.is_some_and(cyrillic))
+        (!initials && !script.contains(letter) && capital.is_some_and(|c| script.contains(c)))
             || (letter.is_uppercase()
                 && previous.is_some_and(is_quantity)
                 && !(index >= 2 && self.piece(index - 2) == ":"))

@@ -294,31 +294,34 @@ impl Segmenter {
     }
 
     fn split(&self, text: &str, lines: bool) -> Split {
-        let tables = lang::tables(self.language);
-        let mut split = Split {
-            tokens: Vec::with_capacity(text.len() / 8),
-            lines: lines.then(Vec::new),
-            ..Split::default()
-        };
-        let mut paragraph = Vec::new();
-        for paragraph_lines in layout::paragraphs(text) {
-            let span = Span {
-                start: paragraph_lines[0].start,
-                end: paragraph_lines[paragraph_lines.len() - 1].end,
-            };
-            paragraph.clear();
-            tokens::tokenize(text, span, tables, &self.exceptions, &mut paragraph);
-            sentences::split(
-                text,
-                &paragraph_lines,
-                &paragraph,
-                tables,
-                &self.exceptions,
-                &mut split,
-            );
-        }
-        split
+        split_text(text, lang::tables(self.language), &self.exceptions, lines)
     }
+}
+
+fn split_text(text: &str, tables: &lang::Tables, exceptions: &Exceptions, lines: bool) -> Split {
+    let mut split = Split {
+        tokens: Vec::with_capacity(text.len() / 8),
+        lines: lines.then(Vec::new),
+        ..Split::default()
+    };
+    let mut paragraph = Vec::new();
+    for paragraph_lines in layout::paragraphs(text) {
+        let span = Span {
+            start: paragraph_lines[0].start,
+            end: paragraph_lines[paragraph_lines.len() - 1].end,
+        };
+        paragraph.clear();
+        tokens::tokenize(text, span, tables, exceptions, &mut paragraph);
+        sentences::split(
+            text,
+            &paragraph_lines,
+            &paragraph,
+            tables,
+            exceptions,
+            &mut split,
+        );
+    }
+    split
 }
 
 #[cfg(all(test, feature = "ru"))]

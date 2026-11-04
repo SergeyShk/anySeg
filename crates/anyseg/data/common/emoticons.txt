@@ -1,0 +1,7 @@
+# Emoticons that are not a face of eyes and a mouth; a language may add its own
+^_^
+^^
+-_-
+o_O
+O_o
+<3

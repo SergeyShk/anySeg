@@ -6,24 +6,8 @@ use std::hash::{Hash, Hasher};
 use unicode_normalization::char::{compose, is_combining_mark};
 
 use crate::Span;
-use crate::lang::Tables;
+use crate::lang::{DigitGroups, Hyphens, Tables};
 use crate::layout::is_separator;
-
-/// Top-level domains and file extensions that make a name one token: «example.ru», «Газета.ru», «robots.txt»
-const SUFFIXES: &[&str] = &[
-    "ru", "рф", "ру", "su", "com", "org", "net", "info", "biz", "edu", "gov", "int", "io", "ai",
-    "me", "tv", "fm", "pro", "online", "site", "store", "app", "dev", "by", "ua", "kz", "uz", "kg",
-    "am", "ge", "az", "md", "lv", "lt", "ee", "de", "fr", "uk", "us", "eu", "it", "es", "pl", "cz",
-    "cn", "jp", "txt", "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "rtf", "csv",
-    "json", "xml", "html", "htm", "css", "jpg", "jpeg", "png", "gif", "svg", "webp", "bmp", "tif",
-    "tiff", "zip", "rar", "gz", "tar", "exe", "dll", "apk", "iso", "mp3", "mp4", "avi", "mov",
-    "mkv", "wav", "flac", "ogg", "epub", "fb2", "djvu", "py", "js", "ts", "tsx", "jsx", "rs", "go",
-    "java", "kt", "cpp", "cs", "rb", "php", "swift", "sh", "sql", "ipynb", "yaml", "yml", "toml",
-    "ini", "cfg", "conf", "lock", "log",
-];
-
-/// Emoticons that are not a face of eyes and a mouth
-pub(crate) const EMOTICONS: &[&str] = &["^_^", "^^", "-_-", "o_O", "O_o", "о_О", "О_о", "<3"];
 
 fn char_at(text: &str, index: usize) -> Option<char> {
     text.get(index..)?.chars().next()
@@ -455,7 +439,7 @@ impl Scanner<'_> {
         let labels = self.domain_chain;
         let mut end = self
             .host(start, labels, |top| {
-                SUFFIXES.contains(&self.tables.key(top).as_str())
+                self.tables.web_suffixes.contains(&self.tables.key(top))
             })
             .ok_or(labels)?;
         if self.get(end) == Some(':') && self.get(end + 1).is_some_and(|c| c.is_ascii_digit()) {
@@ -485,11 +469,14 @@ impl Scanner<'_> {
         end
     }
 
-    /// An emoticon: one of [`EMOTICONS`] or a face of eyes, a nose and a run of one mouth character
+    /// An emoticon: one of the lists or a face of eyes, a nose and a run of one mouth character
     fn emoticon(&self, start: usize) -> Option<usize> {
-        if let Some(emoticon) = EMOTICONS
-            .iter()
-            .find(|emoticon| self.text[start..self.end].starts_with(**emoticon))
+        if self.tables.starts_emoticon(self.text.as_bytes()[start])
+            && let Some(emoticon) = self
+                .tables
+                .emoticons
+                .iter()
+                .find(|emoticon| self.text[start..self.end].starts_with(emoticon.as_str()))
         {
             return Some(start + emoticon.len());
         }
@@ -607,6 +594,7 @@ impl Scanner<'_> {
         let after = self.get(next)?;
         let digits = is_digits(piece);
         let only = |kind: Joint| kinds & !kind.bit() == 0;
+        let groups = self.tables.conventions.digit_groups;
         let joint = match character {
             '-' | '\u{2010}' | '\u{2011}' if is_word(after) => Joint::Hyphen,
             '\'' | '\u{2019}' if is_alpha(after) && !digits => Joint::Apostrophe,
@@ -616,11 +604,20 @@ impl Scanner<'_> {
                 || (piece.starts_with(is_alpha)
                     && piece.ends_with(|c: char| c.is_ascii_digit())))
                 && after.is_ascii_digit()
-                && only(Joint::Point) =>
+                && (only(Joint::Point) || (groups == DigitGroups::Comma && only(Joint::Comma))) =>
             {
                 Joint::Point
             }
-            ',' if digits && after.is_ascii_digit() && only(Joint::Thousands) => Joint::Comma,
+            ',' if digits
+                && after.is_ascii_digit()
+                && only(match groups {
+                    DigitGroups::Space => Joint::Thousands,
+                    DigitGroups::Point => Joint::Point,
+                    DigitGroups::Comma => Joint::Comma,
+                }) =>
+            {
+                Joint::Comma
+            }
             ':' if digits && piece.len() <= 2 && only(Joint::Colon) => {
                 let end = self.digits_end(next);
                 if end - next != 2 || self.get(end).is_some_and(is_word) {
@@ -630,6 +627,7 @@ impl Scanner<'_> {
             }
             ' ' | '\u{a0}' | '\u{202f}' | '\u{2009}'
                 if digits
+                    && groups == DigitGroups::Space
                     && only(Joint::Thousands)
                     && (if kinds == 0 {
                         piece.len() <= 3
@@ -661,13 +659,30 @@ impl Scanner<'_> {
     fn splits(&self, runs: &[Span], joints: &[Joint], chains: &[usize], index: usize) -> bool {
         let left = runs[index].slice(self.text);
         let right = runs[index + 1].slice(self.text);
+        let conventions = &self.tables.conventions;
         if is_digits(left) && is_digits(right) {
             // A range «2-3», but not a chain of three groups or more: a phone number, an ISO date
-            return chains[index] < 3;
+            return conventions.digit_ranges && chains[index] < 3;
         }
         if is_roman(left) && is_roman(right) {
-            return true;
+            return conventions.roman_ranges;
         }
+        match conventions.hyphens {
+            Hyphens::Whole => false,
+            Hyphens::Split => {
+                let tables = self.tables;
+                let (left_key, right_key) = (tables.key(left), tables.key(right));
+                !tables.prefixes.contains(&left_key)
+                    && !tables.whole.contains(&format!("{left_key}-{right_key}"))
+            }
+            Hyphens::Inflected => self.inflected_parts(runs, joints, index),
+        }
+    }
+
+    /// Whether a hyphen is a token of its own in a language whose words split where their parts inflect
+    fn inflected_parts(&self, runs: &[Span], joints: &[Joint], index: usize) -> bool {
+        let left = runs[index].slice(self.text);
+        let right = runs[index + 1].slice(self.text);
         let tables = self.tables;
         let (left_key, right_key) = (tables.key(left), tables.key(right));
         // A name with an inflected first part and a linker between hyphens: «Ростова-на-Дону»
@@ -687,7 +702,8 @@ impl Scanner<'_> {
         // A particle closes the word: «де» inside «Рио-де-Жанейро» is not one
         let closes = index + 1 == joints.len() || joints[index + 1] != Joint::Hyphen;
         if closes && tables.particles.contains(&right_key) {
-            return !(right_key == "то" && tables.indefinite.contains(&left_key));
+            return !(right_key == tables.conventions.indefinite_particle
+                && tables.indefinite.contains(&left_key));
         }
         if !is_letters(left) {
             return false;
@@ -731,7 +747,9 @@ impl Scanner<'_> {
                 || (character == '.' && self.text[..end].ends_with(|c: char| c.is_ascii_digit()))
         });
         if !joins {
-            let end = if self.abbreviation(start, end) {
+            let end = if let Some(stop) = self.dotted_abbreviation(start, end) {
+                stop
+            } else if self.abbreviation(start, end) {
                 end + 1
             } else if digits {
                 self.percent_ending(end)
@@ -789,6 +807,31 @@ impl Scanner<'_> {
         self.push(first, end)
     }
 
+    /// The end of an abbreviation with periods inside it, in a language that keeps it in one token: «EE.UU.», «U.S.»,
+    /// «Ph.D.»; its parts are letters, one or two of them
+    fn dotted_abbreviation(&self, start: usize, end: usize) -> Option<usize> {
+        let short = |piece: &str| is_letters(piece) && piece.chars().count() <= 2;
+        if self.tables.conventions.split_dotted
+            || self.get(end) != Some('.')
+            || !short(&self.text[start..end])
+        {
+            return None;
+        }
+        let mut stop = end;
+        while self.get(stop) == Some('.') && self.get(stop + 1).is_some_and(is_alpha) {
+            let next = self.run(stop + 1);
+            if !short(&self.text[stop + 1..next]) {
+                break;
+            }
+            stop = next;
+        }
+        if stop == end {
+            return None;
+        }
+        let period = self.get(stop) == Some('.') && self.get(stop + 1) != Some('.');
+        Some(if period { stop + 1 } else { stop })
+    }
+
     /// The end of a name of the language joined to the next word by a period: «Яндекс.Маркете»
     fn dotted_name(&self, start: usize, end: usize) -> usize {
         if end < self.end
@@ -809,7 +852,8 @@ impl Scanner<'_> {
 
     /// The end of a number with a percent sign and an ending after a hyphen, which is one word: «20%-ный»
     fn percent_ending(&self, end: usize) -> usize {
-        if self.get(end) == Some('%')
+        if self.tables.conventions.percent_endings
+            && self.get(end) == Some('%')
             && self.get(end + 1) == Some('-')
             && self.get(end + 2).is_some_and(char::is_lowercase)
         {
@@ -840,14 +884,15 @@ impl Scanner<'_> {
             let after = if index < joints.len() {
                 joints[index] == Joint::Hyphen && chains[index] >= 3
             } else {
-                // A phone number has 10 digits, 11 with the code of the country; numbers side by side have more
+                // Numbers side by side have more digits than a phone number
+                let (shortest, longest) = self.tables.conventions.phone_digits.unwrap_or((1, 0));
                 let space = |c: char| matches!(c, ' ' | '\u{a0}' | '\u{202f}' | '\u{2009}');
                 let mut digits: usize = runs[first..=index]
                     .iter()
                     .map(|run| run.end - run.start)
                     .sum();
                 let mut end = runs[index].end;
-                while digits <= 11
+                while digits <= longest
                     && self.get(end).is_some_and(space)
                     && self.get(end + 1).is_some_and(|c| c.is_ascii_digit())
                 {
@@ -856,7 +901,7 @@ impl Scanner<'_> {
                     end = group;
                 }
                 end > runs[index].end
-                    && (10..=11).contains(&digits)
+                    && (shortest..=longest).contains(&digits)
                     && !self.get(end).is_some_and(|c| is_word(c) || c == '-')
             };
             if after {
@@ -900,7 +945,11 @@ impl Scanner<'_> {
         let next = start + character.len_utf8();
         match character {
             '.' | '!' | '?' | '…' => {
-                let end = run_of(".!?…");
+                let end = if self.tables.conventions.mixed_final_marks {
+                    run_of(".!?…")
+                } else {
+                    run_of(&character.to_string())
+                };
                 self.push(start, end)
             }
             '-' | '*' | '№' | '=' | '~' | '_' | '+' | '#' | '`' | '\'' => {
@@ -936,7 +985,10 @@ impl Scanner<'_> {
                 }
                 end
             }
-            '°' if self.get(next).is_some_and(|c| matches!(c, 'C' | 'С' | 'F')) => {
+            '°' if self
+                .get(next)
+                .is_some_and(|c| self.tables.conventions.degree_letters.contains(c)) =>
+            {
                 let letter = next + self.get(next).map_or(0, char::len_utf8);
                 if self.get(letter).is_some_and(is_word) {
                     self.push(start, next)
