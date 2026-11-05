@@ -471,6 +471,7 @@ def keep_words(doc: Doc, document: Document) -> None:
     """
     data: dict[Any, Any] = doc.user_data
     for token in document.multiword_tokens:
+        count = len(token.sentence.words)
         data[words_key(token.start, token.end)] = [
             {
                 "form": word.form,
@@ -479,6 +480,7 @@ def keep_words(doc: Doc, document: Document) -> None:
                     for column in WORD_COLUMNS
                     if (value := getattr(word, column)) is not None
                 },
+                **({"sentence_words": count} if word.head is not None else {}),
             }
             for word in token.words
         ]
@@ -647,10 +649,11 @@ def from_doc(doc: Doc) -> Document:
         with the relation dep.
         A token with token._.anyseg_words is a multiword token. Its words keep the columns they
         have there; for a column none of them has, the first word takes the value of the token.
-        Heads there are kept if the parse of the sentence still agrees with them: the head of the
-        token is the head of one of its words, which then stands for the token, and the words form
-        a tree. Otherwise the first word takes the head and the relation of the token, and the
-        other words depend on it with the relation dep
+        Heads there are kept if the parse of the sentence still agrees with them: every word has a
+        head and the number of words of its sentence in sentence_words, the head of the token is
+        the head of one of its words, which then stands for the token, and the words form a tree.
+        Otherwise the first word takes the head and the relation of the token, and the other words
+        depend on it with the relation dep
 
     Arguments:
         doc (Doc): spaCy document
@@ -662,6 +665,7 @@ def from_doc(doc: Doc) -> Document:
         ValueError: If a token runs over a blank line, the extension is not a list of words with
             their forms or holds a form that cannot be in a document, or a value cannot be in its
             column, as for Document.set_columns
+        TypeError: If a value of the extension is of a wrong type, as for Document.set_columns
     """
     starts: list[int] = []
     ends: list[int] = []
@@ -688,8 +692,9 @@ def from_doc(doc: Doc) -> Document:
             pending = False
         starts.append(start)
         ends.append(start + len(rest.rstrip(SEPARATORS)))
-        if token.idx in given and given[token.idx][0] == token.idx + len(text):
-            multiword[len(kept)] = checked_words(given[token.idx][1], len(kept))
+        value = given.get((token.idx, token.idx + len(text)))
+        if value is not None:
+            multiword[len(kept)] = checked_words(value, len(kept))
         kept.append(token.i)
     document = Document.from_tokens(
         doc.text,
@@ -716,7 +721,7 @@ def from_doc(doc: Doc) -> Document:
     return document
 
 
-def given_words(doc: Doc) -> dict[int, tuple[int, Any]]:
+def given_words(doc: Doc) -> dict[tuple[int, int], Any]:
     """
     Values of the extension in a spaCy document: one pass over its user data, as a token is slow
 
@@ -724,11 +729,11 @@ def given_words(doc: Doc) -> dict[int, tuple[int, Any]]:
         doc (Doc): spaCy document
 
     Returns:
-        dict[int, tuple[int, Any]]: End of the token and the value, by the start of the token
+        dict[tuple[int, int], Any]: Values by the ends of their tokens
     """
     data: dict[Any, Any] = doc.user_data
     return {
-        key[2]: (key[3], value)
+        key[2:]: value
         for key, value in data.items()
         if isinstance(key, tuple) and len(key) == 4 and key[:2] == ("._.", "anyseg_words")
     }
@@ -866,18 +871,26 @@ def given_relations(
         if given is None:
             continue
         head = heads[token]
-        if head is None:
+        if head is None or not all(
+            type(word.get("head")) is int
+            and 0 <= word["head"] <= len(owners)
+            and word.get("sentence_words") == len(owners)
+            for word in given
+        ):
             return None
-        for offset, word in enumerate(given):
-            value = word.get("head")
-            if not isinstance(value, int) or not 0 <= value <= len(owners):
-                return None
-            target = owners[value - 1] if value else None
-            if target == (span.start + head - 1 if head else None):
-                standing[token] = offset
-                break
-        else:
+        target = span.start + head - 1 if head else None
+        found = [
+            offset
+            for offset, word in enumerate(given)
+            if (owners[word["head"] - 1] if word["head"] else None) == target
+        ]
+        if not found:
             return None
+        # Words may share a head token: the relation of the token tells which one gave its values
+        standing[token] = next(
+            (offset for offset in found if given[offset].get("deprel") == deprels[token]),
+            found[0],
+        )
     word_heads: list[int | None] = []
     word_deprels: list[str | None] = []
     for token in span:
