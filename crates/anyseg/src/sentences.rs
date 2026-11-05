@@ -44,12 +44,10 @@ fn is_opening(piece: &str) -> bool {
     ) || is_entity(piece)
 }
 
-fn is_dash_mark(character: char) -> bool {
-    matches!(character, '-' | '‐' | '‒' | '–' | '—' | '―' | '−')
-}
-
 fn is_dash(piece: &str) -> bool {
-    piece.chars().all(is_dash_mark)
+    piece
+        .chars()
+        .all(|character| matches!(character, '-' | '‐' | '‒' | '–' | '—' | '―' | '−'))
 }
 
 /// An emoji or an emoticon: «😀», «:)», «)))»; decided by the first byte, as it runs for every token
@@ -320,16 +318,13 @@ impl Splitter<'_> {
             }
             self.line_tokens.push(token);
         }
-        let mut dash = false;
         for pair in self.lines.windows(2) {
             let (before, after) = (pair[0].slice(self.text), pair[1].slice(self.text));
-            let upper = begins_upper(after);
-            self.verse |= upper && before.ends_with([',', ';']);
-            dash |= upper && before.ends_with(is_dash_mark) && before.contains(is_alpha);
+            self.verse |= before.ends_with([',', ';']) && begins_upper(after);
             self.typeset |= after.starts_with(char::is_lowercase);
         }
         if !self.verse && !self.typeset {
-            self.verse = self.rhymes(dash);
+            self.verse = self.rhymes();
         }
         self.cased = self.verse
             && self
@@ -339,11 +334,11 @@ impl Splitter<'_> {
     }
 
     /// Whether the lines rhyme: at least half of them with a line close to them, at least four and with different
-    /// endings, as a list of one grammatical form has one; a stanza of four lines in a metre with a pair two lines
-    /// apart, as a pair side by side can be a chance; or any pair, if a line ends with a dash
-    fn rhymes(&self, dash: bool) -> bool {
+    /// endings, as a list of one grammatical form has one; or a stanza of four lines in a metre with a pair two lines
+    /// apart, as a pair side by side can be a chance
+    fn rhymes(&self) -> bool {
         let count = self.lines.len();
-        if count < MIN_RHYMES && !dash {
+        if count < MIN_RHYMES {
             return false;
         }
         let ends: Vec<Option<(&str, [char; 2])>> = self
@@ -361,12 +356,9 @@ impl Splitter<'_> {
                     .then_some((index, letters))
             })
             .collect();
-        if dash && rhymes.len() >= 2 {
-            return true;
-        }
         rhymes.len() * 2 >= count
             && match rhymes.as_slice() {
-                [(first, _), (second, _)] => count == 4 && second - first == 2 && self.metre(),
+                [(first, _), (second, _)] => second - first == 2 && self.metre(),
                 [(_, letters), rest @ ..] => {
                     rest.len() + 1 >= MIN_RHYMES && rest.iter().any(|(_, end)| end != letters)
                 }
@@ -633,17 +625,19 @@ impl Splitter<'_> {
             && (index == 1 || self.line_start(index - 1) || self.in_series(index - 1))
     }
 
-    /// Whether a number starts a sentence or follows a colon before a capital letter, and the sentence before or
-    /// after it has the number next to it; the other numbers at the start of a sentence are headings, dates and answers
+    /// Whether a number before a capital letter starts a sentence, with the number next to it in the sentence before
+    /// or after, or follows a colon as the first item of a list; the other numbers are headings, dates, answers, counts
     fn in_series(&self, number: usize) -> bool {
         let Some(value) = self.item(number) else {
             return false;
         };
-        (number == self.sentence || self.piece(number - 1) == ":")
+        let start = number == self.sentence;
+        (start || self.piece(number - 1) == ":")
             && self.starts(number + 2, false)
-            && (self
-                .previous_item()
-                .is_some_and(|before| before + 1 == value)
+            && ((start
+                && self
+                    .previous_item()
+                    .is_some_and(|before| before + 1 == value))
                 || self.next_item(number + 2) == Some(value + 1))
     }
 
@@ -879,6 +873,19 @@ mod tests {
             sentences("Счёт: 1. Потом ушли."),
             ["Счёт: 1.", "Потом ушли."]
         );
+        // Counts after labels are not a list
+        assert_eq!(
+            sentences("Комнат: 2. Этаж: 3. Цена договорная."),
+            ["Комнат: 2.", "Этаж: 3.", "Цена договорная."]
+        );
+        assert_eq!(
+            sentences("Ванная: 1. Спальни: 2. Гараж: 3. Сад небольшой."),
+            ["Ванная: 1.", "Спальни: 2.", "Гараж: 3.", "Сад небольшой."]
+        );
+        assert_eq!(
+            sentences("Дети: 1. Внуки: 2. Живёт в Москве."),
+            ["Дети: 1.", "Внуки: 2.", "Живёт в Москве."]
+        );
     }
 
     #[test]
@@ -985,8 +992,6 @@ mod tests {
                 "И мечта воздвигает Царицу."
             ]
         );
-        let dash = "Он шёл домой -\nИ пел слова\nВ окне огонь\nЛегла трава";
-        assert_eq!(sentences(dash), [dash]);
         assert_eq!(
             sentences("ГЛАВА XIV\nСУД\nМирская молва —\nМорская волна."),
             ["ГЛАВА XIV", "СУД", "Мирская молва —\nМорская волна."]
@@ -1103,6 +1108,16 @@ mod tests {
         assert_eq!(
             sentences("Имя -\nИван\nВозраст -\nТридцать лет\nГород -\nМосква"),
             ["Имя -\nИван", "Возраст -\nТридцать лет", "Город -\nМосква"]
+        );
+        assert_eq!(
+            sentences(
+                "Сегодня хорошая погода\nИдём гулять в парк -\nБерите детей\nВстречаемся у входа"
+            ),
+            [
+                "Сегодня хорошая погода",
+                "Идём гулять в парк -\nБерите детей",
+                "Встречаемся у входа"
+            ]
         );
     }
 
@@ -1354,6 +1369,11 @@ mod tests {
             format!("1. А {}", "б ".repeat(40_000)),
             "кот ест\nпёс пьёт\n".repeat(20_000),
             format!("Текст: {}", "1. А: 2. Б. ".repeat(20_000)),
+            format!(
+                "а {}: 1. Дом. 2. Сад{}",
+                "б : ".repeat(20_000),
+                ": 2. Сад".repeat(20_000)
+            ),
         ] {
             let spans = Segmenter::new("ru").unwrap().sentenize(&text);
             assert!(!spans.is_empty());
