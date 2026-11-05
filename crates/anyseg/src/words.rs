@@ -8,52 +8,47 @@ use crate::lang::Tables;
 
 /// Whether a language has tokens of several words
 pub(crate) fn has_multiword(tables: &Tables) -> bool {
-    !tables.multiword.is_empty()
-        || !tables.multiword_names.is_empty()
-        || !tables.enclitics.is_empty()
+    !tables.multiword.is_empty() || !tables.enclitics.is_empty()
 }
 
 /// The words of a token that holds several, in the case of the token; `previous` and `earlier` are the two tokens before
 /// it in its sentence. Most tokens hold one word and a lowercase one is its own key, so it runs without a copy for every
 /// token
-pub(crate) fn expand(
+pub(crate) fn expand<'a>(
     tables: &Tables,
     token: &str,
-    previous: Option<&str>,
-    earlier: Option<&str>,
+    previous: Option<&'a str>,
+    earlier: impl FnOnce() -> Option<&'a str>,
 ) -> Option<Vec<String>> {
     let upper = token.starts_with(char::is_uppercase);
     if !upper && !token.starts_with(char::is_lowercase) {
         return None;
     }
     let capitals = upper && !token.contains(char::is_lowercase);
-    let after_word = tables.conventions.capital_after_word_whole
+    let after_word = upper
+        && tables.conventions.capital_after_word_whole
         && previous
             .is_some_and(|previous| previous == "," || previous.contains(char::is_alphanumeric));
-    if upper && !capitals && after_word {
+    if !capitals && after_word {
         return None;
     }
     let key = key(tables, token);
-    let words = if let Some(words) = tables.multiword.get(key.as_ref()) {
-        // A period may follow the word before: «et. al.»
-        let word = if previous == Some(".") {
-            earlier
-        } else {
-            previous
-        };
-        let excepted = tables
-            .multiword_exceptions
-            .get(key.as_ref())
-            .is_some_and(|words| word.is_some_and(|word| words.contains(&tables.key(word))));
-        if excepted {
+    let words = if let Some(entry) = tables.multiword.get(key.as_ref()) {
+        if entry.may_be_name && after_word {
             return None;
         }
-        words.clone()
-    } else if let Some(words) = tables.multiword_names.get(key.as_ref()) {
-        if capitals && after_word {
-            return None;
+        if let Some(words) = tables.multiword_exceptions.get(key.as_ref()) {
+            // A period may follow the word before: «et. al.»
+            let word = if previous == Some(".") {
+                earlier()
+            } else {
+                previous
+            };
+            if word.is_some_and(|word| words.contains(&tables.key(word))) {
+                return None;
+            }
         }
-        words.clone()
+        entry.words.clone()
     } else {
         enclitic_words(tables, &key)?
     };

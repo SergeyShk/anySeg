@@ -214,6 +214,14 @@ impl Conventions {
     }
 }
 
+/// The words of a token that holds several
+#[derive(Debug)]
+pub(crate) struct Multiword {
+    pub(crate) words: Vec<String>,
+    /// The token may be a name: it stays whole in capitals after a word as well
+    pub(crate) may_be_name: bool,
+}
+
 /// The files of a language; what a language has no use for stays empty
 #[derive(Clone, Copy, Default)]
 struct Files {
@@ -278,10 +286,8 @@ pub(crate) struct Tables {
     emoticon_starts: [bool; 256],
     /// The lengths of the emoticons in bytes, as bits
     emoticon_lengths: u64,
-    /// The words of the tokens that hold several
-    pub(crate) multiword: HashMap<String, Vec<String>>,
-    /// The same for tokens that may be names, which stay whole in capitals after a word as well
-    pub(crate) multiword_names: HashMap<String, Vec<String>>,
+    /// The tokens that hold several words
+    pub(crate) multiword: HashMap<String, Multiword>,
     /// Tokens of `multiword` that stay whole, and the words after which they do
     pub(crate) multiword_exceptions: HashMap<String, Vec<String>>,
     /// Pronouns that join the end of a verb, the longest first
@@ -361,19 +367,20 @@ impl Tables {
                     .push(fold(word, &marks));
             }
         }
-        let table = |text: &str| -> HashMap<String, Vec<String>> {
-            lines(text)
-                .map(|line| {
-                    let mut parts = line.split_whitespace().map(str::to_owned);
-                    let token = parts.next().unwrap_or_default();
-                    (fold(&token, &marks), parts.collect())
-                })
-                .collect()
+        let table = |text: &'static str, may_be_name: bool| {
+            let marks = &marks;
+            lines(text).map(move |line| {
+                let mut parts = line.split_whitespace().map(str::to_owned);
+                let token = parts.next().unwrap_or_default();
+                let words = parts.collect();
+                (fold(&token, marks), Multiword { words, may_be_name })
+            })
         };
         Tables {
             multiword_exceptions,
-            multiword: table(files.multiword),
-            multiword_names: table(files.multiword_names),
+            multiword: table(files.multiword, false)
+                .chain(table(files.multiword_names, true))
+                .collect(),
             enclitics,
             enclitic_endings: endings
                 .iter()
@@ -922,15 +929,15 @@ mod conventions {
             ..Files::default()
         });
         assert_eq!(
-            expand(&tables, "мыться", None, None),
+            expand(&tables, "мыться", None, || None),
             words(&["мыть", "ся"])
         );
         assert_eq!(
-            expand(&tables, "I'm", Some("word"), None),
+            expand(&tables, "I'm", Some("word"), || None),
             words(&["I", "'m"])
         );
         assert_eq!(
-            expand(&tables, "Мыться", Some("word"), None),
+            expand(&tables, "Мыться", Some("word"), || None),
             words(&["Мыть", "ся"])
         );
         let tables = Tables::new(Files {
@@ -941,16 +948,19 @@ mod conventions {
             multiword: "i'm i 'm\n",
             ..Files::default()
         });
-        assert_eq!(expand(&tables, "I'm", Some("word"), None), None);
-        assert_eq!(expand(&tables, "I'm", Some(","), None), None);
-        assert_eq!(expand(&tables, "I'm", Some("«"), None), words(&["I", "'m"]));
-        assert_eq!(expand(&tables, "i'm", Some("ET"), None), None);
+        assert_eq!(expand(&tables, "I'm", Some("word"), || None), None);
+        assert_eq!(expand(&tables, "I'm", Some(","), || None), None);
         assert_eq!(
-            expand(&tables, "мыться", None, None),
+            expand(&tables, "I'm", Some("«"), || None),
+            words(&["I", "'m"])
+        );
+        assert_eq!(expand(&tables, "i'm", Some("ET"), || None), None);
+        assert_eq!(
+            expand(&tables, "мыться", None, || None),
             words(&["мыть", "ся"])
         );
-        assert_eq!(expand(&tables, "мыкаться", None, None), None);
-        assert_eq!(expand(&tables, "мчаться", None, None), None);
+        assert_eq!(expand(&tables, "мыкаться", None, || None), None);
+        assert_eq!(expand(&tables, "мчаться", None, || None), None);
     }
 
     #[test]
