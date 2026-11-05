@@ -1,0 +1,3 @@
+# Contractions, a token and its words on a line.
+del de el
+al a el

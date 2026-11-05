@@ -1,0 +1,2 @@
+# A word and a token of multiword.txt that stays whole after it.
+et al

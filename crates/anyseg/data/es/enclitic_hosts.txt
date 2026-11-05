@@ -1,0 +1,27 @@
+# What a verb that takes enclitics ends with, after a vowel: infinitives and gerunds, without their accent, as it goes when
+# a pronoun joins them. An ending with an accent keeps it: «oírselo» is «oír», «se», «lo».
+-ar
+-er
+-ir
+-ando
+-iendo
+-yendo
+-eír
+-oír
+# What no such verb ends with: «muerte», «gobiernos»
+!ier
+!uer
+# Whole verbs, which have no vowel before their ending
+dar
+ver
+ser
+ir
+oír
+reír
+freír
+dando
+viendo
+siendo
+yendo
+riendo
+friendo

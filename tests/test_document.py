@@ -699,3 +699,75 @@ def test_text_of_a_subclass():
     assert documents() == before
     plain = "Ёж идёт"
     assert segment(plain, lang="ru").text is plain
+
+
+def test_multiword_tokens():
+    doc = Segmenter("es").segment("Él vino del mar, decírselo. Al fin")
+    assert [token.text for token in doc.tokens] == [
+        "Él",
+        "vino",
+        "del",
+        "mar",
+        ",",
+        "decírselo",
+        ".",
+        "Al",
+        "fin",
+    ]
+    assert doc.column("form") == [
+        "Él",
+        "vino",
+        "de",
+        "el",
+        "mar",
+        ",",
+        "decir",
+        "se",
+        "lo",
+        ".",
+        "A",
+        "el",
+        "fin",
+    ]
+    token = doc.tokens[2]
+    assert (token.start, token.end) == (8, 11)
+    assert [word.form for word in token.words] == ["de", "el"]
+    word = doc.words[3]
+    assert (word.id, word.form, word.token.text) == (4, "el", "del")
+    assert [word.id for word in doc.sentences[1].words] == [1, 2, 3]
+    doc.set_columns(upos=["X"] * 13)
+    with pytest.raises(ValueError, match="9 values for 13 words"):
+        doc.set_columns(upos=["X"] * 9)
+    assert doc.words[3].upos == "X"
+
+
+def test_multiword_tokens_in_conllu():
+    text = "Vengo del mar"
+    doc = Segmenter("es").segment(text)
+    conllu = doc.to_conllu()
+    assert "2-3\tdel\t_\t_\t_\t_\t_\t_\t_\t_\n2\tde\t" in conllu
+    read = read_conllu(conllu)[0]
+    assert read.text == text
+    assert read.column("form") == doc.column("form")
+    assert [token.text for token in read.tokens] == [token.text for token in doc.tokens]
+
+
+def test_multiword_tokens_in_a_pickle():
+    doc = Segmenter("es").segment("Vengo del mar")
+    copy = pickle.loads(pickle.dumps(doc))
+    assert copy.column("form") == doc.column("form")
+    assert copy.to_conllu() == doc.to_conllu()
+
+
+def test_multiword_tokens_of_pipe():
+    segmenter = Segmenter("es")
+    texts = ["Vengo del mar", "Voy al cine"]
+    for document, text in zip(segmenter.pipe(texts), texts, strict=True):
+        assert document.column("form") == segmenter.segment(text).column("form")
+        assert len(document.words) == 4
+        assert len(document.tokens) == 3
+
+
+def test_no_multiword_tokens_in_russian():
+    doc = Segmenter("ru").segment("Вася del")
+    assert len(doc.words) == len(doc.tokens) == 2

@@ -30,7 +30,7 @@ Exceptions:
 
 | Parameter | Type | Default | Description |
 | :-------- | :--- | :------ | :---------- |
-| `lang` | `str` | - | ISO 639-1 code of the language: `"ru"` |
+| `lang` | `str` | - | ISO 639-1 code of the language: `"ru"`, `"es"` |
 | `abbreviations` | `Iterable[str]` | `None` | [More abbreviations](#lists): words that keep a period after them |
 | `tokens` | `Iterable[str]` | `None` | [Strings that are one token each](#lists) |
 
@@ -136,7 +136,7 @@ The sentences of the text in order, each from the start of its first token to th
 segment(text)
 ```
 
-The [document](document.md) of the text: its tokens as `tokenize` gives them, one word per token, its sentences as `sentenize` gives them, its paragraphs and their lines. The document keeps the text and gives the parts as views of it.
+The [document](document.md) of the text: its tokens as `tokenize` gives them, their words, its sentences as `sentenize` gives them, its paragraphs and their lines. The document keeps the text and gives the parts as views of it.
 
 | Parameter | Type | Default | Description |
 | :-------- | :--- | :------ | :---------- |
@@ -242,7 +242,7 @@ A piece of a text with its position: `start` is the position of its first charac
 
 ## Rust
 
-The segmenter is the Rust crate `anyseg`, with every language behind a Cargo feature: `ru` (Russian, on by default). It has the same `Segmenter` with `tokenize`, `sentenize` and `segment`, and gives positions in bytes of the UTF-8 string. `segment_string` takes a `String` without copying it, and `ConlluWriter` writes documents - the pieces of a long text - into one CoNLL-U, with the sentences numbered through them.
+The segmenter is the Rust crate `anyseg`, with every language behind a Cargo feature, on by default: `ru` (Russian) and `es` (Spanish). It has the same `Segmenter` with `tokenize`, `sentenize` and `segment`, and gives positions in bytes of the UTF-8 string. `segment_string` takes a `String` without copying it, and `ConlluWriter` writes documents - the pieces of a long text - into one CoNLL-U, with the sentences numbered through them.
 
 ``` rust
 use anyseg::Segmenter;

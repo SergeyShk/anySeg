@@ -19,7 +19,7 @@ echo "Кот спит в 1914 г. Затем ушёл" | anyseg -l ru -f sentenc
 
 | Option | Default | Description |
 | :----- | :------ | :---------- |
-| `-l`, `--lang` | - | ISO 639-1 code of the language of the text: `ru` |
+| `-l`, `--lang` | - | ISO 639-1 code of the language of the text: `ru`, `es` |
 | `-f`, `--format` | `tokens` | [Output format](#formats): `tokens`, `sentences`, `conllu` |
 | `-o`, `--output` | the standard output | The result file; `-` is the standard output |
 | `--abbreviations` | | A file of [more abbreviations](segmenter.md#lists), one per line; the option can be repeated |
@@ -29,7 +29,7 @@ echo "Кот спит в 1914 г. Затем ушёл" | anyseg -l ru -f sentenc
 
 Files are read one after another; without files and in place of `-` the standard input is read. The input is in UTF-8: a file in another encoding (cp1251, UTF-16) is not segmented, and a single line with wrong bytes is segmented with U+FFFD in their place. In the files of lists, spaces around an entry are ignored, and blank lines and lines starting with `#` are skipped. An option value is written separately or attached: `-f conllu`, `-fconllu`, `--format=conllu`.
 
-The text is segmented paragraph by paragraph: a paragraph is written as soon as a blank line or the end of the input closes it, so the command can be kept open and fed text. The result is the same as for the whole text, except for a text without blank lines longer than 256 KiB, such as a file with a sentence per line or a single long line: it is segmented in pieces, so that the memory stays bounded, and what depends on all the lines of a paragraph - verse and text wrapped at the width of the page - is decided by a piece. The sentences and the paragraph go on across the pieces, except that a sentence longer than 256 KiB is cut, at a space or, if it has none, at a character. Lines end with LF, CR or CRLF.
+The text is segmented paragraph by paragraph: a paragraph is written as soon as a blank line or the end of the input closes it, so the command can be kept open and fed text. The result is the same as for the whole text, except for a text without blank lines longer than 256 KiB, such as a file with a sentence per line or a single long line: it is segmented in pieces, so that the memory stays bounded, and what depends on all the lines of a paragraph - verse and text wrapped at the width of the page - is decided by a piece. The sentences and the paragraph go on across the pieces, except that a sentence longer than 256 KiB is cut, at a space or, if it has none, at a character, and the next piece reads as a new sentence, for the words of its first token too. Lines end with LF, CR or CRLF.
 
 In Windows PowerShell 5.1 the `>` redirection and a pipeline (`Get-Content text.txt | anyseg -l ru`) corrupt Cyrillic: pass the file as an argument and write the result with the `-o` option (in PowerShell 7 they work too). Text passed with `echo` in cmd comes in the console encoding: run `chcp 65001` first.
 

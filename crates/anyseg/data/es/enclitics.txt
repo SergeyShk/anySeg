@@ -1,0 +1,11 @@
+# Pronouns that join the end of a verb. «os» is not here: «-eros» and «-aros» end nouns far more often.
+me
+te
+se
+nos
+lo
+la
+le
+los
+las
+les

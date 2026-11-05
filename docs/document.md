@@ -3,7 +3,7 @@
 A segmented text: its tokens, its words with the columns of [CoNLL-U](https://universaldependencies.org/format.html), its sentences, its paragraphs and their lines. A document comes from [`Segmenter.segment`](segmenter.md#segment), from [`Document.from_tokens`](#from_tokens) or from [`read_conllu`](#read_conllu).
 
 *   The text is never changed: tokens, sentences, paragraphs and lines are its spans, with positions in the characters of the Python string.
-*   A token holds one word or, for a multiword token, several (Spanish «del» is «de» + «el»). The segmenter gives one word per token.
+*   A token holds one word or, for a multiword token, several (Spanish «del» is «de» + «el»). The segmenter gives them where the language joins words in one token.
 *   Sentences hold whole tokens, paragraphs - the parts of the text between blank lines - hold whole sentences, and lines are those of the paragraphs.
 *   Words have the columns of CoNLL-U, empty until set; [`set_columns`](#set_columns) is the only change of a document, so a document can be shared between threads. It can be pickled with its columns, to go to another process; its parts cannot.
 
@@ -71,7 +71,20 @@ A token of the document: a span of its text.
 
 ### Word { #word }
 
-A word of the document with its columns of CoNLL-U. Empty columns are `None`. The form of a word is the text of its token, except for the words of a multiword token.
+A word of the document with its columns of CoNLL-U. Empty columns are `None`. The form of a word is the text of its token, except for the words of a multiword token, which the token holds together.
+
+=== "Code"
+
+    ``` python
+    spanish = Segmenter("es").segment("Vengo del mar")
+    [token.text for token in spanish.tokens], [word.form for word in spanish.words]
+    ```
+
+=== "Result"
+
+    ```
+    (['Vengo', 'del', 'mar'], ['Vengo', 'de', 'el', 'mar'])
+    ```
 
 | Property | Type | Description |
 | :------- | :--- | :---------- |
