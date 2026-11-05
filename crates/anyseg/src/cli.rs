@@ -691,21 +691,22 @@ impl Writer<'_> {
 
     /// A text without a blank line that reached PARAGRAPH, without its last sentence, which the next line may go on
     /// with: it stays at the start of the text, and the next piece continues its paragraph. One sentence longer than
-    /// PARAGRAPH is written whole
+    /// PARAGRAPH is written whole, and the separators after it stay: with the next line they may end the paragraph
     fn write_long(&mut self) -> io::Result<()> {
         let doc = self
             .segmenter
             .segment_string(std::mem::take(&mut self.text));
         let count = doc.sentence_count();
         let (written, keep) = match count {
-            0..=1 => (count, doc.text().len()),
+            0 => (0, doc.text().len()),
+            1 => (1, doc.sentence(0).span.end),
             _ => (count - 1, doc.sentence(count - 1).span.start),
         };
         self.write_sentences(&doc, written)?;
         // The last sentence may itself start a paragraph (after U+2029), and the separators dropped may end one
         self.continued = match count {
             0 => self.continued && !closes_paragraph(doc.text()),
-            1 => !closes_paragraph(&doc.text()[doc.sentence(0).span.end..]),
+            1 => true,
             _ => doc.paragraph(doc.paragraph_count() - 1).sentences.start < count - 1,
         };
         self.text = doc.text()[keep..].to_owned();
@@ -716,12 +717,17 @@ impl Writer<'_> {
     /// The first `count` sentences of a document in the format of the output, written sentence by sentence
     fn write_sentences(&mut self, doc: &Document, count: usize) -> io::Result<()> {
         self.out.clear();
+        // What the last piece kept and what was read since may end the paragraph before the first token
+        let lead = doc
+            .tokens()
+            .first()
+            .map_or("", |token| &doc.text()[..token.start]);
         for paragraph in 0..doc.paragraph_count() {
             let sentences = doc.paragraph(paragraph).sentences;
             if sentences.start >= count {
                 break;
             }
-            if std::mem::take(&mut self.continued) {
+            if std::mem::take(&mut self.continued) && !closes_paragraph(lead) {
                 self.conllu.continue_paragraph();
             } else {
                 if self.format == Format::Sentences && self.paragraphs > 0 {
@@ -1014,6 +1020,15 @@ mod tests {
             let whole = Segmenter::new("ru").unwrap().segment(&text);
             assert_eq!(conllu, whole.to_conllu());
         }
+        // And at the start of the line after a sentence written whole; a plain next line goes on with the paragraph
+        let long = ("мама мыла раму ".repeat(5) + "\n").repeat(31);
+        for separator in ["\u{2029}", "\u{2028}", "\u{c}"] {
+            let text = format!("{long}{separator}Ёж идёт.");
+            let (_, conllu, _) = command(&args, text.as_bytes());
+            assert_eq!(conllu.matches("# newpar").count(), 2, "{separator:?}");
+        }
+        let (_, conllu, _) = command(&args, format!("{long}ёж идёт.").as_bytes());
+        assert_eq!(conllu.matches("# newpar").count(), 1);
         // A line of about two pieces is cut too
         let line = "мама мыла раму ".repeat(PARAGRAPH / 15);
         let (_, conllu, _) = command(&args, line.as_bytes());
