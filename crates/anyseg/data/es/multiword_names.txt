@@ -1,0 +1,95 @@
+# Frequent imperatives with pronouns, a token and its words on a line: rules cannot tell them from «título» and
+# «película». In capitals after a word they stay whole, as names do: «NOTRE DAME», «ROBERT DALE».
+dame da me
+dámelo da me lo
+dámela da me la
+dámelos da me los
+dámelas da me las
+dale da le
+dáselo da se lo
+dásela da se la
+dáselos da se los
+dáselas da se las
+danos da nos
+dánoslo da nos lo
+date da te
+dime di me
+dímelo di me lo
+dile di le
+díselo di se lo
+dilo di lo
+dinos di nos
+hazlo haz lo
+hazla haz la
+hazme haz me
+hazte haz te
+haznos haz nos
+hazle haz le
+házmelo haz me lo
+ponlo pon lo
+ponla pon la
+ponte pon te
+ponme pon me
+ponle pon le
+tenlo ten lo
+tente ten te
+vete ve te
+vámonos vamos nos
+véase vea se
+véanse vean se
+léase lea se
+nótese note se
+obsérvese observe se
+téngase tenga se
+hágase haga se
+hágalo haga lo
+háganlo hagan lo
+dígame diga me
+dígale diga le
+dígalo diga lo
+díganme digan me
+siéntate sienta te
+siéntese siente se
+fíjate fija te
+fíjese fije se
+fíjense fijen se
+imagínate imagina te
+imagínese imagine se
+imagínense imaginen se
+mírame mira me
+míralo mira lo
+mírala mira la
+cuéntame cuenta me
+cuéntale cuenta le
+cuénteme cuente me
+créeme cree me
+créame crea me
+perdóname perdona me
+perdóneme perdone me
+discúlpame disculpa me
+discúlpeme disculpe me
+ayúdame ayuda me
+ayúdeme ayude me
+ayúdanos ayuda nos
+déjame deja me
+déjalo deja lo
+déjala deja la
+déjanos deja nos
+déjeme deje me
+permítame permita me
+permítanme permitan me
+sígueme sigue me
+tómalo toma lo
+tómate toma te
+llámame llama me
+llámeme llame me
+escúchame escucha me
+escúcheme escuche me
+óyeme oye me
+pregúntale pregunta le
+pregúntate pregunta te
+recuérdalo recuerda lo
+olvídate olvida te
+olvídalo olvida lo
+veámoslo veamos lo
+digámoslo digamos lo

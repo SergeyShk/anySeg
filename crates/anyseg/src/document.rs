@@ -399,9 +399,11 @@ impl Document {
         for sentence in self.sentence_tokens.windows(2) {
             for token in sentence[0]..sentence[1] {
                 let piece = self.tokens[token].slice(&self.text);
-                let previous =
-                    (token > sentence[0]).then(|| self.tokens[token - 1].slice(&self.text));
-                if let Some(forms) = words::expand(tables, piece, previous)
+                let before = |back: usize| {
+                    (token >= sentence[0] + back)
+                        .then(|| self.tokens[token - back].slice(&self.text))
+                };
+                if let Some(forms) = words::expand(tables, piece, before(1), before(2))
                     && !exceptions.tokens.contains(piece)
                 {
                     multiword.push((token, forms));
