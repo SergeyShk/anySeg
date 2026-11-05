@@ -671,25 +671,27 @@ impl Scanner<'_> {
         match conventions.hyphens {
             Hyphens::Whole => false,
             Hyphens::Split => {
-                !self.tables.prefixes.contains(&self.tables.key(left))
-                    && !self.listed_whole(runs, joints, index)
+                let left_key = self.tables.key(left);
+                !self.tables.prefixes.contains(&left_key)
+                    && !self.listed_whole(runs, joints, index, &left_key, &self.tables.key(right))
             }
             Hyphens::Inflected => self.inflected_parts(runs, joints, index),
         }
     }
 
     /// Whether the word with the hyphen after the run `index` stays whole by the list: the two runs around the
-    /// hyphen or all the runs joined by hyphens. A chain longer than any word of the list is not read: «a-a-a-…»
-    fn listed_whole(&self, runs: &[Span], joints: &[Joint], index: usize) -> bool {
+    /// hyphen, whose keys are given, or all the runs joined by hyphens. A chain longer than any word of the list is not
+    /// read: «a-a-a-…»
+    fn listed_whole(
+        &self,
+        runs: &[Span],
+        joints: &[Joint],
+        index: usize,
+        left_key: &str,
+        right_key: &str,
+    ) -> bool {
         let tables = self.tables;
-        let key = |range: &[Span]| {
-            range
-                .iter()
-                .map(|run| tables.key(run.slice(self.text)))
-                .collect::<Vec<_>>()
-                .join("-")
-        };
-        if tables.whole.contains(&key(&runs[index..=index + 1])) {
+        if tables.whole.contains(&format!("{left_key}-{right_key}")) {
             return true;
         }
         let limit = tables.whole_parts;
@@ -705,8 +707,14 @@ impl Scanner<'_> {
         while hyphen(last) && last + 1 - first < limit {
             last += 1;
         }
-        let longer = (first > 0 && hyphen(first - 1)) || hyphen(last);
-        !longer && tables.whole.contains(&key(&runs[first..=last]))
+        if (first > 0 && hyphen(first - 1)) || hyphen(last) {
+            return false;
+        }
+        let keys: Vec<String> = runs[first..=last]
+            .iter()
+            .map(|run| tables.key(run.slice(self.text)))
+            .collect();
+        tables.whole.contains(&keys.join("-"))
     }
 
     /// Whether a hyphen is a token of its own in a language whose words split where their parts inflect
@@ -726,7 +734,7 @@ impl Scanner<'_> {
         {
             return true;
         }
-        if self.listed_whole(runs, joints, index) {
+        if self.listed_whole(runs, joints, index, &left_key, &right_key) {
             return false;
         }
         // A particle closes the word: «де» inside «Рио-де-Жанейро» is not one
@@ -842,12 +850,22 @@ impl Scanner<'_> {
 
     /// The end of an abbreviation with periods inside it, in a language that keeps it in one token: «EE.UU.», «U.S.»,
     /// «Ph.D.»; its parts are letters, one or two of them
+    #[inline]
     fn dotted_abbreviation(&self, start: usize, end: usize) -> Option<usize> {
-        let short = |piece: &str| is_letters(piece) && piece.chars().count() <= 2;
+        // It runs for every word: most have no period after them, and many languages split at the periods
         if self.tables.conventions.split_dotted
-            || self.get(end) != Some('.')
-            || !short(&self.text[start..end])
+            || end >= self.end
+            || self.text.as_bytes()[end] != b'.'
         {
+            return None;
+        }
+        self.dotted_parts(start, end)
+    }
+
+    #[cold]
+    fn dotted_parts(&self, start: usize, end: usize) -> Option<usize> {
+        let short = |piece: &str| is_letters(piece) && piece.chars().count() <= 2;
+        if !short(&self.text[start..end]) {
             return None;
         }
         let mut stop = end;

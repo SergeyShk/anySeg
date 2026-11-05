@@ -339,9 +339,12 @@ impl Tables {
 
     /// Whether a token is an emoticon of the lists; decided by its first byte and its length first, as it runs for
     /// every token
+    #[inline]
     pub(crate) fn is_listed_emoticon(&self, piece: &str) -> bool {
         let bytes = piece.as_bytes();
-        self.emoticon_starts[usize::from(bytes[0])]
+        bytes
+            .first()
+            .is_some_and(|&first| self.emoticon_starts[usize::from(first)])
             && bytes.len() < 64
             && self.emoticon_lengths >> bytes.len() & 1 == 1
             && self.emoticons.iter().any(|emoticon| emoticon == piece)

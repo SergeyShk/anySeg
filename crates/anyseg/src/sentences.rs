@@ -44,18 +44,13 @@ fn is_dash(piece: &str) -> bool {
 /// An emoji or an emoticon: «😀», «:)», «)))»; decided by the first byte, as it runs for every token
 fn is_emoticon(piece: &str, tables: &Tables) -> bool {
     let bytes = piece.as_bytes();
-    match bytes.first() {
+    let face = match bytes.first() {
         Some(b':' | b';' | b'=') => bytes.len() > 1,
-        Some(&bracket @ (b')' | b'(')) => {
-            (bytes.len() > 1 && bytes.iter().all(|&b| b == bracket))
-                || tables.is_listed_emoticon(piece)
-        }
-        Some(0xE2 | 0xF0) => {
-            piece.chars().next().is_some_and(is_emoji) || tables.is_listed_emoticon(piece)
-        }
-        Some(_) => tables.is_listed_emoticon(piece),
-        None => false,
-    }
+        Some(&bracket @ (b')' | b'(')) => bytes.len() > 1 && bytes.iter().all(|&b| b == bracket),
+        Some(0xE2 | 0xF0) => piece.chars().next().is_some_and(is_emoji),
+        _ => false,
+    };
+    face || tables.is_listed_emoticon(piece)
 }
 
 fn is_stars(piece: &str) -> bool {
