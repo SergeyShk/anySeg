@@ -3,8 +3,8 @@
 //! The text is never changed: a token or a sentence is a [`Span`] of byte offsets into the text
 //! it was cut from. [`Segmenter::segment`] gives a [`Document`]: tokens, words with the columns of
 //! CoNLL-U, sentences, paragraphs and lines, read from and written to CoNLL-U by [`read_conllu`],
-//! [`Document::to_conllu`] and [`ConlluWriter`]. Every language is a Cargo feature: `ru` (Russian,
-//! on by default).
+//! [`Document::to_conllu`] and [`ConlluWriter`]. Every language is a Cargo feature, on by default:
+//! `ru` (Russian) and `es` (Spanish).
 //!
 //! ```
 //! # #[cfg(feature = "ru")] {
@@ -33,6 +33,7 @@ mod layout;
 mod sentences;
 mod state;
 mod tokens;
+mod words;
 
 use sentences::Split;
 use tokens::Exceptions;
@@ -69,6 +70,9 @@ pub enum Language {
     /// Russian, `"ru"`
     #[cfg(feature = "ru")]
     Russian,
+    /// Spanish, `"es"`
+    #[cfg(feature = "es")]
+    Spanish,
 }
 
 impl Language {
@@ -76,6 +80,8 @@ impl Language {
     pub const ALL: &[Language] = &[
         #[cfg(feature = "ru")]
         Language::Russian,
+        #[cfg(feature = "es")]
+        Language::Spanish,
     ];
 
     /// ISO 639-1 code: `"ru"`
@@ -83,6 +89,8 @@ impl Language {
         match self {
             #[cfg(feature = "ru")]
             Language::Russian => "ru",
+            #[cfg(feature = "es")]
+            Language::Spanish => "es",
         }
     }
 
@@ -276,11 +284,13 @@ impl Segmenter {
             .collect()
     }
 
-    /// The document of a text: its tokens, one word per token, its sentences as
+    /// The document of a text: its tokens, their words, its sentences as
     /// [`sentenize`](Self::sentenize) gives them, its paragraphs and their lines, each with how it
     /// begins: outside verse, in a paragraph where some line goes on with a lowercase letter, a
     /// line that does not start a sentence is a wrap at the width of the page; other lines are
-    /// breaks of the author
+    /// breaks of the author. A token holds one word, except where the language joins several in
+    /// one token: Spanish «del» is «de» and «el». A string given to
+    /// [`with_tokens`](Self::with_tokens) stays one word
     pub fn segment(&self, text: &str) -> Document {
         self.segment_string(text.to_owned())
     }
@@ -288,13 +298,18 @@ impl Segmenter {
     /// The document of a text as [`segment`](Self::segment) gives it, without a copy of the text
     pub fn segment_string(&self, text: String) -> Document {
         let split = self.split(&text, true);
-        Document::segmented(
+        let mut document = Document::segmented(
             text,
             split.tokens,
             split.starts,
             split.paragraphs,
             split.lines.unwrap_or_default(),
-        )
+        );
+        let tables = lang::tables(self.language);
+        if words::has_multiword(tables) {
+            document.expand_tokens(tables, &self.exceptions);
+        }
+        document
     }
 
     fn split(&self, text: &str, lines: bool) -> Split {
@@ -342,6 +357,8 @@ mod tests {
         assert_eq!(Language::Russian.code(), "ru");
         assert_eq!(Language::from_code("xx"), None);
         assert!(Language::ALL.contains(&Language::Russian));
+        #[cfg(feature = "es")]
+        assert_eq!(Language::from_code("es"), Some(Language::Spanish));
     }
 
     #[test]
@@ -349,9 +366,10 @@ mod tests {
         let error = Segmenter::new("xx").unwrap_err();
         assert_eq!(error, UnknownLanguage("xx".to_owned()));
         assert_eq!(error.code(), "xx");
-        assert_eq!(
-            error.to_string(),
-            "unsupported language \"xx\", expected one of: ru"
+        assert!(
+            error
+                .to_string()
+                .starts_with("unsupported language \"xx\", expected one of: ru")
         );
         assert_eq!(Segmenter::new("ru").unwrap().language(), Language::Russian);
     }

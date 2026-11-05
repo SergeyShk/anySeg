@@ -1144,7 +1144,11 @@ mod tests {
     #[test]
     fn arguments() {
         let (code, out, _) = command(&["--help"], b"");
-        assert!(code == 0 && out.starts_with("anyseg - ") && out.contains(": ru\n"));
+        assert!(
+            code == 0
+                && out.starts_with("anyseg - ")
+                && out.contains(&format!(": {}\n", languages()))
+        );
         assert_eq!(
             command(&["-V"], b""),
             (0, "anyseg 1.2.3\n".into(), String::new())

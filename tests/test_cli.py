@@ -180,3 +180,11 @@ def test_output_is_the_standard_input(tmp_path):
     assert result.returncode == 1
     assert "the output file is an input file" in result.stderr
     assert path.read_text(encoding="utf-8") == TEXT
+
+
+def test_conllu_of_multiword_tokens():
+    result = run("-l", "es", "-f", "conllu", text="Vengo del mar\n")
+    assert result.returncode == 0
+    assert "2-3\tdel\t_\t_\t_\t_\t_\t_\t_\t_\n2\tde\t" in result.stdout
+    tokens = run("-l", "es", text="Vengo del mar\n")
+    assert tokens.stdout.split() == ["Vengo", "del", "mar"]

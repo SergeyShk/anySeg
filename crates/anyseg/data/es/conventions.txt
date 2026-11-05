@@ -1,0 +1,17 @@
+# How the mechanism cuts Spanish: UD where it decides, otherwise AnCora.
+
+# A hyphen inside a word: «franco-alemán» does not split
+hyphens = whole
+# «1990-1995» and «XIX-XX» are one token
+digit_ranges = whole
+roman_ranges = whole
+# «?.» is two tokens, a run of one mark is one
+final_marks = same
+# «EE.UU.» is one token
+dotted = whole
+# «1.012,72» is one token
+digit_groups = point
+phone_digits = none
+script = latin
+# The accent of a verb goes when a pronoun joins it: «decírselo» is «decir», «se», «lo»
+enclitic_host_marks = U+0301

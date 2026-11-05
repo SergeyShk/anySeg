@@ -1,6 +1,9 @@
 //! The data of the languages: conventions and lists in text files built into the binary, read once per language
 
-#![cfg_attr(not(feature = "ru"), allow(dead_code, unused_imports))]
+#![cfg_attr(
+    not(any(feature = "ru", feature = "es")),
+    allow(dead_code, unused_imports)
+)]
 
 use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
@@ -80,6 +83,8 @@ pub(crate) struct Conventions {
     fold_marks: Vec<char>,
     /// Letters that make one token with a degree sign
     pub(crate) degree_letters: String,
+    /// Marks that a verb loses when enclitics join it, after canonical decomposition
+    pub(crate) enclitic_host_marks: Vec<char>,
 }
 
 impl Default for Conventions {
@@ -98,6 +103,7 @@ impl Default for Conventions {
             script: Script::default(),
             fold_marks: Vec::new(),
             degree_letters: "CF".to_owned(),
+            enclitic_host_marks: Vec::new(),
         }
     }
 }
@@ -107,6 +113,11 @@ fn wrong<T>(line: &str) -> T {
 }
 
 impl Conventions {
+    /// Whether the keys of the lists keep all marks
+    pub(crate) fn folds_nothing(&self) -> bool {
+        self.fold_marks.is_empty()
+    }
+
     /// The conventions in a file of `key = value` lines; what a file leaves out takes the default. The files are
     /// part of the build, and a test reads each of them
     fn read(text: &str) -> Self {
@@ -164,8 +175,8 @@ impl Conventions {
                         _ => wrong(line),
                     }
                 }
-                "fold_marks" => {
-                    conventions.fold_marks = value
+                "fold_marks" | "enclitic_host_marks" => {
+                    let marks = value
                         .split_whitespace()
                         .map(|mark| {
                             mark.strip_prefix("U+")
@@ -174,6 +185,11 @@ impl Conventions {
                                 .unwrap_or_else(|| wrong(line))
                         })
                         .collect();
+                    if key == "fold_marks" {
+                        conventions.fold_marks = marks;
+                    } else {
+                        conventions.enclitic_host_marks = marks;
+                    }
                 }
                 "degree_letters" => conventions.degree_letters = value.to_owned(),
                 _ => panic!("unknown convention {line:?}"),
@@ -201,6 +217,10 @@ struct Files {
     homoglyphs: &'static str,
     web_suffixes: &'static str,
     emoticons: &'static str,
+    multiword: &'static str,
+    enclitics: &'static str,
+    enclitic_hosts: &'static str,
+    enclitic_exceptions: &'static str,
 }
 
 /// The conventions and the lists of a language that the mechanism consults
@@ -241,6 +261,16 @@ pub(crate) struct Tables {
     emoticon_starts: [bool; 256],
     /// The lengths of the emoticons in bytes, as bits
     emoticon_lengths: u64,
+    /// The words of the tokens that hold several
+    pub(crate) multiword: HashMap<String, Vec<String>>,
+    /// Pronouns that join the end of a verb, the longest first
+    pub(crate) enclitics: Vec<String>,
+    /// What a verb that takes enclitics ends with, after a vowel
+    pub(crate) enclitic_endings: Vec<String>,
+    /// Whole verbs that take enclitics
+    pub(crate) enclitic_verbs: HashSet<String>,
+    /// Words that look like a verb with enclitics
+    pub(crate) enclitic_exceptions: HashSet<String>,
 }
 
 /// A word lowercase, without the marks of the language and soft hyphens
@@ -288,7 +318,27 @@ impl Tables {
             emoticon_lengths |= 1 << emoticon.len();
         }
         let whole = list(files.whole);
+        let mut enclitics: Vec<String> = lines(files.enclitics).map(str::to_owned).collect();
+        enclitics.sort_by_key(|enclitic| std::cmp::Reverse(enclitic.len()));
+        let hosts = || lines(files.enclitic_hosts);
         Tables {
+            multiword: lines(files.multiword)
+                .map(|line| {
+                    let mut parts = line.split_whitespace().map(str::to_owned);
+                    let token = parts.next().unwrap_or_default();
+                    (fold(&token, &marks), parts.collect())
+                })
+                .collect(),
+            enclitics,
+            enclitic_endings: hosts()
+                .filter_map(|host| host.strip_prefix('-'))
+                .map(str::to_owned)
+                .collect(),
+            enclitic_verbs: hosts()
+                .filter(|host| !host.starts_with('-'))
+                .map(str::to_owned)
+                .collect(),
+            enclitic_exceptions: list(files.enclitic_exceptions),
             abbreviations: list(files.abbreviations),
             not_abbreviations: list(files.not_abbreviations),
             particles: list(files.particles),
@@ -391,6 +441,21 @@ pub(crate) fn tables(language: Language) -> &'static Tables {
                     homoglyphs: include_str!("../data/ru/homoglyphs.txt"),
                     web_suffixes: include_str!("../data/ru/web_suffixes.txt"),
                     emoticons: include_str!("../data/ru/emoticons.txt"),
+                    ..Files::default()
+                })
+            })
+        }
+        #[cfg(feature = "es")]
+        Language::Spanish => {
+            static SPANISH: OnceLock<Tables> = OnceLock::new();
+            SPANISH.get_or_init(|| {
+                Tables::new(Files {
+                    conventions: include_str!("../data/es/conventions.txt"),
+                    multiword: include_str!("../data/es/multiword.txt"),
+                    enclitics: include_str!("../data/es/enclitics.txt"),
+                    enclitic_hosts: include_str!("../data/es/enclitic_hosts.txt"),
+                    enclitic_exceptions: include_str!("../data/es/enclitic_exceptions.txt"),
+                    ..Files::default()
                 })
             })
         }

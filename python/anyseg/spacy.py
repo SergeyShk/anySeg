@@ -100,7 +100,7 @@ class Tokenizer:
 
     Arguments:
         vocab (Vocab): Vocabulary of the pipeline
-        lang (str): ISO 639-1 code of the language: "ru"
+        lang (str): ISO 639-1 code of the language: "ru", "es"
         abbreviations (Iterable[str] | None): More abbreviations, as for Segmenter
         tokens (Iterable[str] | None): Strings that are one token each, as for Segmenter
 
@@ -235,7 +235,7 @@ class Sentencizer:
         stays in it. Before a parser the component fixes the sentences, and the parser keeps them
 
     Arguments:
-        lang (str): ISO 639-1 code of the language: "ru"
+        lang (str): ISO 639-1 code of the language: "ru", "es"
         abbreviations (Iterable[str] | None): More abbreviations, as for Segmenter
         tokens (Iterable[str] | None): Strings that are one token each, as for Segmenter
         overwrite (bool): Replace the sentence starts set before; False - set only the tokens

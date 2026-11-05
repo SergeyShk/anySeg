@@ -322,7 +322,7 @@ fn spans(text: &str, source: &[u8], spans: Vec<anyseg::Span>) -> Vec<Span> {
 ///     and pickled, and equals the segmenters of the same language and lists
 ///
 /// Arguments:
-///     lang (str): ISO 639-1 code of the language: "ru"
+///     lang (str): ISO 639-1 code of the language: "ru", "es"
 ///     abbreviations (Iterable[str] | None): More words that keep a period after them, given with
 ///         the period or without it, in any case
 ///     tokens (Iterable[str] | None): Strings that are one token each: they match as written where
@@ -487,10 +487,12 @@ impl Segmenter {
     /// Document of a text
     ///
     /// Description:
-    ///     Tokens as tokenize gives them, one word per token, sentences as sentenize gives them,
-    ///     paragraphs and their lines. Outside verse, in a paragraph where some line goes on with
-    ///     a lowercase letter, a line that does not start a sentence is a wrap at the width of the
-    ///     page ("typeset"); other lines are breaks of the author
+    ///     Tokens as tokenize gives them, their words, sentences as sentenize gives them,
+    ///     paragraphs and their lines. A token holds one word, except where the language joins
+    ///     several in one token: Spanish "del" is "de" and "el"; a string of the list tokens stays
+    ///     one word. Outside verse, in a paragraph where some line goes on with a lowercase
+    ///     letter, a line that does not start a sentence is a wrap at the width of the page
+    ///     ("typeset"); other lines are breaks of the author
     ///
     /// Arguments:
     ///     text (str): Text

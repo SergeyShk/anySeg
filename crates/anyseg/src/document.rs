@@ -5,7 +5,10 @@ use std::fmt;
 use std::ops::Range;
 
 use crate::Span;
+use crate::lang::Tables;
 use crate::layout::{self, is_separator};
+use crate::tokens::Exceptions;
+use crate::words;
 
 /// How a line of a paragraph begins after the line before it
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -387,6 +390,62 @@ impl Document {
             lines: fitted(lines),
             verbatim: None,
         }
+    }
+
+    /// Gives the words of the multiword tokens of a language to a segmented document. A document with 2 GiB of forms
+    /// keeps its later tokens as one word each
+    pub(crate) fn expand_tokens(&mut self, tables: &Tables, exceptions: &Exceptions) {
+        let mut multiword = Vec::new();
+        for sentence in self.sentence_tokens.windows(2) {
+            for token in sentence[0]..sentence[1] {
+                let piece = self.tokens[token].slice(&self.text);
+                let after_word = || {
+                    token > sentence[0]
+                        && self.tokens[token - 1]
+                            .slice(&self.text)
+                            .contains(char::is_alphanumeric)
+                };
+                if let Some(forms) = words::expand(tables, piece, after_word)
+                    && !exceptions.tokens.contains(piece)
+                {
+                    multiword.push((token, forms));
+                }
+            }
+        }
+        if multiword.is_empty() {
+            return;
+        }
+        let mut forms = Values::default();
+        let mut token_words = Vec::with_capacity(self.tokens.len() + 1);
+        let mut word_tokens = Vec::with_capacity(self.tokens.len() + multiword.len());
+        let mut multiword = multiword.into_iter().peekable();
+        for token in 0..self.tokens.len() {
+            token_words.push(word_tokens.len());
+            let expanded = multiword.next_if(|(multi, _)| *multi == token);
+            let pushed = expanded.as_ref().is_some_and(|(_, words)| {
+                let mark = (forms.text.len(), forms.ends.len());
+                let fits = words.iter().all(|word| forms.push(Some(word)).is_ok());
+                if !fits {
+                    forms.text.truncate(mark.0);
+                    forms.ends.truncate(mark.1);
+                }
+                fits
+            });
+            match expanded {
+                Some((_, words)) if pushed => {
+                    word_tokens.extend(std::iter::repeat_n(token, words.len()));
+                }
+                _ => {
+                    // Fits: no text
+                    let _ = forms.push(None);
+                    word_tokens.push(token);
+                }
+            }
+        }
+        token_words.push(word_tokens.len());
+        self.token_words = token_words;
+        self.word_tokens = word_tokens;
+        self.forms = forms.finished();
     }
 
     /// The document of valid tokens; fails only on a token that runs over a paragraph boundary

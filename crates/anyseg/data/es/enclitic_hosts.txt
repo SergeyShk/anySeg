@@ -1,0 +1,17 @@
+# What a verb that takes enclitics ends with, without its accent, after at least one vowel: infinitives and gerunds.
+# A line with no hyphen is a whole verb, as the rule would refuse it for having no vowel before the ending.
+-ar
+-er
+-ir
+-ando
+-iendo
+-yendo
+dar
+ver
+ser
+ir
+dando
+viendo
+siendo
+yendo
+riendo

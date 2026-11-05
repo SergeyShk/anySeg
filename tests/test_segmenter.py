@@ -97,7 +97,7 @@ def test_invalid_lists(lists, error, message):
 
 @pytest.mark.parametrize("lang", ["xx", "RU", "", "ru "])
 def test_unsupported_language(lang):
-    message = f"unsupported language {lang!r}, expected one of: ru"
+    message = f"unsupported language {lang!r}, expected one of: ru, es"
     with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
         Segmenter(lang)
     with pytest.raises(ValueError, match="unsupported language"):

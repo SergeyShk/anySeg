@@ -35,7 +35,7 @@ The development environment is described in [CONTRIBUTING.md](https://github.com
 
 ## Rust { #rust }
 
-The segmenter is published on crates.io as the [`anyseg`](https://crates.io/crates/anyseg) crate, with every language behind a Cargo feature: `ru` (Russian, on by default). It gives positions in bytes of the UTF-8 string. The API documentation is on [docs.rs](https://docs.rs/anyseg).
+The segmenter is published on crates.io as the [`anyseg`](https://crates.io/crates/anyseg) crate, with every language behind a Cargo feature, on by default: `ru` (Russian) and `es` (Spanish). It gives positions in bytes of the UTF-8 string. The API documentation is on [docs.rs](https://docs.rs/anyseg).
 
 ``` bash
 cargo add anyseg

@@ -19,7 +19,7 @@ echo "Кот спит в 1914 г. Затем ушёл" | anyseg -l ru -f sentenc
 
 | Option | Default | Description |
 | :----- | :------ | :---------- |
-| `-l`, `--lang` | - | ISO 639-1 code of the language of the text: `ru` |
+| `-l`, `--lang` | - | ISO 639-1 code of the language of the text: `ru`, `es` |
 | `-f`, `--format` | `tokens` | [Output format](#formats): `tokens`, `sentences`, `conllu` |
 | `-o`, `--output` | the standard output | The result file; `-` is the standard output |
 | `--abbreviations` | | A file of [more abbreviations](segmenter.md#lists), one per line; the option can be repeated |

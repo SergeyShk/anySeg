@@ -65,7 +65,7 @@ def tokenize(text: str, *, lang: str) -> list[Span]:
 
     Arguments:
         text (str): Text
-        lang (str): ISO 639-1 code of the language: "ru"
+        lang (str): ISO 639-1 code of the language: "ru", "es"
 
     Returns:
         list[Span]: Tokens in order
@@ -90,7 +90,7 @@ def sentenize(text: str, *, lang: str) -> list[Span]:
 
     Arguments:
         text (str): Text
-        lang (str): ISO 639-1 code of the language: "ru"
+        lang (str): ISO 639-1 code of the language: "ru", "es"
 
     Returns:
         list[Span]: Sentences in order
@@ -116,7 +116,7 @@ def segment(text: str, *, lang: str) -> Document:
 
     Arguments:
         text (str): Text
-        lang (str): ISO 639-1 code of the language: "ru"
+        lang (str): ISO 639-1 code of the language: "ru", "es"
 
     Returns:
         Document: Segmented text

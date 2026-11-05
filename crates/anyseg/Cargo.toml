@@ -13,9 +13,11 @@ keywords = ["tokenizer", "sentence-splitter", "segmentation", "nlp", "russian"]
 categories = ["text-processing", "command-line-utilities"]
 
 [features]
-default = ["ru"]
+default = ["ru", "es"]
 # Russian
 ru = []
+# Spanish
+es = []
 # The anyseg command: cargo install anyseg --features cli
 cli = []
 
