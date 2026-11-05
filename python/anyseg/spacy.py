@@ -16,13 +16,15 @@ Description:
     The tokenizer anyseg.Tokenizer.v1 makes the tokens of a pipeline, and the component
     anyseg_sentencizer sets the sentence starts of a document before a parser, which keeps them.
     After installing anyseg[spacy] both are found by name, without importing anyseg. to_doc and
-    from_doc convert a document of anySeg to a spaCy document and back
+    from_doc convert a document of anySeg to a spaCy document and back. The tokens of a spaCy
+    document are those of the text; the words of a multiword token are in its extension
+    token._.anyseg_words
 """
 
 import re
 import unicodedata
-from collections.abc import Callable, Iterable, Iterator
-from typing import Any
+from collections.abc import Callable, Iterable, Iterator, Sequence
+from typing import Any, Literal
 
 try:
     import spacy  # noqa: F401
@@ -36,7 +38,7 @@ import numpy
 from spacy.attrs import IDX, IS_SPACE, LENGTH, SENT_START
 from spacy.language import Language
 from spacy.pipeline.senter import senter_score
-from spacy.tokens import Doc
+from spacy.tokens import Doc, Token
 from spacy.training import Example
 from spacy.util import registry
 from spacy.vocab import Vocab
@@ -54,6 +56,12 @@ SEPARATORS = "".join(
 
 # What spaCy cannot keep: its strings are in UTF-8
 SURROGATES = re.compile(r"[\ud800-\udfff]")
+
+# The columns of a word kept in the extension of its multiword token, besides its form
+WORD_COLUMNS = ("lemma", "upos", "xpos", "feats", "head", "deprel", "deps", "misc")
+
+if not Token.has_extension("anyseg_words"):
+    Token.set_extension("anyseg_words", default=None)
 
 
 @registry.tokenizers("anyseg.Tokenizer.v1")
@@ -94,9 +102,10 @@ class Tokenizer:
     Description:
         The text of a document is the text given, except that a lone surrogate, which spaCy
         cannot keep, is U+FFFD. One space after a token is its whitespace, and the rest of the
-        text between tokens is a token of its own with is_space, as spaCy keeps whitespace. In a
-        pipeline the tokenizer is set by its name in the configuration, so that a saved pipeline
-        loads with it
+        text between tokens is a token of its own with is_space, as spaCy keeps whitespace. The
+        words of a multiword token are in token._.anyseg_words: a list with the form of each,
+        [{"form": "de"}, {"form": "el"}]; a token of one word has None there. In a pipeline the
+        tokenizer is set by its name in the configuration, so that a saved pipeline loads with it
 
     Arguments:
         vocab (Vocab): Vocabulary of the pipeline
@@ -131,9 +140,7 @@ class Tokenizer:
         Returns:
             Doc: Document
         """
-        tokens = self.segmenter.segment(text).tokens
-        words, spaces, _ = layout(self.vocab, text, tokens.starts, tokens.ends)
-        return Doc(self.vocab, words=words, spaces=spaces)
+        return self.make_doc(self.segmenter.segment(text))
 
     def pipe(self, texts: Iterable[str], batch_size: int = 1000) -> Iterator[Doc]:
         """
@@ -151,9 +158,23 @@ class Tokenizer:
             TypeError: If texts is a string or not iterable, or a text is not a string
         """
         for document in self.segmenter.pipe(texts, batch_size=batch_size):
-            tokens = document.tokens
-            words, spaces, _ = layout(self.vocab, document.text, tokens.starts, tokens.ends)
-            yield Doc(self.vocab, words=words, spaces=spaces)
+            yield self.make_doc(document)
+
+    def make_doc(self, document: Document) -> Doc:
+        """
+        spaCy document of the tokens and the multiword tokens of a document
+
+        Arguments:
+            document (Document): Document
+
+        Returns:
+            Doc: spaCy document
+        """
+        tokens = document.tokens
+        words, spaces, indices = layout(self.vocab, document.text, tokens.starts, tokens.ends)
+        doc = Doc(self.vocab, words=words, spaces=spaces)
+        keep_words(doc, document, indices)
+        return doc
 
     def __repr__(self) -> str:
         return arguments("Tokenizer", self.segmenter)
@@ -344,7 +365,9 @@ def to_doc(document: Document, vocab: Vocab) -> Doc:
         every word has a head, and the heads of every sentence must form a tree with one root:
         the relation root becomes ROOT, a word without a relation gets dep
         (a root - ROOT), and a whitespace token depends on the token before it with dep. A
-        whitespace token has its text for a lemma and SPACE for a part of speech
+        whitespace token has its text for a lemma and SPACE for a part of speech. The words of a
+        multiword token go to token._.anyseg_words with their columns, and the token takes the
+        values of its word closest to the root, or of its first word without heads
 
     Arguments:
         document (Document): Document
@@ -354,12 +377,10 @@ def to_doc(document: Document, vocab: Vocab) -> Doc:
         Doc: spaCy document
 
     Raises:
-        ValueError: If the document has a multiword token or a part of speech unknown to spaCy, or
-            the heads of a sentence do not form a tree with one root
+        ValueError: If the document has a part of speech unknown to spaCy, or the heads of a
+            sentence do not form a tree with one root
     """
     tokens = document.tokens
-    if len(document.words) != len(tokens):
-        raise ValueError("a document with multiword tokens cannot be converted")
     vocab.lex_attr_getters[IS_SPACE] = is_gap  # type: ignore[attr-defined]
     words, spaces, indices = layout(vocab, document.text, tokens.starts, tokens.ends)
     sentence_starts: list[bool | int | None] = [not index for index in range(len(words))]
@@ -367,31 +388,68 @@ def to_doc(document: Document, vocab: Vocab) -> Doc:
         sentence_starts[indices[sentence.tokens[0].index]] = True
     heads = document.column("head")
     parse = dependencies(document, len(words), indices) if heads and None not in heads else None
-    return Doc(
+    multiword = len(document.words) != len(tokens)
+    main = parse[2] if parse else [token.words[0].index for token in tokens] if multiword else []
+
+    def column(name: Literal["lemma", "upos", "xpos", "feats"]) -> list[str | None]:
+        values = document.column(name)
+        return [values[word] for word in main] if multiword else values
+
+    doc = Doc(
         vocab,
         words=words,
         spaces=spaces,
         sent_starts=sentence_starts,
-        lemmas=filled(document.column("lemma"), indices, list(words)),
-        pos=filled(document.column("upos"), indices, ["SPACE"] * len(words)),
-        tags=filled(document.column("xpos"), indices, [""] * len(words)),
-        morphs=filled(document.column("feats"), indices, [""] * len(words)),
+        lemmas=filled(column("lemma"), indices, list(words)),
+        pos=filled(column("upos"), indices, ["SPACE"] * len(words)),
+        tags=filled(column("xpos"), indices, [""] * len(words)),
+        morphs=filled(column("feats"), indices, [""] * len(words)),
         heads=parse[0] if parse else None,
         deps=parse[1] if parse else None,
     )
+    keep_words(doc, document, indices)
+    return doc
+
+
+def keep_words(doc: Doc, document: Document, indices: list[int]) -> None:
+    """
+    Words of the multiword tokens of a document in the extension of the tokens of a spaCy document
+
+    Arguments:
+        doc (Doc): spaCy document
+        document (Document): Document
+        indices (list[int]): Index of every token of the document among the words of doc
+    """
+    tokens = document.tokens
+    if len(document.words) == len(tokens):
+        return
+    for token in tokens:
+        words = token.words
+        if len(words) > 1:
+            doc[indices[token.index]]._.anyseg_words = [
+                {
+                    "form": word.form,
+                    **{
+                        column: value
+                        for column in WORD_COLUMNS
+                        if (value := getattr(word, column)) is not None
+                    },
+                }
+                for word in words
+            ]
 
 
 def filled(values: list[str | None], indices: list[int], words: list[str]) -> list[str] | None:
     """
-    Values of the words of a spaCy document from a column of a document
+    Values of the words of a spaCy document from the values of the tokens of a document
 
     Arguments:
-        values (list[str | None]): Values of the column
+        values (list[str | None]): Value of every token
         indices (list[int]): Index of every token of the document among the words
         words (list[str]): Values of the whitespace tokens for all the words, filled in place
 
     Returns:
-        list[str] | None: Values of the words, None if the column is empty
+        list[str] | None: Values of the words, None if no token has a value
     """
     if all(value is None for value in values):
         return None
@@ -402,9 +460,14 @@ def filled(values: list[str | None], indices: list[int], words: list[str]) -> li
 
 def dependencies(
     document: Document, count: int, indices: list[int]
-) -> tuple[list[int], list[str]]:
+) -> tuple[list[int], list[str], list[int]]:
     """
     Heads and relations of a spaCy document of a document whose words all have heads
+
+    Description:
+        A token takes the head and the relation of its word closest to the root, the first of
+        such words. Every word above it is outside the token, and the head of a token is closer to
+        the root than the token, so the tokens form a tree when the words do
 
     Arguments:
         document (Document): Document
@@ -412,7 +475,8 @@ def dependencies(
         indices (list[int]): Index of every token of the document among the words
 
     Returns:
-        tuple[list[int], list[str]]: Heads and relations of the words
+        tuple[list[int], list[str], list[int]]: Heads and relations of the words, and the index of
+            the word of every token that gave them
 
     Raises:
         ValueError: If the heads of a sentence do not form a tree with one root
@@ -420,22 +484,66 @@ def dependencies(
     # A whitespace token depends on the token before it, at the start of the text - on the next
     heads = [index - 1 if index else index + 1 for index in range(count)]
     relations = ["dep"] * count
+    main = [0] * len(document.tokens)
+    multiword = len(document.words) != len(document.tokens)
     for sentence in document.sentences:
-        if not tree([word.head or 0 for word in sentence.words]):
+        words = sentence.words
+        ids = [word.head or 0 for word in words]
+        if not tree(ids):
             raise ValueError(
                 f"the heads of sentence {sentence.index} do not form a tree with one root"
             )
-        first = sentence.tokens[0].index
-        for word in sentence.words:
-            index = indices[word.index]
+        first = words[0].index
+        holders: Sequence[int]
+        if multiword:
+            holders = [word.token.index for word in words]
+            distances = depths(ids)
+            givers = (
+                (
+                    token.index,
+                    min(token.words, key=lambda word: distances[word.index - first]),
+                )
+                for token in sentence.tokens
+            )
+        else:
+            holders = range(first, first + len(words))
+            givers = ((word.index, word) for word in words)
+        for token, word in givers:
+            main[token] = word.index
+            index = indices[token]
             head = word.head
-            heads[index] = indices[first + head - 1] if head else index
+            heads[index] = indices[holders[head - 1]] if head else index
             relation = word.deprel
             if relation == "root" or (relation is None and not head):
                 relations[index] = "ROOT"
             else:
                 relations[index] = relation or "dep"
-    return heads, relations
+    return heads, relations, main
+
+
+def depths(heads: list[int]) -> list[int]:
+    """
+    Distance of every word of a sentence from the root
+
+    Arguments:
+        heads (list[int]): Head of every word, its ID from 1 or 0 for the root, forming a tree
+
+    Returns:
+        list[int]: Number of heads above every word
+    """
+    known = [-1] * len(heads)
+    for start in range(len(heads)):
+        path = []
+        word = start
+        while known[word] < 0 and heads[word]:
+            path.append(word)
+            word = heads[word] - 1
+        depth = max(known[word], 0)
+        known[word] = depth
+        for seen in reversed(path):
+            depth += 1
+            known[seen] = depth
+    return known
 
 
 def tree(heads: list[int]) -> bool:
@@ -491,7 +599,10 @@ def from_doc(doc: Doc) -> Document:
         The relation ROOT becomes root, and a word whose head is a dropped token depends on its
         head. A sentence has one root: the root of the parse or, if the sentence lacks it, the
         first word whose head is in another sentence; the other such words depend on the root
-        with the relation dep
+        with the relation dep.
+        A token with token._.anyseg_words is a multiword token. Its words keep the columns they
+        have there; for a column none of them has, the first word takes the value of the token. A
+        head that is a multiword token becomes its word whose head is outside it
 
     Arguments:
         doc (Doc): spaCy document
@@ -500,12 +611,13 @@ def from_doc(doc: Doc) -> Document:
         Document: Document
 
     Raises:
-        ValueError: If a token runs over a blank line or a value cannot be in its column, as for
-            Document.set_columns
+        ValueError: If a token runs over a blank line, the extension holds a form that cannot be
+            in a document or a value cannot be in its column, as for Document.set_columns
     """
     starts: list[int] = []
     ends: list[int] = []
     kept: list[int] = []
+    multiword: dict[int, list[dict[str, Any]]] = {}
     positions = [-1] * len(doc)
     sentence_starts: list[int] = []
     marks = (
@@ -526,9 +638,16 @@ def from_doc(doc: Doc) -> Document:
             pending = False
         starts.append(start)
         ends.append(start + len(rest.rstrip(SEPARATORS)))
+        words = token._.anyseg_words if doc.user_data else None
+        if words:
+            multiword[len(kept)] = words
         kept.append(token.i)
     document = Document.from_tokens(
-        doc.text, starts, ends, sentence_starts=sentence_starts if marks is not None else None
+        doc.text,
+        starts,
+        ends,
+        sentence_starts=sentence_starts if marks is not None else None,
+        words={token: [word["form"] for word in words] for token, words in multiword.items()},
     )
     columns: dict[str, list[Any]] = {}
     for column, attribute, value in (
@@ -541,9 +660,62 @@ def from_doc(doc: Doc) -> Document:
             columns[column] = [value(doc[index]) or None for index in kept]
     if doc.has_annotation("DEP"):
         columns["head"], columns["deprel"] = relations(doc, document, kept, positions)
+    if multiword:
+        for column in WORD_COLUMNS:
+            columns.setdefault(column, [None] * len(kept))
+        columns = words_columns(document, columns, multiword)
     if columns:
         document.set_columns(**columns)
     return document
+
+
+def words_columns(
+    document: Document, columns: dict[str, list[Any]], multiword: dict[int, list[dict[str, Any]]]
+) -> dict[str, list[Any]]:
+    """
+    Columns of the words of a document from the columns of its tokens and its multiword tokens
+
+    Arguments:
+        document (Document): Document with its multiword tokens
+        columns (dict[str, list[Any]]): Value of every token by column, heads as IDs among tokens
+        multiword (dict[int, list[dict[str, Any]]]): Words of the multiword tokens by the token
+
+    Returns:
+        dict[str, list[Any]]: Value of every word by column
+    """
+    # The ID of the word that stands for every token, for the heads of the other tokens
+    ids = [0] * len(document.tokens)
+    firsts = [0] * len(document.tokens)
+    for sentence in document.sentences:
+        for token in sentence.tokens:
+            words = token.words
+            firsts[token.index] = sentence.tokens[0].index
+            first = words[0].id
+            own = range(first, first + len(words))
+            ids[token.index] = next(
+                (
+                    first + offset
+                    for offset, word in enumerate(multiword.get(token.index, []))
+                    if word.get("head") is not None and word["head"] not in own
+                ),
+                first,
+            )
+    result: dict[str, list[Any]] = {}
+    for column, values in columns.items():
+        out: list[Any] = []
+        for position, value in enumerate(values):
+            if column == "head" and value:
+                value = ids[firsts[position] + value - 1]
+            given = multiword.get(position)
+            if given is None:
+                out.append(value)
+                continue
+            own_values = [word.get(column) for word in given]
+            if all(own is None for own in own_values):
+                own_values[0] = value
+            out.extend(own_values)
+        result[column] = out
+    return result
 
 
 def features(morph: str) -> str:

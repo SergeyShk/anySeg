@@ -31,7 +31,7 @@ The tokenizer and the component register with spaCy when the package is installe
 
 ## Tokenizer { #tokenizer }
 
-`anyseg.Tokenizer.v1` is the tokenizer of the section `[nlp.tokenizer]` of a configuration. The text of a `Doc` is the text given, except that a lone surrogate, which spaCy cannot keep, is U+FFFD. The whitespace is kept as spaCy keeps it: one space after a token is its `whitespace_`, and the rest of the text between tokens - line breaks, more spaces, invisible separators - is a token of its own with `is_space`. `nlp.tokenizer.pipe(texts, batch_size=1000)` gives the documents of many texts, segmented in batches without the GIL as [`Segmenter.pipe`](segmenter.md#pipe) does.
+`anyseg.Tokenizer.v1` is the tokenizer of the section `[nlp.tokenizer]` of a configuration. The tokens of a `Doc` are those of the text, and the words of a multiword token are in its extension: `token._.anyseg_words` is a list with the form of each word, `None` for a token of one word. The text of a `Doc` is the text given, except that a lone surrogate, which spaCy cannot keep, is U+FFFD. The whitespace is kept as spaCy keeps it: one space after a token is its `whitespace_`, and the rest of the text between tokens - line breaks, more spaces, invisible separators - is a token of its own with `is_space`. `nlp.tokenizer.pipe(texts, batch_size=1000)` gives the documents of many texts, segmented in batches without the GIL as [`Segmenter.pipe`](segmenter.md#pipe) does.
 
 | Parameter | Type | Default | Description |
 | :-------- | :--- | :------ | :---------- |
@@ -115,7 +115,7 @@ The tokenizer gives 2.7 M tokens per second, nearly ten times as many as the tok
 to_doc(document, vocab)
 ```
 
-The `Doc` of a document: its text, its tokens with the whitespace between them as the tokenizer makes it, and its sentences. The columns `lemma`, `upos`, `xpos` and `feats` become `lemma_`, `pos_`, `tag_` and `morph` where set. Heads and relations are set when every word has a head, and the heads of every sentence must form a tree with one root: the relation `root` becomes `ROOT`, a word without a relation gets `dep` (a root - `ROOT`), and a whitespace token depends on the token before it with `dep`. A whitespace token has its text for a lemma and `SPACE` for a part of speech.
+The `Doc` of a document: its text, its tokens with the whitespace between them as the tokenizer makes it, and its sentences. The columns `lemma`, `upos`, `xpos` and `feats` become `lemma_`, `pos_`, `tag_` and `morph` where set. Heads and relations are set when every word has a head, and the heads of every sentence must form a tree with one root: the relation `root` becomes `ROOT`, a word without a relation gets `dep` (a root - `ROOT`), and a whitespace token depends on the token before it with `dep`. A whitespace token has its text for a lemma and `SPACE` for a part of speech. The words of a multiword token go to `token._.anyseg_words` with their columns, and the token takes the values of its word closest to the root, or of its first word without heads.
 
 | Parameter | Type | Default | Description |
 | :-------- | :--- | :------ | :---------- |
@@ -124,7 +124,7 @@ The `Doc` of a document: its text, its tokens with the whitespace between them a
 
 Exceptions:
 
-- `ValueError` - the document has a multiword token or a part of speech that spaCy does not know, or the heads of a sentence do not form a tree with one root.
+- `ValueError` - the document has a part of speech that spaCy does not know, or the heads of a sentence do not form a tree with one root.
 
 === "Code"
 
@@ -157,7 +157,7 @@ Exceptions:
 from_doc(doc)
 ```
 
-The [document](document.md) of a `Doc`, one word per token. Tokens lose the whitespace and the invisible separators at their edges, and tokens of nothing else are dropped. A sentence of the `Doc` starts at its first token left, a `Doc` without sentences is a sentence per paragraph, and every paragraph starts a sentence. `lemma_`, `pos_`, `tag_`, `morph`, the heads and `dep_` become the columns `lemma`, `upos`, `xpos`, `feats`, `head` and `deprel`, empty values `None`, the features in the order of UD; a token without a head has neither. The relation `ROOT` becomes `root`, and a word whose head is a dropped token depends on the head of that token. A sentence has one root: the root of the parse or, if the sentence lacks it, the first word whose head is in another sentence; the other such words depend on the root with the relation `dep`.
+The [document](document.md) of a `Doc`, one word per token except those with `token._.anyseg_words`, whose words keep the columns they have there; for a column none of them has, the first word takes the value of the token. Tokens lose the whitespace and the invisible separators at their edges, and tokens of nothing else are dropped. A sentence of the `Doc` starts at its first token left, a `Doc` without sentences is a sentence per paragraph, and every paragraph starts a sentence. `lemma_`, `pos_`, `tag_`, `morph`, the heads and `dep_` become the columns `lemma`, `upos`, `xpos`, `feats`, `head` and `deprel`, empty values `None`, the features in the order of UD; a token without a head has neither. The relation `ROOT` becomes `root`, and a word whose head is a dropped token depends on the head of that token. A sentence has one root: the root of the parse or, if the sentence lacks it, the first word whose head is in another sentence; the other such words depend on the root with the relation `dep`.
 
 | Parameter | Type | Default | Description |
 | :-------- | :--- | :------ | :---------- |
@@ -165,7 +165,7 @@ The [document](document.md) of a `Doc`, one word per token. Tokens lose the whit
 
 Exceptions:
 
-- `ValueError` - a token runs over a blank line, or a value cannot be in its column, as for [`set_columns`](document.md#set_columns).
+- `ValueError` - a token runs over a blank line, the extension holds a form that cannot be in a document, or a value cannot be in its column, as for [`set_columns`](document.md#set_columns).
 
 === "Code"
 

@@ -1,4 +1,4 @@
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from typing import Literal, Self, final, overload
 
 __all__ = [
@@ -101,6 +101,7 @@ class Document:
         ends: Sequence[int],
         *,
         sentence_starts: Sequence[int] | None = None,
+        words: Mapping[int, Sequence[str]] | None = None,
     ) -> Document: ...
     def to_conllu(self, *, doc_id: str | None = None) -> str: ...
 

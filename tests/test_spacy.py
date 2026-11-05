@@ -299,10 +299,157 @@ def test_to_doc_without_columns():
     assert layout(to_doc(Segmenter("ru").segment(" \n"), Vocab())) == [(" \n", "")]
 
 
+MULTIWORD = (
+    "# text = Vengo del mar y decírselo.\n"
+    "1\tVengo\tvenir\tVERB\t_\t_\t0\troot\t_\t_\n"
+    "2-3\tdel\t_\t_\t_\t_\t_\t_\t_\t_\n"
+    "2\tde\tde\tADP\t_\t_\t4\tcase\t_\t_\n"
+    "3\tel\tel\tDET\t_\tGender=Masc\t4\tdet\t_\t_\n"
+    "4\tmar\tmar\tNOUN\t_\t_\t1\tobl\t_\t_\n"
+    "5\ty\ty\tCCONJ\t_\t_\t6\tcc\t_\t_\n"
+    "6-8\tdecírselo\t_\t_\t_\t_\t_\t_\t_\tSpaceAfter=No\n"
+    "6\tdecir\tdecir\tVERB\t_\t_\t1\tconj\t_\t_\n"
+    "7\tse\tél\tPRON\t_\t_\t6\tiobj\t_\t_\n"
+    "8\tlo\tél\tPRON\t_\t_\t6\tobj\t_\t_\n"
+    "9\t.\t.\tPUNCT\t_\t_\t1\tpunct\t_\t_\n\n"
+)
+
+
 def test_to_doc_of_multiword_tokens():
-    conllu = "# text = del\n1-2\tdel\t_\t_\t_\t_\t_\t_\t_\t_\n1\tde\t_\t_\t_\t_\t_\t_\t_\t_\n2\tel\t_\t_\t_\t_\t_\t_\t_\t_\n\n"
-    with pytest.raises(ValueError, match="multiword tokens"):
-        to_doc(read_conllu(conllu)[0], Vocab())
+    doc = to_doc(read_conllu(MULTIWORD)[0], Vocab())
+    assert [token.text for token in doc] == ["Vengo", "del", "mar", "y", "decírselo", "."]
+    assert doc.text == "Vengo del mar y decírselo."
+    assert [token.lemma_ for token in doc] == ["venir", "de", "mar", "y", "decir", "."]
+    assert [token.pos_ for token in doc] == ["VERB", "ADP", "NOUN", "CCONJ", "VERB", "PUNCT"]
+    assert [token.head.text for token in doc] == [
+        "Vengo",
+        "mar",
+        "Vengo",
+        "decírselo",
+        "Vengo",
+        "Vengo",
+    ]
+    assert [token.dep_ for token in doc] == ["ROOT", "case", "obl", "cc", "conj", "punct"]
+    assert doc[0]._.anyseg_words is None
+    assert doc[1]._.anyseg_words == [
+        {"form": "de", "lemma": "de", "upos": "ADP", "head": 4, "deprel": "case"},
+        {
+            "form": "el",
+            "lemma": "el",
+            "upos": "DET",
+            "feats": "Gender=Masc",
+            "head": 4,
+            "deprel": "det",
+        },
+    ]
+    assert [word["form"] for word in doc[4]._.anyseg_words] == ["decir", "se", "lo"]
+
+
+def test_multiword_tokens_there_and_back():
+    document = read_conllu(MULTIWORD)[0]
+    back = from_doc(to_doc(document, Vocab()))
+    assert back.text == document.text
+    assert [token.text for token in back.tokens] == [token.text for token in document.tokens]
+    for column in ("form", "lemma", "upos", "feats", "head", "deprel"):
+        assert back.column(column) == document.column(column), column
+
+
+def test_tokens_of_a_multiword_token_stay_a_tree():
+    # The words of a token sit apart in the tree: its first word depends on a word under its second
+    conllu = (
+        "# text = ab c d\n"
+        "1-2\tab\t_\t_\t_\t_\t_\t_\t_\t_\n"
+        "1\ta\t_\t_\t_\t_\t3\tx\t_\t_\n"
+        "2\tb\t_\t_\t_\t_\t4\ty\t_\t_\n"
+        "3\tc\t_\t_\t_\t_\t2\tz\t_\t_\n"
+        "4\td\t_\t_\t_\t_\t0\troot\t_\t_\n\n"
+    )
+    doc = to_doc(read_conllu(conllu)[0], Vocab())
+    assert [token.head.text for token in doc] == ["d", "ab", "d"]
+    assert [token.dep_ for token in doc] == ["y", "z", "ROOT"]
+
+
+def test_to_doc_of_a_segmented_multiword_token():
+    document = Segmenter("es").segment("Vengo del mar")
+    doc = to_doc(document, Vocab())
+    assert [token.text for token in doc] == ["Vengo", "del", "mar"]
+    assert doc[1]._.anyseg_words == [{"form": "de"}, {"form": "el"}]
+    assert from_doc(doc).column("form") == ["Vengo", "de", "el", "mar"]
+
+
+def test_tokenizer_of_multiword_tokens():
+    nlp = spacy.blank("es", config=TOKENIZER)
+    nlp.add_pipe("anyseg_sentencizer")
+    text = "Vengo  del mar. Quiero decírselo"
+    doc = nlp(text)
+    assert doc.text == text
+    assert [token.text for token in doc] == [
+        "Vengo",
+        " ",
+        "del",
+        "mar",
+        ".",
+        "Quiero",
+        "decírselo",
+    ]
+    assert doc[2]._.anyseg_words == [{"form": "de"}, {"form": "el"}]
+    assert doc[3]._.anyseg_words is None
+    assert doc[6]._.anyseg_words == [{"form": "decir"}, {"form": "se"}, {"form": "lo"}]
+    assert [sentence.text for sentence in doc.sents] == ["Vengo  del mar.", "Quiero decírselo"]
+    assert [d[1]._.anyseg_words for d in nlp.tokenizer.pipe(["Voy al mar"])] == [
+        [{"form": "a"}, {"form": "el"}]
+    ]
+    document = from_doc(doc)
+    assert document.column("form") == [
+        "Vengo",
+        "de",
+        "el",
+        "mar",
+        ".",
+        "Quiero",
+        "decir",
+        "se",
+        "lo",
+    ]
+    assert [len(sentence.words) for sentence in document.sentences] == [5, 4]
+
+
+def test_multiword_tokens_after_a_pipeline():
+    nlp = spacy.blank("es", config=TOKENIZER)
+    doc = nlp("Vengo del mar")
+    doc[1].lemma_ = "del"
+    doc[1].pos_ = "ADP"
+    doc[0].head = doc[2]
+    doc[1].head = doc[2]
+    doc[0].dep_, doc[1].dep_, doc[2].dep_ = "x", "case", "ROOT"
+    document = from_doc(doc)
+    assert document.column("lemma")[1:3] == ["del", None]
+    assert document.column("upos")[1:3] == ["ADP", None]
+    # Heads count words: «mar» is the fourth
+    assert document.column("head") == [4, 4, None, 0]
+    assert document.column("deprel")[1:3] == ["case", None]
+
+
+def test_multiword_tokens_are_kept_with_the_document():
+    nlp = spacy.blank("es", config=TOKENIZER)
+    doc = nlp("Vengo del mar")
+    words = [{"form": "de"}, {"form": "el"}]
+    assert Doc(nlp.vocab).from_bytes(doc.to_bytes())[1]._.anyseg_words == words
+    assert pickle.loads(pickle.dumps(doc))[1]._.anyseg_words == words
+    batch = DocBin(store_user_data=True)
+    batch.add(doc)
+    assert list(next(iter(batch.get_docs(nlp.vocab)))[1]._.anyseg_words) == words
+    assert from_doc(next(iter(batch.get_docs(nlp.vocab)))).column("form")[1:3] == ["de", "el"]
+
+
+def test_wrong_multiword_tokens_in_a_doc():
+    doc = spacy.blank("es")("Vengo del mar")
+    doc[1]._.anyseg_words = [{"form": "de"}]
+    with pytest.raises(ValueError, match="fewer than two forms"):
+        from_doc(doc)
+    doc[1]._.anyseg_words = [{"form": "de"}, {"form": "e\tl"}]
+    with pytest.raises(ValueError, match="tab or a line break"):
+        from_doc(doc)
 
 
 def test_from_doc(nlp):

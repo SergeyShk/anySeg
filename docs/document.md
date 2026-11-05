@@ -257,10 +257,10 @@ Exceptions:
 { .metric-meta }
 
 ``` {.python .signature}
-Document.from_tokens(text, starts, ends, *, sentence_starts=None)
+Document.from_tokens(text, starts, ends, *, sentence_starts=None, words=None)
 ```
 
-The document of the tokens of a text made by another tool, one word per token. Paragraphs are the parts of the text between blank lines, and every paragraph starts a sentence; without sentence starts a paragraph is one sentence.
+The document of the tokens of a text made by another tool, one word per token except those given in `words`. Paragraphs are the parts of the text between blank lines, and every paragraph starts a sentence; without sentence starts a paragraph is one sentence.
 
 | Parameter | Type | Default | Description |
 | :-------- | :--- | :------ | :---------- |
@@ -268,11 +268,12 @@ The document of the tokens of a text made by another tool, one word per token. P
 | `starts` | `Sequence[int]` | - | Positions of the first characters of the tokens |
 | `ends` | `Sequence[int]` | - | Positions after their last characters |
 | `sentence_starts` | `Sequence[int]` | `None` | Indices of the tokens that start sentences |
+| `words` | `Mapping[int, Sequence[str]]` | `None` | Forms of the words of the multiword tokens, by the index of the token |
 
 Exceptions:
 
-- `ValueError` - the lists differ in length, a token is empty, out of the text, overlaps the token before it, starts or ends with whitespace or runs over a paragraph boundary, the text between the tokens holds anything but whitespace and the invisible separators, or the sentence starts are not increasing token indices;
-- `TypeError` - a list holds something other than integers.
+- `ValueError` - the lists differ in length, a token is empty, out of the text, overlaps the token before it, starts or ends with whitespace or runs over a paragraph boundary, the text between the tokens holds anything but whitespace and the invisible separators, the sentence starts are not increasing token indices, `words` names a token that is not in the document or has fewer than two forms, or a form is empty or holds a tab or a line break;
+- `TypeError` - a list holds something other than integers, or `words` is not a mapping of integers to sequences of strings.
 
 === "Code"
 

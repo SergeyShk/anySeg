@@ -419,6 +419,68 @@ impl Document {
             }
             fits
         });
+        self.set_words(multiword);
+    }
+
+    /// The document with several words in some of its tokens: a token and the forms of its words, in the order of
+    /// the tokens. A form holds what CoNLL-U allows, whatever the text of its token.
+    ///
+    /// # Errors
+    ///
+    /// [`DocumentError`] if the document has columns or several words in a token already, the tokens are not
+    /// increasing indices of tokens of the document, a token has fewer than two forms, a form is empty or holds a tab
+    /// or a line break, or the forms exceed 2 GiB.
+    pub fn with_multiword_tokens<I, S>(mut self, tokens: I) -> Result<Self, DocumentError>
+    where
+        I: IntoIterator<Item = (usize, Vec<S>)>,
+        S: Into<String>,
+    {
+        if self.columns.is_some() || !self.heads.is_empty() || !self.word_tokens.is_empty() {
+            return Err(DocumentError(
+                "multiword tokens must be set first, before columns".to_owned(),
+            ));
+        }
+        let mut multiword = Vec::new();
+        let (mut next, mut size) = (0, 0);
+        for (token, forms) in tokens {
+            if token < next || token >= self.tokens.len() {
+                return Err(DocumentError(format!(
+                    "multiword token {token} is not in order among {} tokens",
+                    self.tokens.len()
+                )));
+            }
+            next = token + 1;
+            let forms: Vec<String> = forms.into_iter().map(Into::into).collect();
+            if forms.len() < 2 {
+                return Err(DocumentError(format!(
+                    "multiword token {token} has fewer than two forms"
+                )));
+            }
+            if forms
+                .iter()
+                .any(|form| form.is_empty() || form.contains(['\t', '\n', '\r']))
+            {
+                return Err(DocumentError(format!(
+                    "a form of multiword token {token} is empty or holds a tab or a line break"
+                )));
+            }
+            size += forms.iter().map(String::len).sum::<usize>();
+            if size >= PRESENT as usize {
+                return Err(DocumentError(
+                    "the forms of the document exceed 2 GiB".to_owned(),
+                ));
+            }
+            multiword.push((token, forms));
+        }
+        self.set_words(multiword);
+        Ok(self)
+    }
+
+    /// Gives some tokens several words, in the order of the tokens; their forms fit in 2 GiB
+    fn set_words(&mut self, multiword: Vec<(usize, Vec<String>)>) {
+        if multiword.is_empty() {
+            return;
+        }
         if multiword.is_empty() {
             return;
         }
@@ -941,6 +1003,63 @@ mod tests {
                 DocumentError("sentence starts must be increasing token indices".to_owned())
             );
         }
+    }
+
+    #[test]
+    fn multiword_tokens() {
+        let tokens = vec![
+            Span { start: 0, end: 1 },
+            Span { start: 2, end: 3 },
+            Span { start: 4, end: 5 },
+        ];
+        let build = || Document::from_tokens("a b c".to_owned(), tokens.clone(), None).unwrap();
+        let doc = build()
+            .with_multiword_tokens([(1, vec!["x", "y"])])
+            .unwrap();
+        assert_eq!((doc.tokens().len(), doc.word_count()), (3, 4));
+        assert_eq!(doc.token_words(1), 1..3);
+        assert_eq!(
+            (doc.form(0), doc.form(1), doc.form(2), doc.form(3)),
+            ("a", "x", "y", "c")
+        );
+        assert_eq!(
+            build()
+                .with_multiword_tokens(Vec::<(usize, Vec<&str>)>::new())
+                .unwrap(),
+            build()
+        );
+        for (words, message) in [
+            (
+                vec![(3, vec!["x", "y"])],
+                "multiword token 3 is not in order",
+            ),
+            (
+                vec![(1, vec!["x", "y"]), (1, vec!["x", "y"])],
+                "multiword token 1 is not in order",
+            ),
+            (vec![(0, vec!["x"])], "fewer than two forms"),
+            (vec![(0, vec!["x", ""])], "is empty or holds"),
+            (vec![(0, vec!["x", "y\tz"])], "is empty or holds"),
+        ] {
+            let error = build().with_multiword_tokens(words).unwrap_err();
+            assert!(error.to_string().contains(message), "{error}");
+        }
+        let mut annotated = build();
+        annotated
+            .set_columns(
+                [(Column::Upos, vec![Some("X"), Some("X"), Some("X")])],
+                None,
+            )
+            .unwrap();
+        assert!(
+            annotated
+                .with_multiword_tokens([(0, vec!["x", "y"])])
+                .is_err()
+        );
+        let twice = build()
+            .with_multiword_tokens([(0, vec!["x", "y"])])
+            .unwrap();
+        assert!(twice.with_multiword_tokens([(1, vec!["x", "y"])]).is_err());
     }
 
     #[test]
