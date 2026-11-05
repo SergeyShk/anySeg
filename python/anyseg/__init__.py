@@ -72,7 +72,6 @@ def tokenize(text: str, *, lang: str) -> list[Span]:
 
     Raises:
         ValueError: If the language is not supported
-        UnicodeEncodeError: If the text contains a lone surrogate
     """
     return _segmenter(lang).tokenize(text)
 
@@ -98,7 +97,6 @@ def sentenize(text: str, *, lang: str) -> list[Span]:
 
     Raises:
         ValueError: If the language is not supported
-        UnicodeEncodeError: If the text contains a lone surrogate
     """
     return _segmenter(lang).sentenize(text)
 
@@ -125,7 +123,6 @@ def segment(text: str, *, lang: str) -> Document:
 
     Raises:
         ValueError: If the language is not supported
-        UnicodeEncodeError: If the text contains a lone surrogate
     """
     return _segmenter(lang).segment(text)
 

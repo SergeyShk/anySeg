@@ -1,3 +1,4 @@
+import copy
 import gc
 import pickle
 import random
@@ -464,9 +465,81 @@ def test_threads():
     assert results[1] == ["слово1", "слово2", "слово3"]
 
 
+def same(first, second):
+    """Whether two documents have the same parts, columns and CoNLL-U"""
+    parts = ("tokens", "words", "sentences", "paragraphs", "lines")
+    return (
+        first.text == second.text
+        and all(
+            list(map(repr, getattr(first, part))) == list(map(repr, getattr(second, part)))
+            for part in parts
+        )
+        and all(
+            first.column(column) == second.column(column)
+            for column in ("form", "lemma", "upos", "xpos", "feats", "head", "deprel", "deps")
+        )
+        and first.column("misc") == second.column("misc")
+        and first.to_conllu() == second.to_conllu()
+    )
+
+
 @pytest.mark.parametrize("protocol", range(pickle.HIGHEST_PROTOCOL + 1))
-def test_document_is_not_picklable(doc, protocol):
-    for value in (doc, doc.tokens, doc.tokens[0], doc.words[0], doc.lines, iter(doc.sentences)):
+def test_pickle(doc, protocol):
+    conllu = (
+        "# newpar\n# sent_id = a\n# text = Del ёж\n1-2\tDel\t_\t_\t_\t_\t_\t_\t_\t_\n"
+        "1\tde\tde\tADP\t_\t_\t0\troot\t_\t_\n2\tel\t_\t_\t_\t_\t1\t_\t_\t_\n"
+        "2.1\tx\t_\t_\t_\t_\t_\t_\t_\t_\n3\tёж\t_\t_\t_\t_\t_\t_\t_\t_\n\n"
+    )
+    wrapped = Segmenter("ru").segment("Кот шёл\nдомой. Ёж спит\nтут.\n\nУтро")
+    annotated = Segmenter("ru").segment(TEXT)
+    annotated.set_columns(lemma=["ёж", *[None] * (len(annotated.words) - 1)])
+    annotated.set_columns(head=[0, *[None] * (len(annotated.words) - 1)])
+    surrogate = Segmenter("ru").segment(f"Ёж {chr(0xD83D)} идёт.")
+    for value in (
+        doc,
+        wrapped,
+        annotated,
+        surrogate,
+        read_conllu(conllu)[0],
+        Segmenter("ru").segment(""),
+        Segmenter("ru").segment("Кот спит. " * 1000),
+        Document.from_tokens("Ёж идёт", [0, 3], [2, 7]),
+    ):
+        restored = pickle.loads(pickle.dumps(value, protocol))
+        assert type(restored) is Document
+        assert same(restored, value)
+    # The columns go with the document and the copy has its own
+    restored = pickle.loads(pickle.dumps(annotated, protocol))
+    assert restored.column("lemma")[0] == "ёж"
+    assert restored.words[0].head == 0
+    restored.set_columns(lemma=[None] * len(annotated.words))
+    assert annotated.column("lemma")[0] == "ёж"
+
+
+@pytest.mark.parametrize("function", [copy.copy, copy.deepcopy])
+def test_copy(doc, function):
+    assert same(function(doc), doc)
+
+
+def test_pickle_damaged():
+    doc = Segmenter("ru").segment(TEXT)
+    function, (text, state) = doc.__reduce__()
+    assert same(function(text, state), doc)
+    for wrong, message in (
+        (state[:-1], "damaged"),
+        (state + b"\0", "damaged"),
+        (b"", "damaged"),
+        (b"\xff" + state[1:], "the format 255"),
+    ):
+        with pytest.raises(ValueError, match=message):
+            function(text, wrong)
+    with pytest.raises(ValueError, match="damaged"):
+        function("Ёж", state)
+
+
+@pytest.mark.parametrize("protocol", range(pickle.HIGHEST_PROTOCOL + 1))
+def test_parts_are_not_picklable(doc, protocol):
+    for value in (doc.tokens, doc.tokens[0], doc.words[0], doc.lines, iter(doc.sentences)):
         with pytest.raises(
             TypeError, match=f"cannot pickle 'anyseg.{type(value).__name__}' object"
         ):
@@ -474,11 +547,37 @@ def test_document_is_not_picklable(doc, protocol):
 
 
 def test_lone_surrogate():
-    for text in ("a \ud800", "a " * 5000 + "\ud800"):
-        with pytest.raises(UnicodeEncodeError):
-            segment(text, lang="ru")
+    # The document keeps its text and its parts show it; CoNLL-U, in UTF-8, has U+FFFD
+    high, low = chr(0xD83D), chr(0xDE00)
+    for text in (f"Ёж {high}. Кот {low}{high}", "а " * 5000 + high):
+        doc = segment(text, lang="ru")
+        assert doc.text == text
+        assert [token.text for token in doc.tokens] == [
+            text[start:end] for start, end in zip(doc.tokens.starts, doc.tokens.ends, strict=True)
+        ]
+        assert doc.column("form") == [token.text for token in doc.tokens]
+        assert [word.form for word in doc.words] == doc.column("form")
+        assert high in doc.sentences[-1].text
+        assert high in doc.paragraphs[0].text
+        assert high in doc.lines[0].text
+        assert "\\ud83d" in repr(doc.words[-1])
+        conllu = doc.to_conllu()
+        assert "\ufffd" in conllu
+        assert conllu.encode()
+    doc = Document.from_tokens(f"а {high}", [0, 2], [1, 3])
+    assert doc.tokens[1].text == high
+    # Between the tokens it is a character that no token has
+    with pytest.raises(ValueError, match="no token has"):
+        Document.from_tokens(f"а {high}", [0], [1])
+
+    class Text(str):
+        pass
+
+    assert segment(Text(f"Ёж {high}"), lang="ru").text == f"Ёж {high}"
+    assert Document.from_tokens(Text(f"а {high}"), [0, 2], [1, 3]).tokens[1].text == high
+    # CoNLL-U has a form per word, written back as it is read
     with pytest.raises(UnicodeEncodeError):
-        Document.from_tokens("a \ud800", [0], [1])
+        read_conllu(f"1\t{high}\t_\t_\t_\t_\t_\t_\t_\t_\n\n")
 
 
 def test_not_tracked_by_the_collector(doc):

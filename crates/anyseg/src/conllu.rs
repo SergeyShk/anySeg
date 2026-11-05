@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::error::Error;
 use std::fmt;
 use std::fmt::Write as _;
+use std::ops::Range;
 
 use unicode_normalization::{UnicodeNormalization, is_nfc};
 
@@ -483,7 +484,7 @@ impl Document {
     /// tabs becomes a space; `# text` is the tokens with these spaces, line breaks turned into spaces. Forms,
     /// `# text` and column values are in Unicode NFC, as CoNLL-U requires; the document keeps its text.
     pub fn to_conllu(&self) -> String {
-        self.conllu(None)
+        self.conllu(ConlluWriter::new())
     }
 
     /// The document in CoNLL-U as [`to_conllu`](Self::to_conllu) writes it, with `# newdoc id = ID` and
@@ -494,32 +495,13 @@ impl Document {
     ///
     /// [`DocumentError`] if the ID is empty or holds whitespace.
     pub fn to_conllu_with_id(&self, id: &str) -> Result<String, DocumentError> {
-        if id.is_empty() || id.contains(char::is_whitespace) {
-            return Err(DocumentError(format!(
-                "document ID {id:?} is empty or holds whitespace"
-            )));
-        }
-        Ok(self.conllu(Some(&nfc(id))))
+        ConlluWriter::with_id(id).map(|writer| self.conllu(writer))
     }
 
-    fn conllu(&self, id: Option<&str>) -> String {
+    fn conllu(&self, mut writer: ConlluWriter) -> String {
         let mut out = String::new();
-        self.write_conllu(&mut out, id, 1, true);
+        writer.write(self, 0..self.sentence_count(), &mut out);
         out
-    }
-
-    /// The sentences in CoNLL-U as [`to_conllu`](Self::to_conllu) writes them, `# sent_id` numbered from `first`
-    /// and `# newdoc` only when `newdoc`: a piece of a longer text
-    pub(crate) fn write_conllu(
-        &self,
-        out: &mut String,
-        id: Option<&str>,
-        first: usize,
-        newdoc: bool,
-    ) {
-        for sentence in 0..self.sentence_count() {
-            self.write_sentence(sentence, id, first + sentence, newdoc, out);
-        }
     }
 
     /// `# text` of a sentence: its tokens with the spaces between them as MISC gives them, line breaks turned
@@ -538,13 +520,15 @@ impl Document {
         out
     }
 
-    /// A sentence in CoNLL-U, `# sent_id` numbered `number` and `# newdoc` before the first one when `newdoc`
-    pub(crate) fn write_sentence(
+    /// A sentence in CoNLL-U, `# sent_id` numbered `number`, `# newdoc` before it when `newdoc` and no `# newpar`
+    /// when it goes on with the paragraph before it (`continued`)
+    fn write_sentence(
         &self,
         index: usize,
         id: Option<&str>,
         number: usize,
         newdoc: bool,
+        continued: bool,
         out: &mut String,
     ) {
         let sentence = self.sentence(index);
@@ -563,7 +547,7 @@ impl Document {
             }
             None => {
                 let paragraph = self.sentence_paragraph(index);
-                if index == 0 && newdoc {
+                if newdoc {
                     match id {
                         Some(id) => {
                             let _ = writeln!(out, "# newdoc id = {id}");
@@ -571,7 +555,7 @@ impl Document {
                         None => out.push_str("# newdoc\n"),
                     }
                 }
-                if self.paragraph_sentences[paragraph] == index {
+                if self.paragraph_sentences[paragraph] == index && !continued {
                     out.push_str("# newpar\n");
                 }
                 match id {
@@ -690,6 +674,96 @@ impl Document {
             " " => None,
             spaces => Some(format!("SpacesAfter={}", escape_spaces(spaces))),
         }
+    }
+}
+
+/// Writes documents into one CoNLL-U: the pieces of a long text, or several texts, with `# sent_id` numbered through
+/// all of them. Every sentence is written as [`Document::to_conllu`] writes it.
+///
+/// ```
+/// # #[cfg(feature = "ru")] {
+/// use anyseg::{ConlluWriter, Segmenter};
+///
+/// let segmenter = Segmenter::new("ru").unwrap();
+/// let mut writer = ConlluWriter::new();
+/// let mut out = String::new();
+/// for piece in ["Ёж идёт. Кот спит.", "Утро настало."] {
+///     let doc = segmenter.segment(piece);
+///     writer.write(&doc, 0..doc.sentence_count(), &mut out);
+/// }
+/// assert!(out.starts_with("# newdoc\n# newpar\n# sent_id = 1\n"));
+/// assert!(out.contains("\n# newpar\n# sent_id = 3\n"));
+/// # }
+/// ```
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ConlluWriter {
+    id: Option<String>,
+    /// The number of sentences written: the last `# sent_id`
+    sentences: usize,
+    /// The next sentence starts a document
+    newdoc: bool,
+    /// The next sentence goes on with the paragraph of the last one
+    continued: bool,
+}
+
+impl ConlluWriter {
+    /// The writer of a text: its first sentence gets `# newdoc`.
+    pub fn new() -> Self {
+        ConlluWriter {
+            id: None,
+            sentences: 0,
+            newdoc: true,
+            continued: false,
+        }
+    }
+
+    /// The writer of a text with `# newdoc id = ID` and `# sent_id = ID-N` (the ID in NFC).
+    ///
+    /// # Errors
+    ///
+    /// [`DocumentError`] if the ID is empty or holds whitespace.
+    pub fn with_id(id: &str) -> Result<Self, DocumentError> {
+        if id.is_empty() || id.contains(char::is_whitespace) {
+            return Err(DocumentError(format!(
+                "document ID {id:?} is empty or holds whitespace"
+            )));
+        }
+        Ok(ConlluWriter {
+            id: Some(nfc(id).into_owned()),
+            ..Self::new()
+        })
+    }
+
+    /// The next sentence starts a document: it gets `# newdoc`; the numbers of the sentences go on.
+    pub fn start_document(&mut self) {
+        self.newdoc = true;
+    }
+
+    /// The next sentence goes on with the paragraph of the last one written, of a text cut in pieces: it gets no
+    /// `# newpar`, even if it starts a paragraph of its document.
+    pub fn continue_paragraph(&mut self) {
+        self.continued = true;
+    }
+
+    /// Appends sentences of a document to `out`.
+    ///
+    /// # Panics
+    ///
+    /// If a sentence is out of the document.
+    pub fn write(&mut self, doc: &Document, sentences: Range<usize>, out: &mut String) {
+        for sentence in sentences {
+            self.sentences += 1;
+            let newdoc = std::mem::take(&mut self.newdoc);
+            let continued = std::mem::take(&mut self.continued);
+            let id = self.id.as_deref();
+            doc.write_sentence(sentence, id, self.sentences, newdoc, continued, out);
+        }
+    }
+}
+
+impl Default for ConlluWriter {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -849,6 +923,54 @@ mod tests {
             (doc.word_count(), doc.token_words(2), doc.word_token(2)),
             (3, 2..3, 2)
         );
+    }
+
+    #[test]
+    #[cfg(feature = "ru")]
+    fn writer() {
+        let segmenter = crate::Segmenter::new("ru").unwrap();
+        let doc = segmenter.segment("Ёж идёт. Кот спит.\n\nУтро");
+        // In parts, the same as the whole document
+        let mut out = String::new();
+        let mut writer = ConlluWriter::default();
+        writer.write(&doc, 0..1, &mut out);
+        writer.write(&doc, 1..3, &mut out);
+        assert_eq!(out, doc.to_conllu());
+        // The numbers go through the pieces, a piece may continue a paragraph or start a document
+        let piece = segmenter.segment("Дождь.");
+        let mut out = String::new();
+        let mut writer = ConlluWriter::with_id("е\u{308}").unwrap();
+        writer.write(&doc, 0..1, &mut out);
+        writer.continue_paragraph();
+        writer.write(&piece, 0..1, &mut out);
+        writer.write(&piece, 0..1, &mut out);
+        writer.start_document();
+        writer.write(&piece, 0..0, &mut out);
+        writer.write(&piece, 0..1, &mut out);
+        let comments: Vec<&str> = out
+            .lines()
+            .filter(|line| line.starts_with("# ") && !line.starts_with("# text"))
+            .collect();
+        assert_eq!(
+            comments,
+            [
+                "# newdoc id = ё",
+                "# newpar",
+                "# sent_id = ё-1",
+                "# sent_id = ё-2",
+                "# newpar",
+                "# sent_id = ё-3",
+                "# newdoc id = ё",
+                "# newpar",
+                "# sent_id = ё-4",
+            ]
+        );
+        for id in ["", "a b"] {
+            assert_eq!(
+                ConlluWriter::with_id(id).unwrap_err(),
+                doc.to_conllu_with_id(id).unwrap_err()
+            );
+        }
     }
 
     #[test]

@@ -21,6 +21,10 @@ TEXT = "\ufeffЁж\u00a0иду\u0301т\t😀\r\nдомо\u0301й\u2028end"
 SEPARATORS = " \n\r\t\u00a0\u2028\u3000\ufeff\u200b\u2060\u00ad\u200c\u200d"
 
 
+# Lone surrogates: in a string of Python they are two characters even side by side
+HIGH = chr(0xD83D)
+LOW = chr(0xDE00)
+
 # A segmenter with lists of the user
 CUSTOM = Segmenter("ru", abbreviations={"Сущ.", "глаг"}, tokens=("C++", "т.н."))
 
@@ -145,11 +149,30 @@ def test_blank_text(segmenter, text):
     assert segmenter.sentenize(text) == []
 
 
-def test_lone_surrogate(segmenter):
-    with pytest.raises(UnicodeEncodeError):
-        segmenter.tokenize("Ёж \ud83d идёт")
-    with pytest.raises(UnicodeEncodeError):
-        segmenter.sentenize("\udc00")
+@pytest.mark.parametrize(
+    "text",
+    [
+        f"Ёж {HIGH} идёт. Кот{LOW}",
+        LOW,
+        # Two in a row are two characters of the string, not one
+        f"Ёж {HIGH}{LOW} идёт.",
+        f"{HIGH}{HIGH}. {LOW}{HIGH}",
+        "ок. " * 3000 + HIGH,
+    ],
+)
+def test_lone_surrogate(segmenter, text):
+    # They count as U+FFFD, at the same positions, and the spans keep them
+    replaced = text.replace(HIGH, "\ufffd").replace(LOW, "\ufffd")
+    for method in (segmenter.tokenize, segmenter.sentenize):
+        spans = method(text)
+        assert all(text[span.start : span.end] == span.text for span in spans)
+        assert [(span.start, span.end) for span in spans] == [
+            (span.start, span.end) for span in method(replaced)
+        ]
+    spans = [next(segmenter.pipe([text])).tokens, segmenter.segment(text).tokens]
+    for tokens in spans:
+        assert tokens.starts == [span.start for span in segmenter.tokenize(replaced)]
+        assert [token.text for token in tokens] == [span.text for span in segmenter.tokenize(text)]
 
 
 def test_random_texts(segmenter):
@@ -232,8 +255,6 @@ def test_pipe_errors(segmenter):
 
     for bad, error, message in [
         (5, TypeError, "text 2 is int, not a string"),
-        ("\ud800", UnicodeEncodeError, "surrogates not allowed"),
-        ("ок\ud800" * 3000, UnicodeEncodeError, "surrogates not allowed"),
     ]:
         pipe = segmenter.pipe(texts(bad), batch_size=10)
         assert [doc.text for doc in [next(pipe), next(pipe)]] == ["Ёж", "Кот"]
@@ -325,14 +346,20 @@ def test_span():
     assert span != Span(3, 7, "иду")
     assert span != (3, 7, "идёт")
     assert len({span, Span(3, 7, "идёт"), Span(0, 4, "идёт")}) == 2
+    lone = Span(0, 1, HIGH)
+    assert lone.text == HIGH
+    assert lone == Span(0, 1, HIGH)
+    assert lone != Span(0, 1, "\ufffd")
+    assert hash(lone) == hash(Span(0, 1, HIGH))
+    assert repr(lone) == "Span(start=0, end=1, text='\\ud83d')"
     with pytest.raises(AttributeError):
         span.start = 0
 
 
 @pytest.mark.parametrize("protocol", range(pickle.HIGHEST_PROTOCOL + 1))
 def test_pickle(segmenter, protocol):
-    span = segmenter.tokenize("Ёж идёт")[1]
-    assert pickle.loads(pickle.dumps(span, protocol)) == span
+    for span in (segmenter.tokenize("Ёж идёт")[1], segmenter.tokenize(f"Ёж {HIGH}")[1]):
+        assert pickle.loads(pickle.dumps(span, protocol)) == span
     for value in (segmenter, CUSTOM):
         restored = pickle.loads(pickle.dumps(value, protocol))
         assert restored == value

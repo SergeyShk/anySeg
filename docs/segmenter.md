@@ -4,7 +4,7 @@
 Segmenter(lang, *, abbreviations=None, tokens=None)
 ```
 
-Segmenter of texts in one language: it gives the tokens and the sentences of a text as spans of it, and the [document](document.md) of a text. The text is never changed. A segmenter is immutable: create it once and use it throughout the program, from several threads at once, which segment long texts in parallel; it can be pickled and equals the segmenters of the same language and lists.
+Segmenter of texts in one language: it gives the tokens and the sentences of a text as spans of it, and the [document](document.md) of a text. The text is never changed, and a lone surrogate, as in JSON cut in the middle of a character, counts as U+FFFD and stays in the spans. A segmenter is immutable: create it once and use it throughout the program, from several threads at once, which segment long texts in parallel; it can be pickled and equals the segmenters of the same language and lists.
 
 Exceptions:
 
@@ -77,10 +77,6 @@ The tokens of the text in order. Whitespace, control characters and the invisibl
 | :-------- | :--- | :------ | :---------- |
 | `text` | `str` | - | Text |
 
-Exceptions:
-
-- `UnicodeEncodeError` - the text contains a lone surrogate.
-
 === "Code"
 
     ``` python
@@ -111,10 +107,6 @@ The sentences of the text in order, each from the start of its first token to th
 | Parameter | Type | Default | Description |
 | :-------- | :--- | :------ | :---------- |
 | `text` | `str` | - | Text |
-
-Exceptions:
-
-- `UnicodeEncodeError` - the text contains a lone surrogate.
 
 === "Code"
 
@@ -150,10 +142,6 @@ The [document](document.md) of the text: its tokens as `tokenize` gives them, on
 | :-------- | :--- | :------ | :---------- |
 | `text` | `str` | - | Text |
 
-Exceptions:
-
-- `UnicodeEncodeError` - the text contains a lone surrogate.
-
 === "Code"
 
     ``` python
@@ -180,7 +168,7 @@ Exceptions:
 pipe(texts, *, threads=1, batch_size=1000)
 ```
 
-The documents of many texts, as `segment` gives them, in the order of the texts. The texts are taken from the iterable as the documents are asked for, `batch_size` at a time, and every batch is segmented without the GIL, on up to `threads` threads - at most one per core and per 4 KB of the batch: other Python threads run meanwhile, and several threads speed up a large collection of texts even with the GIL. A text that is not a string or holds a lone surrogate raises its error after the documents of the texts before it and ends the iteration, as does an error of the iterable; an interrupt such as `KeyboardInterrupt` comes at once. One iterator serves one thread at a time: a call while another runs raises `ValueError`.
+The documents of many texts, as `segment` gives them, in the order of the texts. The texts are taken from the iterable as the documents are asked for, `batch_size` at a time, and every batch is segmented without the GIL, on up to `threads` threads - at most one per core and per 4 KB of the batch: other Python threads run meanwhile, and several threads speed up a large collection of texts even with the GIL. A text that is not a string raises its error after the documents of the texts before it and ends the iteration, as does an error of the iterable; an interrupt such as `KeyboardInterrupt` comes at once. One iterator serves one thread at a time: a call while another runs raises `ValueError`.
 
 | Parameter | Type | Default | Description |
 | :-------- | :--- | :------ | :---------- |
@@ -191,8 +179,7 @@ The documents of many texts, as `segment` gives them, in the order of the texts.
 Exceptions:
 
 - `ValueError` - `threads` or `batch_size` is less than 1;
-- `TypeError` - `texts` is a string or not iterable, or a text is not a string;
-- `UnicodeEncodeError` - a text contains a lone surrogate.
+- `TypeError` - `texts` is a string or not iterable, or a text is not a string.
 
 === "Code"
 
@@ -255,7 +242,7 @@ A piece of a text with its position: `start` is the position of its first charac
 
 ## Rust
 
-The segmenter is the Rust crate `anyseg`, with every language behind a Cargo feature: `ru` (Russian, on by default). It has the same `Segmenter` with `tokenize`, `sentenize` and `segment`, and gives positions in bytes of the UTF-8 string.
+The segmenter is the Rust crate `anyseg`, with every language behind a Cargo feature: `ru` (Russian, on by default). It has the same `Segmenter` with `tokenize`, `sentenize` and `segment`, and gives positions in bytes of the UTF-8 string. `segment_string` takes a `String` without copying it, and `ConlluWriter` writes documents - the pieces of a long text - into one CoNLL-U, with the sentences numbered through them.
 
 ``` rust
 use anyseg::Segmenter;

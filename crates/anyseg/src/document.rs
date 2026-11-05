@@ -134,14 +134,14 @@ fn fitted<T: Copy>(vector: Vec<T>) -> Vec<T> {
 }
 
 /// The bit of an end in [`Values`] that tells that the item has a value, which may be empty
-const PRESENT: u32 = 1 << 31;
+pub(crate) const PRESENT: u32 = 1 << 31;
 
 /// Optional strings, one per item, in one buffer: the end of every item in it, with the bit [`PRESENT`]. No items
 /// at all when none has a value
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Values {
-    text: String,
-    ends: Vec<u32>,
+    pub(crate) text: String,
+    pub(crate) ends: Vec<u32>,
 }
 
 /// The values of one document overflow the buffer of [`Values`]: 2 GiB
@@ -150,6 +150,7 @@ pub(crate) struct TooLarge;
 
 impl Values {
     /// The values of the items in order
+    #[cfg(test)]
     pub(crate) fn collect<'a>(
         items: impl IntoIterator<Item = Option<&'a str>>,
     ) -> Result<Self, TooLarge> {
@@ -200,6 +201,75 @@ impl Values {
 
     pub(crate) fn is_empty(&self) -> bool {
         self.ends.is_empty()
+    }
+}
+
+fn wrong_length(name: &str, given: usize, words: usize) -> DocumentError {
+    DocumentError(format!("{name} has {given} values for {words} words"))
+}
+
+/// The values of a column, checked for a document of a number of words: the Python module fills it from a list while
+/// the document may be in use, and sets it under the lock
+#[doc(hidden)]
+#[derive(Debug)]
+pub struct CheckedColumn {
+    column: Column,
+    words: usize,
+    values: Values,
+}
+
+impl CheckedColumn {
+    /// The values of a column of a document of `words` words.
+    ///
+    /// # Errors
+    ///
+    /// [`DocumentError`] if there is not one value per word, a value is empty, a lemma or MISC holds a tab or a line
+    /// break or another value holds whitespace.
+    pub fn new<S: AsRef<str>>(
+        column: Column,
+        values: impl IntoIterator<Item = Option<S>>,
+        words: usize,
+    ) -> Result<Self, DocumentError> {
+        // CoNLL-U allows spaces in lemmas and MISC, not in the other columns
+        let (wrong, what): (fn(char) -> bool, &str) = match column {
+            Column::Lemma | Column::Misc => {
+                (|c| matches!(c, '\t' | '\n' | '\r'), "a tab or a line break")
+            }
+            _ => (char::is_whitespace, "whitespace"),
+        };
+        let mut collected = Values::default();
+        collected.ends.reserve_exact(words);
+        let (mut given, mut invalid, mut large) = (0, None, false);
+        for value in values {
+            let value = value.as_ref().map(|value| value.as_ref());
+            if value.is_some_and(|value| value.is_empty() || value.contains(wrong)) {
+                invalid.get_or_insert(given);
+            }
+            if given < words {
+                large |= collected.push(value).is_err();
+            }
+            given += 1;
+        }
+        if given != words {
+            return Err(wrong_length(column.name(), given, words));
+        }
+        if let Some(word) = invalid {
+            return Err(DocumentError(format!(
+                "{} of word {word} is empty or holds {what}",
+                column.name()
+            )));
+        }
+        if large {
+            return Err(DocumentError(format!(
+                "{} of the document exceeds 2 GiB",
+                column.name()
+            )));
+        }
+        Ok(CheckedColumn {
+            column,
+            words,
+            values: collected.finished(),
+        })
     }
 }
 
@@ -574,49 +644,49 @@ impl Document {
         }
     }
 
-    /// Set word columns and heads at once; nothing changes if a value is wrong.
+    /// Set word columns and heads at once; nothing changes if a value is wrong. The values of a column are any
+    /// iterable of optional strings, so that they need not be on the heap one by one.
     ///
     /// # Errors
     ///
     /// [`DocumentError`] if a list has not one value per word, a value is empty, a lemma or MISC holds a tab or
     /// a line break or another value holds whitespace, or a head is not 0 or the ID of a word of its sentence.
-    pub fn set_columns(
+    pub fn set_columns<V, S>(
         &mut self,
-        columns: Vec<(Column, Vec<Option<String>>)>,
+        columns: impl IntoIterator<Item = (Column, V)>,
+        heads: Option<Vec<Option<u32>>>,
+    ) -> Result<(), DocumentError>
+    where
+        V: IntoIterator<Item = Option<S>>,
+        S: AsRef<str>,
+    {
+        let count = self.word_count();
+        let columns = columns
+            .into_iter()
+            .map(|(column, values)| CheckedColumn::new(column, values, count))
+            .collect::<Result<Vec<_>, _>>()?;
+        self.set_checked_columns(columns, heads)
+    }
+
+    /// Set columns that are checked already, and heads, at once; nothing changes if a head is wrong.
+    ///
+    /// # Errors
+    ///
+    /// [`DocumentError`] if a column is not of this document or a head is not 0 or the ID of a word of its sentence.
+    #[doc(hidden)]
+    pub fn set_checked_columns(
+        &mut self,
+        columns: Vec<CheckedColumn>,
         heads: Option<Vec<Option<u32>>>,
     ) -> Result<(), DocumentError> {
         let count = self.word_count();
-        let length = |name: &str, length: usize| {
-            if length == count {
-                Ok(())
-            } else {
-                Err(DocumentError(format!(
-                    "{name} has {length} values for {count} words"
-                )))
-            }
-        };
-        for (column, values) in &columns {
-            length(column.name(), values.len())?;
-            // CoNLL-U allows spaces in lemmas and MISC, not in the other columns
-            let (wrong, what): (fn(char) -> bool, &str) = match column {
-                Column::Lemma | Column::Misc => {
-                    (|c| matches!(c, '\t' | '\n' | '\r'), "a tab or a line break")
-                }
-                _ => (char::is_whitespace, "whitespace"),
-            };
-            for (word, value) in values.iter().enumerate() {
-                if let Some(value) = value
-                    && (value.is_empty() || value.contains(wrong))
-                {
-                    return Err(DocumentError(format!(
-                        "{} of word {word} is empty or holds {what}",
-                        column.name()
-                    )));
-                }
-            }
+        if let Some(column) = columns.iter().find(|column| column.words != count) {
+            return Err(wrong_length(column.column.name(), column.words, count));
         }
         if let Some(heads) = &heads {
-            length("head", heads.len())?;
+            if heads.len() != count {
+                return Err(wrong_length("head", heads.len(), count));
+            }
             for (word, head) in heads.iter().enumerate() {
                 if let Some(head) = *head {
                     let words = self.sentence(self.word_sentence(word)).words.len();
@@ -628,19 +698,9 @@ impl Document {
                 }
             }
         }
-        let columns = columns
-            .into_iter()
-            .map(|(column, values)| {
-                Values::collect(values.iter().map(Option::as_deref))
-                    .map(|values| (column, values))
-                    .map_err(|TooLarge| {
-                        DocumentError(format!("{} of the document exceeds 2 GiB", column.name()))
-                    })
-            })
-            .collect::<Result<Vec<_>, _>>()?;
         let mut all = self.columns.take().map(|all| *all).unwrap_or_default();
-        for (column, values) in columns {
-            all[column as usize] = values;
+        for column in columns {
+            all[column.column as usize] = column.values;
         }
         self.columns = (!all.iter().all(Values::is_empty)).then(|| Box::new(all));
         if let Some(heads) = heads {
@@ -851,7 +911,28 @@ mod tests {
             );
         }
         assert_eq!(doc.column(Column::Upos, 0), Some("NOUN"));
-        doc.set_columns(vec![(Column::Upos, vec![None, None, None])], None)
+        // Any iterable of optional strings; a wrong length of an iterator counts all of it
+        let words = ["Ёж", "идти", "кот"];
+        doc.set_columns(
+            [(Column::Lemma, words.iter().map(|word| Some(*word)))],
+            None,
+        )
+        .unwrap();
+        assert_eq!(doc.column(Column::Lemma, 1), Some("идти"));
+        assert_eq!(
+            doc.set_columns(
+                [(
+                    Column::Lemma,
+                    words.iter().chain(&words).map(|word| Some(*word))
+                )],
+                None
+            )
+            .unwrap_err(),
+            DocumentError("lemma has 6 values for 3 words".to_owned())
+        );
+        doc.set_columns([(Column::Lemma, [None::<&str>; 3])], None)
+            .unwrap();
+        doc.set_columns([(Column::Upos, [None::<&str>; 3])], None)
             .unwrap();
         assert!(doc.columns.is_none());
         assert!(doc.token_words.is_empty() && doc.word_tokens.is_empty());

@@ -19,6 +19,7 @@ Description:
     from_doc convert a document of anySeg to a spaCy document and back
 """
 
+import re
 import unicodedata
 from collections.abc import Callable, Iterable, Iterator
 from typing import Any
@@ -50,6 +51,9 @@ SEPARATORS = "".join(
     for character in map(chr, range(0x3001))
     if character.isspace() or unicodedata.category(character) == "Cc"
 ) + ("\u00ad\u200b\u200c\u200d\u2060\ufeff")
+
+# What spaCy cannot keep: its strings are in UTF-8
+SURROGATES = re.compile(r"[\ud800-\udfff]")
 
 
 @registry.tokenizers("anyseg.Tokenizer.v1")
@@ -88,10 +92,11 @@ class Tokenizer:
         [('Кот', ''), ('\n\n', ''), ('спит', ' '), (' ', ''), ('тут', '')]
 
     Description:
-        The text of a document is the text given. One space after a token is its whitespace,
-        and the rest of the text between tokens is a token of its own, as spaCy keeps
-        whitespace. In a pipeline the tokenizer is set by its name in the configuration, so that
-        a saved pipeline loads with it
+        The text of a document is the text given, except that a lone surrogate, which spaCy
+        cannot keep, is U+FFFD. One space after a token is its whitespace, and the rest of the
+        text between tokens is a token of its own with is_space, as spaCy keeps whitespace. In a
+        pipeline the tokenizer is set by its name in the configuration, so that a saved pipeline
+        loads with it
 
     Arguments:
         vocab (Vocab): Vocabulary of the pipeline
@@ -124,12 +129,9 @@ class Tokenizer:
 
         Returns:
             Doc: Document
-
-        Raises:
-            UnicodeEncodeError: If the text contains a lone surrogate
         """
         tokens = self.segmenter.segment(text).tokens
-        words, spaces, _ = layout(text, tokens.starts, tokens.ends)
+        words, spaces, _ = layout(self.vocab, text, tokens.starts, tokens.ends)
         return Doc(self.vocab, words=words, spaces=spaces)
 
     def pipe(self, texts: Iterable[str], batch_size: int = 1000) -> Iterator[Doc]:
@@ -146,11 +148,10 @@ class Tokenizer:
         Raises:
             ValueError: If batch_size is less than 1
             TypeError: If texts is a string or not iterable, or a text is not a string
-            UnicodeEncodeError: If a text contains a lone surrogate
         """
         for document in self.segmenter.pipe(texts, batch_size=batch_size):
             tokens = document.tokens
-            words, spaces, _ = layout(document.text, tokens.starts, tokens.ends)
+            words, spaces, _ = layout(self.vocab, document.text, tokens.starts, tokens.ends)
             yield Doc(self.vocab, words=words, spaces=spaces)
 
     def __repr__(self) -> str:
@@ -268,9 +269,6 @@ class Sentencizer:
 
         Returns:
             Doc: The same document
-
-        Raises:
-            UnicodeEncodeError: If the text contains a lone surrogate
         """
         if not len(doc):
             return doc
@@ -340,7 +338,7 @@ def to_doc(document: Document, vocab: Vocab) -> Doc:
 
     Description:
         The text of the spaCy document is the text of the document, with whitespace between the
-        tokens as the tokenizer makes it. Sentences come from the document, and lemmas, parts of
+        tokens as the tokenizer makes it and U+FFFD for a lone surrogate. Sentences come from the document, and lemmas, parts of
         speech, tags and features from its columns where set. Heads and relations are set when
         every word has a head, and the heads of every sentence must form a tree with one root:
         the relation root becomes ROOT, a word without a relation gets dep
@@ -361,7 +359,7 @@ def to_doc(document: Document, vocab: Vocab) -> Doc:
     tokens = document.tokens
     if len(document.words) != len(tokens):
         raise ValueError("a document with multiword tokens cannot be converted")
-    words, spaces, indices = layout(document.text, tokens.starts, tokens.ends)
+    words, spaces, indices = layout(vocab, document.text, tokens.starts, tokens.ends)
     sentence_starts: list[bool | int | None] = [not index for index in range(len(words))]
     for sentence in document.sentences[1:]:
         sentence_starts[indices[sentence.tokens[0].index]] = True
@@ -617,16 +615,18 @@ def relations(
 
 
 def layout(
-    text: str, starts: list[int], ends: list[int]
+    vocab: Vocab, text: str, starts: list[int], ends: list[int]
 ) -> tuple[list[str], list[bool], list[int]]:
     """
     Words and spaces of a spaCy document of the tokens of a text
 
     Description:
         One space after a token is its whitespace, and the rest of the text between tokens is a
-        word of its own, as spaCy keeps whitespace
+        word of its own with is_space, as spaCy keeps whitespace. A lone surrogate is U+FFFD, of
+        the same length
 
     Arguments:
+        vocab (Vocab): Vocabulary of the pipeline
         text (str): Text
         starts (list[int]): Positions of the first characters of the tokens, in order
         ends (list[int]): Positions after their last characters
@@ -635,29 +635,33 @@ def layout(
         tuple[list[str], list[bool], list[int]]: Words, spaces and the index of every token among
             the words
     """
+    try:
+        text.encode()
+    except UnicodeEncodeError:
+        text = SURROGATES.sub("\ufffd", text)
     words: list[str] = []
     spaces: list[bool] = []
     indices: list[int] = []
+
+    def add_gap(gap: str) -> None:
+        if words and gap[0] == " ":
+            spaces[-1] = True
+            gap = gap[1:]
+        if gap:
+            # Invisible separators are no whitespace to spaCy: the components after the tokenizer
+            # would take them for words
+            vocab[gap].is_space = True
+            words.append(gap)
+            spaces.append(False)
+
     position = 0
     for start, end in zip(starts, ends, strict=True):
         if start > position:
-            gap = text[position:start]
-            if words and gap[0] == " ":
-                spaces[-1] = True
-                gap = gap[1:]
-            if gap:
-                words.append(gap)
-                spaces.append(False)
+            add_gap(text[position:start])
         indices.append(len(words))
         words.append(text[start:end])
         spaces.append(False)
         position = end
     if position < len(text):
-        gap = text[position:]
-        if words and gap[0] == " ":
-            spaces[-1] = True
-            gap = gap[1:]
-        if gap:
-            words.append(gap)
-            spaces.append(False)
+        add_gap(text[position:])
     return words, spaces, indices

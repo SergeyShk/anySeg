@@ -31,7 +31,7 @@ The tokenizer and the component register with spaCy when the package is installe
 
 ## Tokenizer { #tokenizer }
 
-`anyseg.Tokenizer.v1` is the tokenizer of the section `[nlp.tokenizer]` of a configuration. The text of a `Doc` is the text given, and the whitespace is kept as spaCy keeps it: one space after a token is its `whitespace_`, and the rest of the text between tokens - line breaks, more spaces, invisible separators - is a token of its own. `nlp.tokenizer.pipe(texts, batch_size=1000)` gives the documents of many texts, segmented in batches without the GIL as [`Segmenter.pipe`](segmenter.md#pipe) does.
+`anyseg.Tokenizer.v1` is the tokenizer of the section `[nlp.tokenizer]` of a configuration. The text of a `Doc` is the text given, except that a lone surrogate, which spaCy cannot keep, is U+FFFD. The whitespace is kept as spaCy keeps it: one space after a token is its `whitespace_`, and the rest of the text between tokens - line breaks, more spaces, invisible separators - is a token of its own with `is_space`. `nlp.tokenizer.pipe(texts, batch_size=1000)` gives the documents of many texts, segmented in batches without the GIL as [`Segmenter.pipe`](segmenter.md#pipe) does.
 
 | Parameter | Type | Default | Description |
 | :-------- | :--- | :------ | :---------- |
