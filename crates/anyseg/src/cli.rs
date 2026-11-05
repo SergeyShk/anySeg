@@ -584,9 +584,10 @@ impl Writer<'_> {
                 if self.text.len() >= PARAGRAPH || !ended {
                     self.write_long().map_err(Failure::Write)?;
                 }
-            } else if ended {
+            } else if ended || closes_paragraph(&format!("\n{line}")) {
                 // A blank line ends the paragraphs before it, which are segmented as in the whole text: in pieces of
-                // about INPUT_BUFFER, or as soon as the next read may wait. It also ends a paragraph written whole
+                // about INPUT_BUFFER, or as soon as the next read may wait. It also ends a paragraph written whole, and
+                // so does a piece of a long line of separators that holds the end of a paragraph
                 if blank(&self.text) {
                     self.continued = false;
                 }
@@ -992,6 +993,31 @@ mod tests {
             let (_, out, _) = command(&["-l", "ru", "-f", "sentences"], text.as_bytes());
             assert!(out.ends_with("\n\nЁж идёт.\n"), "{out}");
         }
+        // The end of a paragraph in the separators after a sentence written whole, in a text of separators alone
+        let dropped = " ".repeat(2 * PARAGRAPH);
+        for text in [
+            format!(
+                "{}кот.\u{2029} {}",
+                "мама мыла раму ".repeat(PARAGRAPH / 60),
+                "я".repeat(PARAGRAPH)
+            ),
+            format!("Ёж{dropped}\u{2029}{dropped}кот"),
+        ] {
+            let (_, conllu, _) = command(&args, text.as_bytes());
+            assert_eq!(conllu.matches("# newpar").count(), 2, "{text:?}");
+        }
+        // And in a piece of a long line of separators, which is dropped, before text on the same line
+        for separator in ["\u{2029}", "\u{2028}", "\u{c}", "\u{85}"] {
+            let text = format!("Кот спит.\n{dropped}{separator}{dropped}Ёж идёт.");
+            let (_, conllu, _) = command(&args, text.as_bytes());
+            assert_eq!(conllu.matches("# newpar").count(), 2, "{separator:?}");
+            let whole = Segmenter::new("ru").unwrap().segment(&text);
+            assert_eq!(conllu, whole.to_conllu());
+        }
+        // A line of about two pieces is cut too
+        let line = "мама мыла раму ".repeat(PARAGRAPH / 15);
+        let (_, conllu, _) = command(&args, line.as_bytes());
+        assert!(conllu.matches("# sent_id").count() > 1, "{conllu}");
         let separated = "Мама мыла раму.\u{2029}".repeat(PARAGRAPH / 10);
         let (_, conllu, _) = command(&args, separated.as_bytes());
         assert_eq!(conllu.matches("# newpar").count(), PARAGRAPH / 10);

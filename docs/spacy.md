@@ -53,7 +53,7 @@ The tokenizer and the component register with spaCy when the package is installe
     [('Язык', ' '), ('C++', ''), ('\n\n', ''), ('Кот', ' '), (' ', ''), ('спит', '')]
     ```
 
-The settings are in the configuration, so a saved pipeline loads with the tokenizer. A trained pipeline takes it when it is loaded:
+The settings are in the configuration, so a saved pipeline loads with the tokenizer, and a pickled `Doc` of such a pipeline needs anySeg to load. A trained pipeline takes it when it is loaded:
 
 ``` python
 nlp = spacy.load("ru_core_news_sm", config={"nlp": {"tokenizer": tokenizer}})
