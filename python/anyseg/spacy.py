@@ -60,8 +60,8 @@ SURROGATES = re.compile(r"[\ud800-\udfff]")
 # The columns of a word kept in the extension of its multiword token, besides its form
 WORD_COLUMNS = ("lemma", "upos", "xpos", "feats", "head", "deprel", "deps", "misc")
 
-if not Token.has_extension("anyseg_words"):
-    Token.set_extension("anyseg_words", default=None)
+# Forced: the module may be imported again, and the values are kept in the documents anyway
+Token.set_extension("anyseg_words", default=None, force=True)
 
 
 @registry.tokenizers("anyseg.Tokenizer.v1")
