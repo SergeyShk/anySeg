@@ -184,17 +184,19 @@ An emoticon or an emoji after final marks stays in the sentence; without them, i
 
 ### Numbered items
 
-A number with a period at the start of a paragraph or a line marks a list item and stays in its sentence. Inside a paragraph, after the end of a sentence, such a number before a capital letter is a sentence of its own, as the treebanks most often mark it.
+A number with a period at the start of a paragraph or a line marks a list item and stays in its sentence, as the UD guidelines ask. So does a number of up to three digits inside a line before a capital letter: at the start of a sentence, when the sentence before or after it has the number next to it, and after a colon, when the sentence after it starts with the next number. Any other number with a period after the end of a sentence, before a capital letter, is a sentence of its own: a heading, a year, an answer.
 
 === "Code"
 
     ``` python
+    [span.text for span in segmenter.sentenize("План. 1. Прийти. 2. Уйти.")]
     [span.text for span in segmenter.sentenize("1. Введение. Текст. 2. Обзор")]
     ```
 
 === "Result"
 
     ```
+    ['План.', '1. Прийти.', '2. Уйти.']
     ['1. Введение.', 'Текст.', '2.', 'Обзор']
     ```
 
@@ -204,7 +206,7 @@ A paragraph is the part of the text between blank lines (or the paragraph separa
 
 *   before a list item - a bullet, an emoji, «1)», «1.», «а)» - or a line of dialogue;
 *   at a line without words: «***», «-»;
-*   after a line without final punctuation before a line with a capital letter: a heading, a line of a post. In a paragraph where some line ends with a comma or a semicolon before a line with a capital letter, as in verse, or some line goes on with a lowercase letter, as in text wrapped at the width of the page, this rule is silent for all its lines.
+*   after a line without final punctuation before a line with a capital letter: a heading, a line of a post. This rule is silent in text wrapped at the width of the page, where some line goes on with a lowercase letter, and in verse, except after a line without lowercase letters in a paragraph that has them, which is a heading. A paragraph reads as verse when some line ends with a comma or a semicolon before a line with a capital letter, or when its lines rhyme. Verse without rhymes and such marks splits by lines, as a post does.
 
 === "Code"
 
@@ -213,6 +215,8 @@ A paragraph is the part of the text between blank lines (or the paragraph separa
     [span.text for span in segmenter.sentenize("Нужно взять:\n- паспорт\n- СНИЛС\n1) полис\n✅ фото")]
     verse = "Скажи-ка, дядя, ведь не даром\nМосква, спалённая пожаром,\nФранцузу отдана?\nВедь были ж схватки боевые"
     [span.text for span in segmenter.sentenize(verse)]
+    rhymes = "Над тихой речкой встал туман\nИ скрыл прибрежные кусты\nОтец уехал в дальний стан\nИ сжёг за собою мосты."
+    [span.text for span in segmenter.sentenize(rhymes)]
     ```
 
 === "Result"
@@ -221,6 +225,7 @@ A paragraph is the part of the text between blank lines (or the paragraph separa
     ['Глава 1', 'Введение', 'Это текст главы.', 'Он короткий.']
     ['Нужно взять:', '- паспорт', '- СНИЛС', '1) полис', '✅ фото']
     ['Скажи-ка, дядя, ведь не даром\nМосква, спалённая пожаром,\nФранцузу отдана?', 'Ведь были ж схватки боевые']
+    ['Над тихой речкой встал туман\nИ скрыл прибрежные кусты\nОтец уехал в дальний стан\nИ сжёг за собою мосты.']
     ```
 
 Every line of a [document](document.md#line) tells how it begins: `"author"` for a break the author made - a verse line, a list item, a paragraph per line - and `"typeset"` for a wrap at the width of the page, as in text extracted from PDF: outside verse, in a paragraph where some line goes on with a lowercase letter, a line that does not start a sentence.
