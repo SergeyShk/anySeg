@@ -1,0 +1,26 @@
+# How the mechanism cuts Russian: UD where it decides, otherwise SynTagRus.
+
+# A hyphen inside a word: «Ростова-на-Дону» and «учеными-энтузиастами» split, «северо-западный» does not
+hyphens = inflected
+# The particle after a hyphen that the words of indefinite.txt keep: «кто-то»
+indefinite_particle = то
+# «2-3» and «XIX-XX» are ranges of three tokens
+digit_ranges = split
+roman_ranges = split
+# «?!» is one token
+final_marks = mixed
+# «т.е.» is «т.» and «е.»
+dotted = split
+# «в 1914 г.» at the end of a sentence is «г» and «.»
+final_period = token
+# «20%-ный» is one token
+percent_endings = yes
+# «3 000» is one token, and «3 000,5»; digits in groups with a phone number's length are not
+digit_groups = space
+phone_digits = 10-11
+# A single letter of another script before a Cyrillic word ends a sentence: «через x. Тогда»
+script = cyrillic
+# Stress marks are not part of a word in the lists: «ку́рица» is «курица»
+fold_marks = U+0300 U+0301
+# The letters that make one token with a degree sign: «°С», with a Cyrillic letter as well
+degree_letters = CFС

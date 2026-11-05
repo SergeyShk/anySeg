@@ -2,8 +2,8 @@
 
 use crate::Span;
 use crate::document::{Line, LineBreak};
-use crate::lang::Tables;
-use crate::tokens::{EMOTICONS, Exceptions, is_alpha, is_emoji, is_mark, is_word};
+use crate::lang::{DigitGroups, Tables};
+use crate::tokens::{Exceptions, is_alpha, is_emoji, is_mark, is_word};
 
 /// Marks that start a list item at the beginning of a line
 const BULLETS: &str = "-‐‒–—―−•·*▪◦‣●■►▸→✓✔";
@@ -42,16 +42,15 @@ fn is_dash(piece: &str) -> bool {
 }
 
 /// An emoji or an emoticon: «😀», «:)», «)))»; decided by the first byte, as it runs for every token
-fn is_emoticon(piece: &str) -> bool {
+fn is_emoticon(piece: &str, tables: &Tables) -> bool {
     let bytes = piece.as_bytes();
-    match bytes.first() {
+    let face = match bytes.first() {
         Some(b':' | b';' | b'=') => bytes.len() > 1,
         Some(&bracket @ (b')' | b'(')) => bytes.len() > 1 && bytes.iter().all(|&b| b == bracket),
-        // The first bytes of «^_^», «-_-», «<3», «o_O» and «о_О»
-        Some(b'^' | b'-' | b'<' | b'o' | b'O' | 0xD0) => EMOTICONS.contains(&piece),
         Some(0xE2 | 0xF0) => piece.chars().next().is_some_and(is_emoji),
         _ => false,
-    }
+    };
+    face || tables.is_listed_emoticon(piece)
 }
 
 fn is_stars(piece: &str) -> bool {
@@ -84,16 +83,34 @@ fn is_number(piece: &str) -> bool {
     piece.starts_with(|c: char| c.is_ascii_digit()) || piece.chars().all(|c| "IVXLCDM".contains(c))
 }
 
-/// An integer or a decimal number, which a unit may follow, but not a year, a date or a time: «5», «1,5», «15 000»
-fn is_quantity(piece: &str) -> bool {
+/// An integer or a decimal number, which a unit may follow, but not a year, a date or a time: «5», «1,5», «15 000»,
+/// and with marks between groups of three digits where the language groups digits so: «1.012,72»
+fn is_quantity(piece: &str, groups: DigitGroups) -> bool {
     let year = piece.len() == 4
         && piece.starts_with(['1', '2'])
         && piece.bytes().all(|byte| byte.is_ascii_digit());
+    let group_mark = match groups {
+        DigitGroups::Space => None,
+        DigitGroups::Point => Some('.'),
+        DigitGroups::Comma => Some(','),
+    };
+    let marks = piece
+        .char_indices()
+        .filter(|&(at, c)| {
+            matches!(c, ',' | '.')
+                && !(Some(c) == group_mark
+                    && piece[at + 1..]
+                        .bytes()
+                        .take_while(u8::is_ascii_digit)
+                        .count()
+                        == 3)
+        })
+        .count();
     piece.starts_with(|c: char| c.is_ascii_digit())
         && piece.chars().all(|c| {
             c.is_ascii_digit() || matches!(c, ',' | '.' | ' ' | '\u{a0}' | '\u{202f}' | '\u{2009}')
         })
-        && piece.matches([',', '.']).count() <= 1
+        && marks <= 1
         && !year
 }
 
@@ -212,7 +229,11 @@ pub(crate) fn split(
                 _ => {}
             }
             let ends = position == last && (boundary || last + 1 == tokens.len());
-            if ends && is_abbreviation(piece) && !exceptions.tokens.contains(piece) {
+            if ends
+                && tables.conventions.final_period_token
+                && is_abbreviation(piece)
+                && !exceptions.tokens.contains(piece)
+            {
                 out.tokens.push(Span {
                     start: span.start,
                     end: span.end - 1,
@@ -300,7 +321,7 @@ impl Splitter<'_> {
                 .filter(|&c| is_alpha(c))
                 .nth(1)
                 .is_some();
-        let emoticon = smile || is_emoticon(piece);
+        let emoticon = smile || is_emoticon(piece, self.tables);
         if !candidate && !stars && !emoticon {
             return (index, false);
         }
@@ -332,7 +353,7 @@ impl Splitter<'_> {
         // Emoticons after final marks stay in the sentence: «Ура! :)»
         while marks
             && last + 1 < count
-            && is_emoticon(self.piece(last + 1))
+            && is_emoticon(self.piece(last + 1), self.tables)
             && !self.line_start(last + 1)
         {
             last += 1;
@@ -410,8 +431,10 @@ impl Splitter<'_> {
         for position in (index.saturating_sub(3)..=index).rev() {
             let piece = self.piece(position);
             let abbreviation = is_abbreviation(piece) && lowercase(piece);
-            // A token of the user with inner periods keys as its parts: «т.д.» as «т д»
-            let word = if abbreviation {
+            // A token with inner periods keys as its parts: «т.д.» as «т д», «EE.UU.» as «ee uu»
+            let word = if abbreviation
+                || (is_abbreviation(piece) && piece[..piece.len() - 1].contains('.'))
+            {
                 piece[..piece.len() - 1]
                     .split('.')
                     .map(|part| self.tables.key(part))
@@ -457,14 +480,14 @@ impl Splitter<'_> {
     }
 
     /// Whether a single letter with a period before the capital letter at `next` is not an initial: a letter of
-    /// another script before a Cyrillic word, as a variable or a name («через x. Тогда», «Витамин C. Его»), or a
-    /// capital letter after a quantity, as a unit («5 А. Напряжение»)
+    /// another script before a word of the language, as a variable or a name («через x. Тогда», «Витамин C. Его»), or
+    /// a capital letter after a quantity, as a unit («5 А. Напряжение»)
     fn not_initial(&self, index: usize, next: usize) -> bool {
         let mut chars = self.piece(index).chars();
         let (Some(letter), Some('.'), None) = (chars.next(), chars.next(), chars.next()) else {
             return false;
         };
-        let cyrillic = |c: char| matches!(c, '\u{400}'..='\u{52f}');
+        let script = self.tables.conventions.script;
         let capital = self.tokens[next..]
             .iter()
             .take(2)
@@ -472,9 +495,10 @@ impl Splitter<'_> {
         let previous = index.checked_sub(1).map(|position| self.piece(position));
         let initials =
             previous.is_some_and(|piece| is_abbreviation(piece) && piece.chars().count() == 2);
-        (!initials && !cyrillic(letter) && capital.is_some_and(cyrillic))
+        (!initials && !script.contains(letter) && capital.is_some_and(|c| script.contains(c)))
             || (letter.is_uppercase()
-                && previous.is_some_and(is_quantity)
+                && previous
+                    .is_some_and(|piece| is_quantity(piece, self.tables.conventions.digit_groups))
                 && !(index >= 2 && self.piece(index - 2) == ":"))
     }
 
@@ -959,6 +983,9 @@ mod tests {
             .map(|span| span.slice(text))
             .collect();
         assert_eq!(spans, ["Купили хлеб и т.д.", "Потом ушли."]);
+        let custom = Segmenter::new("ru").unwrap().with_tokens(["Т.Д."]).unwrap();
+        let text = "Купили хлеб и Т.Д. Потом ушли.";
+        assert_eq!(custom.sentenize(text).len(), 2);
         assert_eq!(
             sentences("[12:01] Вася: привет\n[12:02] Петя: здарова"),
             ["[12:01] Вася: привет", "[12:02] Петя: здарова"]

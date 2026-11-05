@@ -8,8 +8,8 @@ use crate::Span;
 pub(crate) fn is_separator(character: char) -> bool {
     match character {
         '\0'..=' ' | '\u{7f}' => true,
-        // ASCII and the Russian alphabet skip the tables of Unicode
-        '!'..='~' | 'А'..='я' | 'Ё' | 'ё' => false,
+        // ASCII, the letters of Latin-1 and the Russian alphabet skip the tables of Unicode
+        '!'..='~' | '\u{c0}'..='\u{ff}' | 'А'..='я' | 'Ё' | 'ё' => false,
         _ => {
             character.is_whitespace()
                 || character.is_control()
