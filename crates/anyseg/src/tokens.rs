@@ -886,17 +886,21 @@ impl Scanner<'_> {
         Some(if period { stop + 1 } else { stop })
     }
 
-    /// Whether the part `piece` that ends at `end` starts a sentence glued to the short word `before`, and not an
-    /// abbreviation: «it.He», «vi.Yo», «no.Y luego»; but «Ph.D.», «M.Sc.», «p.ej.», «a.m.»
+    /// Whether the part `piece` that ends at `end` starts a sentence glued to the part `before`, and not an
+    /// abbreviation: «it.He», «vi.Yo», «no.Y luego», «EE.UU.La»; but «Ph.D», «M.Sc.», «p.ej.», «s.XX», «ee.uu.»
     fn glued(&self, before: &str, piece: &str, end: usize) -> bool {
+        let mut letters = piece.chars();
+        let capitalized = letters.next().is_some_and(char::is_uppercase)
+            && letters.next().is_some_and(char::is_lowercase);
+        let period = self.get(end) == Some('.');
+        if capitalized && !period {
+            return true;
+        }
         if !before.ends_with(char::is_lowercase) {
             return false;
         }
-        let word = before.chars().count() == 2;
-        if piece.chars().count() == 2 {
-            return word || piece.starts_with(char::is_uppercase);
-        }
-        word && self.get(end) != Some('.')
+        capitalized
+            || (before.chars().count() == 2 && before.chars().all(char::is_lowercase) && !period)
     }
 
     /// The end of a name of the language joined to the next word by a period: «Яндекс.Маркете»

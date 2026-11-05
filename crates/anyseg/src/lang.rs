@@ -595,6 +595,21 @@ mod conventions {
         );
         assert_eq!(sentence_count(&language(""), "Lo vi.Yo no"), 2);
         assert_eq!(
+            tokens(&language(""), "EE.UU.La casa, U.S.He said"),
+            ["EE.UU.", "La", "casa", ",", "U.S.", "He", "said"]
+        );
+        // A part with capitals, a final period and a part that is no word are an abbreviation
+        assert_eq!(
+            tokens(
+                &language(""),
+                "a Ph.D in math, Mr.T y ee.uu. o cc.oo. s.XX x"
+            ),
+            [
+                "a", "Ph.D", "in", "math", ",", "Mr.T", "y", "ee.uu.", "o", "cc.oo.", "s.XX", "x"
+            ]
+        );
+        assert_eq!(sentence_count(&language(""), "a Ph.D in math"), 1);
+        assert_eq!(
             tokens(&language(""), "M.Sc. p.ej. d.C. LL.D. K.O. x"),
             ["M.Sc.", "p.ej.", "d.C.", "LL.D.", "K.O.", "x"]
         );
