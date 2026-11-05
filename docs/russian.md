@@ -184,7 +184,7 @@ An emoticon or an emoji after final marks stays in the sentence; without them, i
 
 ### Numbered items
 
-A number with a period at the start of a paragraph or a line marks a list item and stays in its sentence, as the UD guidelines ask. So does a number of up to three digits inside a line, before a capital letter, when the sentence before or after it starts with the number next to it. Any other number with a period after the end of a sentence, before a capital letter, is a sentence of its own: a heading, a year, an answer.
+A number with a period at the start of a paragraph or a line marks a list item and stays in its sentence, as the UD guidelines ask. So does a number of up to three digits inside a line, at the start of a sentence or after a colon, before a capital letter, when the sentence before or after it has the number next to it. Any other number with a period after the end of a sentence, before a capital letter, is a sentence of its own: a heading, a year, an answer.
 
 === "Code"
 
@@ -206,7 +206,7 @@ A paragraph is the part of the text between blank lines (or the paragraph separa
 
 *   before a list item - a bullet, an emoji, «1)», «1.», «а)» - or a line of dialogue;
 *   at a line without words: «***», «-»;
-*   after a line without final punctuation before a line with a capital letter: a heading, a line of a post. This rule is silent in text wrapped at the width of the page, where some line goes on with a lowercase letter, and in verse, except after a line without lowercase letters, which is a heading. A paragraph reads as verse when some line ends with a comma, a semicolon or a dash before a line with a capital letter, or when its lines rhyme. Verse without rhymes and such marks splits by lines, as a post does.
+*   after a line without final punctuation before a line with a capital letter: a heading, a line of a post. This rule is silent in text wrapped at the width of the page, where some line goes on with a lowercase letter, and in verse, except after a line without lowercase letters in a paragraph that has them, which is a heading. A paragraph reads as verse when some line ends with a comma or a semicolon before a line with a capital letter, or when its lines rhyme. Verse without rhymes and such marks splits by lines, as a post does.
 
 === "Code"
 
