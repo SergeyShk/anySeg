@@ -11,25 +11,36 @@ pub(crate) fn has_multiword(tables: &Tables) -> bool {
     !tables.multiword.is_empty() || !tables.enclitics.is_empty()
 }
 
-/// The words of a token that holds several, in the case of the token. `after_word` tells that a word stands before it
-/// in its sentence: a token with a first capital letter there is a name, «Al Gore», «Bonaparte». Most tokens hold one
-/// word and a lowercase one is its own key, so it runs without a copy for every token
-pub(crate) fn expand(
-    tables: &Tables,
-    token: &str,
-    after_word: impl FnOnce() -> bool,
-) -> Option<Vec<String>> {
+/// The words of a token that holds several, in the case of the token; `previous` is the token before it in its
+/// sentence. Most tokens hold one word and a lowercase one is its own key, so it runs without a copy for every token
+pub(crate) fn expand(tables: &Tables, token: &str, previous: Option<&str>) -> Option<Vec<String>> {
     let upper = token.starts_with(char::is_uppercase);
     if !upper && !token.starts_with(char::is_lowercase) {
         return None;
     }
     let capitals = upper && !token.contains(char::is_lowercase);
-    if upper && !capitals && after_word() {
+    let after_word = tables.conventions.capital_after_word_whole
+        && previous
+            .is_some_and(|previous| previous == "," || previous.contains(char::is_alphanumeric));
+    if upper && !capitals && after_word {
         return None;
     }
     let key = key(tables, token);
     let words = match tables.multiword.get(key.as_ref()) {
-        Some(words) => words.clone(),
+        Some(words) => {
+            let excepted = tables
+                .multiword_exceptions
+                .get(key.as_ref())
+                .is_some_and(|words| {
+                    previous.is_some_and(|previous| words.contains(&tables.key(previous)))
+                });
+            if excepted {
+                return None;
+            }
+            words.clone()
+        }
+        // In capitals nothing tells a name from a verb after a word: «NAPOLEÓN BONAPARTE»
+        None if capitals && after_word => return None,
         None => enclitic_words(tables, &key)?,
     };
     Some(
@@ -95,9 +106,22 @@ fn enclitic_words(tables: &Tables, key: &str) -> Option<Vec<String>> {
         .then_some(words)
 }
 
-/// The verb before enclitics, without the marks that it took for them: a whole verb of the list or an ending after
-/// a vowel
+/// The verb before enclitics: as written if it ends with what keeps its marks, otherwise without the marks that it took
+/// for them; a whole verb of the list or an ending after a stem letter
 fn host<'a>(tables: &Tables, word: &'a str) -> Option<Cow<'a, str>> {
+    let after_stem = |verb: &str, ending: &String| {
+        let letters = &tables.conventions.enclitic_stem_letters;
+        verb.strip_suffix(ending.as_str())
+            .is_some_and(|stem| letters.is_empty() || stem.contains(letters.as_slice()))
+    };
+    if tables.enclitic_verbs.contains(word)
+        || tables
+            .enclitic_marked_endings
+            .iter()
+            .any(|ending| after_stem(word, ending))
+    {
+        return Some(Cow::Borrowed(word));
+    }
     let marks = &tables.conventions.enclitic_host_marks;
     let verb = if word.is_ascii() {
         Cow::Borrowed(word)
@@ -109,12 +133,16 @@ fn host<'a>(tables: &Tables, word: &'a str) -> Option<Cow<'a, str>> {
                 .collect(),
         )
     };
+    let refused = tables
+        .enclitic_refused_endings
+        .iter()
+        .any(|ending| verb.ends_with(ending.as_str()));
     let takes = tables.enclitic_verbs.contains(verb.as_ref())
-        || tables.enclitic_endings.iter().any(|ending| {
-            verb.strip_suffix(ending.as_str())
-                .is_some_and(|stem| stem.contains(['a', 'e', 'i', 'o', 'u', 'y']))
-        });
-    takes.then_some(verb)
+        || tables
+            .enclitic_endings
+            .iter()
+            .any(|ending| after_stem(&verb, ending));
+    (takes && !refused).then_some(verb)
 }
 
 #[cfg(all(test, feature = "es"))]
@@ -161,9 +189,20 @@ mod tests {
 
     #[test]
     fn names_stay_whole() {
-        for text in ["Vino Al Gore.", "Lo dijo Del Bosque.", "Vino Bonaparte."] {
-            assert_eq!(multiword(text), []);
+        for text in [
+            "Vino Al Gore.",
+            "Lo dijo Del Bosque.",
+            "Vinieron Clinton, Al Gore y Bush.",
+            "Ana, Dale Reid y Duarte.",
+            "NAPOLEÓN BONAPARTE Y JUAN CARLOS",
+            "Bonaparte fue general.",
+            "Ugarte declaró.",
+            "Montecarlo es caro.",
+            "LA MUERTE DE JUAN DUARTE",
+        ] {
+            assert_eq!(multiword(text), [], "{text}");
         }
+        assert_eq!(expanded("« Al llegar"), [["A", "el"]]);
         assert_eq!(expanded("Dijo: Al llegar"), [["A", "el"]]);
         assert_eq!(expanded("Fin. Del mercado"), [["De", "el"]]);
     }
@@ -181,6 +220,15 @@ mod tests {
             ("Hacerlo", vec!["Hacer", "lo"]),
             ("HACERLO", vec!["HACER", "LO"]),
             ("Va a compr\u{ad}arlo", vec!["comprar", "lo"]),
+            ("Quiere oírle", vec!["oír", "le"]),
+            ("Quiere oírselo", vec!["oír", "se", "lo"]),
+            ("Va a reírse", vec!["reír", "se"]),
+            ("Va a sonreírte", vec!["sonreír", "te"]),
+            ("Va a freírse", vec!["freír", "se"]),
+            ("Va a desoírlo", vec!["desoír", "lo"]),
+            ("Va a sofreírla", vec!["sofreír", "la"]),
+            ("Va a reírselo", vec!["reír", "se", "lo"]),
+            ("Está friéndolo", vec!["friendo", "lo"]),
         ] {
             assert_eq!(expanded(text), [words], "{text}");
         }
@@ -192,7 +240,6 @@ mod tests {
             ("Dámelo", vec!["Da", "me", "lo"]),
             ("Véase", vec!["Vea", "se"]),
             ("hazlo", vec!["haz", "lo"]),
-            ("Va a reírse", vec!["reír", "se"]),
         ] {
             assert_eq!(expanded(text), [words], "{text}");
         }
@@ -207,9 +254,27 @@ mod tests {
             "Me desperté y acerté.",
             "Carlos y Marla.",
             "El co-arte y 3-lo.",
+            "Inserte la tarjeta.",
+            "El injerte y el encarte.",
+            "Vino el gendarme y no se alarme.",
+            "Que converse con él.",
+            "La esquirla entró.",
+            "El contrafuerte cayó.",
+            "Reconvierte y reinvierte.",
+            "Subvierte el orden.",
+            "Los postmodernos.",
+            "El estraperlo.",
+            "Duerme tranquilo con la mente despierte.",
         ] {
             assert_eq!(multiword(text), [], "{text}");
         }
+    }
+
+    #[test]
+    fn tokens_that_stay_whole_after_a_word() {
+        assert_eq!(multiword("Pérez et al. 2010"), []);
+        assert_eq!(multiword("Pérez ET al 2010"), []);
+        assert_eq!(expanded("Pérez al mar"), [["a", "el"]]);
     }
 
     #[test]

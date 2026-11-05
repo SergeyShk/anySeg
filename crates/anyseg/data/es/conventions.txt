@@ -15,3 +15,7 @@ phone_digits = none
 script = latin
 # The accent of a verb goes when a pronoun joins it: «decírselo» is «decir», «se», «lo»
 enclitic_host_marks = U+0301
+# A verb has one of these letters before its ending
+enclitic_stem_letters = a e i o u y
+# A token with a first capital letter after a word or a comma is a name: «Al Gore», «, Del Bosque»
+capital_after_word = whole

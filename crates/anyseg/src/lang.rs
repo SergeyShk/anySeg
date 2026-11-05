@@ -85,6 +85,10 @@ pub(crate) struct Conventions {
     pub(crate) degree_letters: String,
     /// Marks that a verb loses when enclitics join it, after canonical decomposition
     pub(crate) enclitic_host_marks: Vec<char>,
+    /// Letters of which a verb that takes enclitics has one before its ending; none: any verb
+    pub(crate) enclitic_stem_letters: Vec<char>,
+    /// A token with a first capital letter after a word or a comma is a name, which stays whole
+    pub(crate) capital_after_word_whole: bool,
 }
 
 impl Default for Conventions {
@@ -104,6 +108,8 @@ impl Default for Conventions {
             fold_marks: Vec::new(),
             degree_letters: "CF".to_owned(),
             enclitic_host_marks: Vec::new(),
+            enclitic_stem_letters: Vec::new(),
+            capital_after_word_whole: false,
         }
     }
 }
@@ -192,6 +198,15 @@ impl Conventions {
                     }
                 }
                 "degree_letters" => conventions.degree_letters = value.to_owned(),
+                "enclitic_stem_letters" => {
+                    conventions.enclitic_stem_letters = value
+                        .split_whitespace()
+                        .filter_map(|letter| letter.chars().next())
+                        .collect();
+                }
+                "capital_after_word" => {
+                    conventions.capital_after_word_whole = flag("whole", "words");
+                }
                 _ => panic!("unknown convention {line:?}"),
             }
         }
@@ -218,6 +233,7 @@ struct Files {
     web_suffixes: &'static str,
     emoticons: &'static str,
     multiword: &'static str,
+    multiword_exceptions: &'static str,
     enclitics: &'static str,
     enclitic_hosts: &'static str,
     enclitic_exceptions: &'static str,
@@ -263,10 +279,16 @@ pub(crate) struct Tables {
     emoticon_lengths: u64,
     /// The words of the tokens that hold several
     pub(crate) multiword: HashMap<String, Vec<String>>,
+    /// Tokens of `multiword` that stay whole, and the words after which they do
+    pub(crate) multiword_exceptions: HashMap<String, Vec<String>>,
     /// Pronouns that join the end of a verb, the longest first
     pub(crate) enclitics: Vec<String>,
-    /// What a verb that takes enclitics ends with, after a vowel
+    /// What a verb that takes enclitics ends with after a stem letter, without the marks it loses
     pub(crate) enclitic_endings: Vec<String>,
+    /// The same with a mark of those: the verb keeps it
+    pub(crate) enclitic_marked_endings: Vec<String>,
+    /// What no verb that takes enclitics ends with
+    pub(crate) enclitic_refused_endings: Vec<String>,
     /// Whole verbs that take enclitics
     pub(crate) enclitic_verbs: HashSet<String>,
     /// Words that look like a verb with enclitics
@@ -321,7 +343,23 @@ impl Tables {
         let mut enclitics: Vec<String> = lines(files.enclitics).map(str::to_owned).collect();
         enclitics.sort_by_key(|enclitic| std::cmp::Reverse(enclitic.len()));
         let hosts = || lines(files.enclitic_hosts);
+        let marked = |ending: &&str| {
+            ending
+                .nfd()
+                .any(|character| conventions.enclitic_host_marks.contains(&character))
+        };
+        let endings: Vec<&str> = hosts().filter_map(|host| host.strip_prefix('-')).collect();
+        let mut multiword_exceptions: HashMap<String, Vec<String>> = HashMap::new();
+        for line in lines(files.multiword_exceptions) {
+            if let Some((word, token)) = line.split_once(char::is_whitespace) {
+                multiword_exceptions
+                    .entry(fold(token.trim(), &marks))
+                    .or_default()
+                    .push(fold(word, &marks));
+            }
+        }
         Tables {
+            multiword_exceptions,
             multiword: lines(files.multiword)
                 .map(|line| {
                     let mut parts = line.split_whitespace().map(str::to_owned);
@@ -330,12 +368,22 @@ impl Tables {
                 })
                 .collect(),
             enclitics,
-            enclitic_endings: hosts()
-                .filter_map(|host| host.strip_prefix('-'))
+            enclitic_endings: endings
+                .iter()
+                .filter(|ending| !marked(ending))
+                .map(|ending| (*ending).to_owned())
+                .collect(),
+            enclitic_marked_endings: endings
+                .iter()
+                .filter(|ending| marked(ending))
+                .map(|ending| (*ending).to_owned())
+                .collect(),
+            enclitic_refused_endings: hosts()
+                .filter_map(|host| host.strip_prefix('!'))
                 .map(str::to_owned)
                 .collect(),
             enclitic_verbs: hosts()
-                .filter(|host| !host.starts_with('-'))
+                .filter(|host| !host.starts_with(['-', '!']))
                 .map(str::to_owned)
                 .collect(),
             enclitic_exceptions: list(files.enclitic_exceptions),
@@ -452,6 +500,7 @@ pub(crate) fn tables(language: Language) -> &'static Tables {
                 Tables::new(Files {
                     conventions: include_str!("../data/es/conventions.txt"),
                     multiword: include_str!("../data/es/multiword.txt"),
+                    multiword_exceptions: include_str!("../data/es/multiword_exceptions.txt"),
                     enclitics: include_str!("../data/es/enclitics.txt"),
                     enclitic_hosts: include_str!("../data/es/enclitic_hosts.txt"),
                     enclitic_exceptions: include_str!("../data/es/enclitic_exceptions.txt"),
@@ -852,6 +901,39 @@ mod conventions {
         for text in ["Hola >_< Adiós", "Hola (^_^) Adiós", "Hola ⌐■_■ Adiós"] {
             assert_eq!(sentence_count(&tables, text), 2, "{text}");
         }
+    }
+
+    #[test]
+    fn multiword_tokens_are_data() {
+        use crate::words::expand;
+        let words = |list: &[&str]| Some(list.iter().map(|&word| word.to_owned()).collect());
+        let tables = Tables::new(Files {
+            multiword: "i'm i 'm\n",
+            enclitics: "ся\n",
+            enclitic_hosts: "-ть\n",
+            ..Files::default()
+        });
+        assert_eq!(expand(&tables, "мыться", None), words(&["мыть", "ся"]));
+        assert_eq!(expand(&tables, "I'm", Some("word")), words(&["I", "'m"]));
+        assert_eq!(
+            expand(&tables, "Мыться", Some("word")),
+            words(&["Мыть", "ся"])
+        );
+        let tables = Tables::new(Files {
+            conventions: "capital_after_word = whole\nenclitic_stem_letters = ы\n",
+            enclitics: "ся\n",
+            enclitic_hosts: "-ть\n!кать\n",
+            multiword_exceptions: "et i'm\n",
+            multiword: "i'm i 'm\n",
+            ..Files::default()
+        });
+        assert_eq!(expand(&tables, "I'm", Some("word")), None);
+        assert_eq!(expand(&tables, "I'm", Some(",")), None);
+        assert_eq!(expand(&tables, "I'm", Some("«")), words(&["I", "'m"]));
+        assert_eq!(expand(&tables, "i'm", Some("ET")), None);
+        assert_eq!(expand(&tables, "мыться", None), words(&["мыть", "ся"]));
+        assert_eq!(expand(&tables, "мыкаться", None), None);
+        assert_eq!(expand(&tables, "мчаться", None), None);
     }
 
     #[test]

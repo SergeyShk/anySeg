@@ -1,5 +1,5 @@
-# Tokens of several words, a token and its words on a line. Contractions, frequent imperatives, which rules cannot tell
-# from «título» and «película», and the infinitives written with an accent.
+# Tokens of several words, a token and its words on a line. Contractions and frequent imperatives, which rules cannot
+# tell from «título» and «película».
 del de el
 al a el
 
@@ -96,21 +96,3 @@ olvídate olvida te
 olvídalo olvida lo
 veámoslo veamos lo
 digámoslo digamos lo
-oírlo oír lo
-oírla oír la
-oírle oír le
-oírlos oír los
-oírlas oír las
-oírme oír me
-oírte oír te
-oírnos oír nos
-oírse oír se
-reírse reír se
-reírme reír me
-reírte reír te
-reírnos reír nos
-sonreírle sonreír le
-sonreírse sonreír se
-sonreírme sonreír me
-freírlo freír lo
-freírla freír la

@@ -392,26 +392,31 @@ impl Document {
         }
     }
 
-    /// Gives the words of the multiword tokens of a language to a segmented document. A document with 2 GiB of forms
-    /// keeps its later tokens as one word each
+    /// Gives the words of the multiword tokens of a language to a segmented document. A token whose forms do not fit
+    /// in 2 GiB stays one word
     pub(crate) fn expand_tokens(&mut self, tables: &Tables, exceptions: &Exceptions) {
         let mut multiword = Vec::new();
         for sentence in self.sentence_tokens.windows(2) {
             for token in sentence[0]..sentence[1] {
                 let piece = self.tokens[token].slice(&self.text);
-                let after_word = || {
-                    token > sentence[0]
-                        && self.tokens[token - 1]
-                            .slice(&self.text)
-                            .contains(char::is_alphanumeric)
-                };
-                if let Some(forms) = words::expand(tables, piece, after_word)
+                let previous =
+                    (token > sentence[0]).then(|| self.tokens[token - 1].slice(&self.text));
+                if let Some(forms) = words::expand(tables, piece, previous)
                     && !exceptions.tokens.contains(piece)
                 {
                     multiword.push((token, forms));
                 }
             }
         }
+        let mut size = 0;
+        multiword.retain(|(_, forms): &(usize, Vec<String>)| {
+            let length: usize = forms.iter().map(String::len).sum();
+            let fits = size + length < PRESENT as usize;
+            if fits {
+                size += length;
+            }
+            fits
+        });
         if multiword.is_empty() {
             return;
         }
@@ -421,21 +426,15 @@ impl Document {
         let mut multiword = multiword.into_iter().peekable();
         for token in 0..self.tokens.len() {
             token_words.push(word_tokens.len());
-            let expanded = multiword.next_if(|(multi, _)| *multi == token);
-            let pushed = expanded.as_ref().is_some_and(|(_, words)| {
-                let mark = (forms.text.len(), forms.ends.len());
-                let fits = words.iter().all(|word| forms.push(Some(word)).is_ok());
-                if !fits {
-                    forms.text.truncate(mark.0);
-                    forms.ends.truncate(mark.1);
+            match multiword.next_if(|(multi, _)| *multi == token) {
+                Some((_, words)) => {
+                    for word in &words {
+                        // Fits: checked above
+                        let _ = forms.push(Some(word));
+                        word_tokens.push(token);
+                    }
                 }
-                fits
-            });
-            match expanded {
-                Some((_, words)) if pushed => {
-                    word_tokens.extend(std::iter::repeat_n(token, words.len()));
-                }
-                _ => {
+                None => {
                     // Fits: no text
                     let _ = forms.push(None);
                     word_tokens.push(token);
