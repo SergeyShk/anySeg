@@ -8,6 +8,15 @@ use crate::tokens::{Exceptions, is_alpha, is_emoji, is_mark, is_word};
 /// Marks that start a list item at the beginning of a line
 const BULLETS: &str = "-‐‒–—―−•·*▪◦‣●■►▸→✓✔";
 
+/// A list item number has at most this many digits; a longer one is a year or an amount
+const MAX_ITEM_DIGITS: usize = 3;
+
+/// A block is verse with at least this many rhyming lines: one pair can be a chance
+const MIN_RHYMES: usize = 4;
+
+/// How far apart two rhyming lines may stand: AABB, ABAB and ABBA all fit
+const RHYME_WINDOW: usize = 3;
+
 /// A token of final marks: «.», «?!», «...», «…»
 fn is_final(piece: &str) -> bool {
     piece
@@ -35,10 +44,12 @@ fn is_opening(piece: &str) -> bool {
     ) || is_entity(piece)
 }
 
+fn is_dash_mark(character: char) -> bool {
+    matches!(character, '-' | '‐' | '‒' | '–' | '—' | '―' | '−')
+}
+
 fn is_dash(piece: &str) -> bool {
-    piece
-        .chars()
-        .all(|character| matches!(character, '-' | '‐' | '‒' | '–' | '—' | '―' | '−'))
+    piece.chars().all(is_dash_mark)
 }
 
 /// An emoji or an emoticon: «😀», «:)», «)))»; decided by the first byte, as it runs for every token
@@ -142,6 +153,17 @@ fn begins_upper(line: &str) -> bool {
         .is_some_and(char::is_uppercase)
 }
 
+/// The last word of a line and its last two letters, unless it starts with a capital letter, as a name does
+fn ending(line: &str) -> Option<(&str, [char; 2])> {
+    let line = line.trim_end_matches(|c| !is_alpha(c));
+    let word = line.rsplit(|c| !is_alpha(c)).next()?;
+    let mut letters = word.chars().rev();
+    let last = letters.next()?;
+    let before = letters.next()?;
+    word.starts_with(char::is_lowercase)
+        .then_some((word, [before, last]))
+}
+
 /// A line that does not end with punctuation: a heading, a line of a post
 fn ends_open(line: &str) -> bool {
     line.chars()
@@ -156,10 +178,14 @@ struct Splitter<'a> {
     tables: &'a Tables,
     /// The first token of every line
     line_tokens: Vec<usize>,
-    /// Lines end with a comma before a line with a capital letter, as in verse
+    /// Lines end with a comma or a dash before a line with a capital letter, or rhyme
     verse: bool,
     /// Some line goes on with a lowercase letter, as in text wrapped at the width of a page
     typeset: bool,
+    /// The first token of the current sentence
+    sentence: usize,
+    /// The first token of the sentence before it
+    previous_sentence: Option<usize>,
 }
 
 /// A text split into tokens, sentences and paragraphs
@@ -195,6 +221,8 @@ pub(crate) fn split(
         line_tokens: Vec::new(),
         verse: false,
         typeset: false,
+        sentence: 0,
+        previous_sentence: None,
     };
     if lines.len() > 1 {
         splitter.read_lines();
@@ -260,6 +288,8 @@ pub(crate) fn split(
         if boundary && last + 1 < tokens.len() {
             out.starts.push(out.tokens.len());
             words = false;
+            splitter.previous_sentence = Some(splitter.sentence);
+            splitter.sentence = last + 1;
         }
         index = last + 1;
     }
@@ -287,11 +317,60 @@ impl Splitter<'_> {
             }
             self.line_tokens.push(token);
         }
+        let mut dash = false;
         for pair in self.lines.windows(2) {
             let (before, after) = (pair[0].slice(self.text), pair[1].slice(self.text));
-            self.verse |= before.ends_with([',', ';']) && begins_upper(after);
+            let upper = begins_upper(after);
+            self.verse |= upper && before.ends_with([',', ';']);
+            dash |= upper && before.chars().next_back().is_some_and(is_dash_mark);
             self.typeset |= after.starts_with(char::is_lowercase);
         }
+        if !self.verse && !self.typeset {
+            self.verse = dash || self.rhymes();
+        }
+    }
+
+    /// Whether at least half of the lines rhyme with a line close to them: at least four, or two of them where
+    /// the lines read as a metre
+    fn rhymes(&self) -> bool {
+        let count = self.lines.len();
+        if count < MIN_RHYMES {
+            return false;
+        }
+        let ends: Vec<Option<(&str, [char; 2])>> = self
+            .lines
+            .iter()
+            .map(|line| ending(line.slice(self.text)))
+            .collect();
+        let rhymes = (0..count).filter(|&index| {
+            ends[index].is_some_and(|(word, letters)| {
+                (index.saturating_sub(RHYME_WINDOW)..count.min(index + RHYME_WINDOW + 1)).any(
+                    |other| ends[other].is_some_and(|(other, end)| end == letters && other != word),
+                )
+            })
+        });
+        let rhymes = rhymes.count();
+        rhymes * 2 >= count && (rhymes >= MIN_RHYMES || (rhymes >= 2 && self.metre()))
+    }
+
+    /// Whether all lines are within 30 % of the middle length and a mark closes the last one, which the lines of a
+    /// post seldom have
+    fn metre(&self) -> bool {
+        if self
+            .lines
+            .last()
+            .is_some_and(|line| ends_open(line.slice(self.text)))
+        {
+            return false;
+        }
+        let mut lengths: Vec<usize> = self
+            .lines
+            .iter()
+            .map(|line| line.slice(self.text).chars().count())
+            .collect();
+        lengths.sort_unstable();
+        let middle = lengths[lengths.len() / 2];
+        lengths[0] * 10 >= middle * 7 && lengths[lengths.len() - 1] * 10 <= middle * 13
     }
 
     /// The last token of the sentence part that starts at `index`, and whether a sentence ends after it. A part is
@@ -523,13 +602,47 @@ impl Splitter<'_> {
                 .starts_with(|c: char| c.is_ascii_alphabetic())
     }
 
-    /// A number with a period at the start of a line: the marker of a list item, not the end of a sentence
+    /// A number with a period that marks a list item, not the end of a sentence: at the start of a line, or next
+    /// to the number of another item in a line: «План. 1. Прийти. 2. Уйти.»
     fn list_number(&self, index: usize) -> bool {
         index > 0
             && self.piece(index) == "."
             && self.attached(index)
             && is_number(self.piece(index - 1))
-            && (index == 1 || self.line_start(index - 1))
+            && (index == 1 || self.line_start(index - 1) || self.in_series(index - 1))
+    }
+
+    /// Whether a number starts a sentence before a capital letter, and the sentence before or after it starts with
+    /// the number next to it; the other numbers at the start of a sentence are headings, dates and answers
+    fn in_series(&self, number: usize) -> bool {
+        let Some(value) = self.item(number) else {
+            return false;
+        };
+        number == self.sentence
+            && self.starts(number + 2, false)
+            && (self
+                .previous_sentence
+                .and_then(|first| self.item(first))
+                .is_some_and(|before| before + 1 == value)
+                || self.next_item(number + 2) == Some(value + 1))
+    }
+
+    /// The number of a list item at a token: up to three digits and a period right after them
+    fn item(&self, index: usize) -> Option<usize> {
+        let piece = self.piece(index);
+        (piece.len() <= MAX_ITEM_DIGITS
+            && piece.bytes().all(|byte| byte.is_ascii_digit())
+            && self.tokens.get(index + 1)?.slice(self.text) == "."
+            && self.attached(index + 1))
+        .then(|| piece.parse().ok())
+        .flatten()
+    }
+
+    /// The number of a list item after the first final mark from a token on, past the closing quotes and brackets
+    fn next_item(&self, from: usize) -> Option<usize> {
+        let mark = (from..self.tokens.len()).find(|&index| is_final(self.piece(index)))?;
+        let next = (mark + 1..self.tokens.len()).find(|&index| !is_closing(self.piece(index)))?;
+        self.item(next)
     }
 
     /// Whether a token starts a line of a paragraph of several lines
@@ -555,7 +668,9 @@ impl Splitter<'_> {
         if !has_word(before) || !has_word(next) {
             return true;
         }
-        !self.verse && !self.typeset && ends_open(before) && begins_upper(next)
+        // A heading without lowercase letters stands apart in verse too
+        let verse = self.verse && before.chars().any(char::is_lowercase);
+        !verse && !self.typeset && ends_open(before) && begins_upper(next)
     }
 
     /// Whether a line break without a sentence boundary is a wrap at the width of the page: outside verse, the next
@@ -688,6 +803,43 @@ mod tests {
     }
 
     #[test]
+    fn numbers_of_list_items() {
+        assert_eq!(
+            sentences("План. 1. Прийти. 2. Уйти. Всё."),
+            ["План.", "1. Прийти.", "2. Уйти.", "Всё."]
+        );
+        assert_eq!(
+            sentences("План. 9. «Да!» 10.Нет. 11. Да?"),
+            ["План.", "9. «Да!»", "10.Нет.", "11. Да?"]
+        );
+        assert_eq!(
+            sentences("План. 0. Ноль. 1. Один."),
+            ["План.", "0. Ноль.", "1. Один."]
+        );
+        assert_eq!(
+            sentences("План. 1. 2. 3. Конец."),
+            ["План.", "1.", "2.", "3. Конец."]
+        );
+        // Not a series: an answer, a heading far from the next one, years, roman numerals, numbers out of order
+        assert_eq!(
+            sentences("Сколько? 5. Потом ушли."),
+            ["Сколько?", "5.", "Потом ушли."]
+        );
+        assert_eq!(
+            sentences("Война. 1941. Бои. 1942. Мир."),
+            ["Война.", "1941.", "Бои.", "1942.", "Мир."]
+        );
+        assert_eq!(
+            sentences("Текст. I. Начало. II. Конец."),
+            ["Текст.", "I.", "Начало.", "II.", "Конец."]
+        );
+        assert_eq!(
+            sentences("Текст. 3. Да. 1. Нет."),
+            ["Текст.", "3.", "Да.", "1.", "Нет."]
+        );
+    }
+
+    #[test]
     fn dialogue_and_quotes() {
         assert_eq!(
             sentences("— Ты придёшь? — спросила она. — Приду. — Придумала! — Она встала."),
@@ -778,6 +930,63 @@ mod tests {
     }
 
     #[test]
+    fn verse_without_commas_at_line_ends() {
+        let stanza = "Над тихой речкой встал туман\nИ скрыл прибрежные кусты\nОтец уехал в дальний стан\nИ сжёг за собою мосты.";
+        assert_eq!(sentences(stanza), [stanza]);
+        assert_eq!(
+            sentences(
+                "Но живу я в далеком скиту\nИ не знаю для счастья границ.\nТишиной провожаю мечту.\nИ мечта воздвигает Царицу."
+            ),
+            [
+                "Но живу я в далеком скиту\nИ не знаю для счастья границ.",
+                "Тишиной провожаю мечту.",
+                "И мечта воздвигает Царицу."
+            ]
+        );
+        assert_eq!(
+            sentences("Он шёл домой -\nВ окне горел огонь"),
+            ["Он шёл домой -\nВ окне горел огонь"]
+        );
+        assert_eq!(
+            sentences("ГЛАВА XIV\nСУД\nМирская молва —\nМорская волна."),
+            ["ГЛАВА XIV", "СУД", "Мирская молва —\nМорская волна."]
+        );
+        assert_eq!(
+            sentences("III\nИ ты стоял,\nВесь в белом"),
+            ["III", "И ты стоял,\nВесь в белом"]
+        );
+    }
+
+    #[test]
+    fn lines_that_only_look_like_verse() {
+        for lines in [
+            ["Иван Иванов", "Петр Петров", "Олег Сидоров", "Егор Козлов"],
+            [
+                "Иванов 5 руб",
+                "Петров 3 руб",
+                "Сидоров 2 руб",
+                "Козлов 1 руб",
+            ],
+            ["Мама", "Папа", "Бабушка", "Дедушка."],
+            ["Купить молоко", "Купить хлеб", "Купить сыр", "Купить масло"],
+            [
+                "Спасибо за покупку!",
+                "Заказ передан в доставку",
+                "Ожидайте звонка курьера.",
+                "С уважением, магазин",
+            ],
+            [
+                "Вчера ходили гулять",
+                "Сегодня будем читать",
+                "Завтра пойдем в кино",
+                "Потом ляжем спать",
+            ],
+        ] {
+            assert_eq!(sentences(&lines.join("\n")), lines);
+        }
+    }
+
+    #[test]
     fn line_break_kinds() {
         let kinds = |text: &str| -> Vec<LineBreak> {
             Segmenter::new("ru")
@@ -795,6 +1004,14 @@ mod tests {
         assert_eq!(
             kinds("Провели собрание в\nМоскве. Решение\nприняли все и\n«Газпром» тоже."),
             [LineBreak::Typeset; 3]
+        );
+        assert_eq!(
+            kinds("Мы шли\nпо дороге -\nМосква далеко."),
+            [LineBreak::Typeset, LineBreak::Typeset]
+        );
+        assert_eq!(
+            kinds("Над тихой речкой встал туман\nИ скрыл кусты\nОтец уехал в стан\nИ сжёг мосты."),
+            [LineBreak::Author; 3]
         );
         assert_eq!(
             kinds(
@@ -1013,6 +1230,9 @@ mod tests {
             "😀 ".repeat(40_000),
             "@a ".repeat(40_000),
             "в 1914 г. ".repeat(20_000),
+            "1. А. 2. Б. ".repeat(20_000),
+            format!("1. А {}", "б ".repeat(40_000)),
+            "кот ест\nпёс пьёт\n".repeat(20_000),
         ] {
             let spans = Segmenter::new("ru").unwrap().sentenize(&text);
             assert!(!spans.is_empty());

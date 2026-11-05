@@ -55,7 +55,7 @@ F1 of the positions of the sentence ends.
 | SaT 3-layer, wtpsplit 2.2.2 * | 99.28 | 94.93 | 99.00 | 99.80 |
 | SaT 12-layer, wtpsplit 2.2.2 * | **99.68** | 95.86 | **99.67** | 99.85 |
 
-In the train and dev files of SynTagRus, a number with a period at the start of a sentence, before a capital letter, is a sentence of its own in 24 of 24 cases for a Roman numeral and in 23 of 49 for an Arabic one; anySeg makes both a sentence of their own. In the test file all 26 such numbers are Arabic and start a longer sentence (`1. Поглощать пищу в верхней одежде.`), which costs anySeg 26 of its 41 false boundaries there.
+In the train and dev files of SynTagRus, a number with a period at the start of a sentence, before a capital letter, is a sentence of its own in 24 of 24 cases for a Roman numeral and in 23 of 49 for an Arabic one. In the test file all 26 such numbers are Arabic and start a longer sentence (`1. Поглощать пищу в верхней одежде.`). The UD guidelines keep the number of a list item in its sentence; anySeg does so for a series of Arabic numbers and makes other numbers a sentence of their own.
 
 ## Sentences
 
