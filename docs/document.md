@@ -31,6 +31,7 @@ A segmented text: its tokens, its words with the columns of [CoNLL-U](https://un
 | `text` | `str` | The text |
 | `tokens` | `Tokens` | [Tokens](#token) in order |
 | `words` | `Words` | [Words](#word) in order |
+| `multiword_tokens` | `list[Token]` | Tokens of several words, in order |
 | `sentences` | `Sentences` | [Sentences](#sentence) in order |
 | `paragraphs` | `Paragraphs` | [Paragraphs](#paragraph) in order |
 | `lines` | `Lines` | [Lines](#line) of the paragraphs in order |

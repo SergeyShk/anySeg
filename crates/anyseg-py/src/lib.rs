@@ -1037,7 +1037,8 @@ fn multiword_tokens(words: &Bound<'_, PyAny>) -> PyResult<Vec<(usize, Vec<String
         .map_err(|_| PyTypeError::new_err("words must be a mapping of tokens to their forms"))?;
     let mut tokens = Vec::new();
     for item in words.items()?.iter() {
-        let (token, forms): (isize, Vec<String>) = item.extract()?;
+        let (token, forms): (Bound<'_, PyAny>, Vec<String>) = item.extract()?;
+        let token = clamped(&token)?;
         let token = usize::try_from(token).map_err(|_| {
             PyValueError::new_err(format!("multiword token {token} is not in the document"))
         })?;
@@ -1115,6 +1116,27 @@ impl Document {
     fn words<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, Words>> {
         let end = slf.get().structure.word_count();
         untracked(slf.py(), Words::new(slf, 0..end))
+    }
+
+    /// Tokens of several words, in order
+    #[getter]
+    fn multiword_tokens<'py>(slf: &Bound<'py, Self>) -> PyResult<Vec<Bound<'py, Token>>> {
+        let structure = &slf.get().structure;
+        if structure.token_words.is_empty() {
+            return Ok(Vec::new());
+        }
+        (0..structure.token_words.len() - 1)
+            .filter(|&index| structure.token_words[index + 1] - structure.token_words[index] > 1)
+            .map(|index| {
+                untracked(
+                    slf.py(),
+                    Token {
+                        doc: slf.clone().unbind(),
+                        index,
+                    },
+                )
+            })
+            .collect()
     }
 
     #[getter]

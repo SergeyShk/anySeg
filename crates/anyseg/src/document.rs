@@ -427,17 +427,21 @@ impl Document {
     ///
     /// # Errors
     ///
-    /// [`DocumentError`] if the document has columns or several words in a token already, the tokens are not
-    /// increasing indices of tokens of the document, a token has fewer than two forms, a form is empty or holds a tab
+    /// [`DocumentError`] if the document has columns, several words in a token or was read from CoNLL-U, whose lines
+    /// it writes back, the tokens are not increasing indices of tokens of the document, a token has fewer than two forms, a form is empty or holds a tab
     /// or a line break, or the forms exceed 2 GiB.
     pub fn with_multiword_tokens<I, S>(mut self, tokens: I) -> Result<Self, DocumentError>
     where
         I: IntoIterator<Item = (usize, Vec<S>)>,
         S: Into<String>,
     {
-        if self.columns.is_some() || !self.heads.is_empty() || !self.word_tokens.is_empty() {
+        if self.columns.is_some()
+            || !self.heads.is_empty()
+            || !self.word_tokens.is_empty()
+            || self.verbatim.is_some()
+        {
             return Err(DocumentError(
-                "multiword tokens must be set first, before columns".to_owned(),
+                "multiword tokens must be set first, on a document of tokens".to_owned(),
             ));
         }
         let mut multiword = Vec::new();
@@ -1053,6 +1057,13 @@ mod tests {
             .unwrap();
         assert!(
             annotated
+                .with_multiword_tokens([(0, vec!["x", "y"])])
+                .is_err()
+        );
+        let read = crate::read_conllu("# text = a\n1\ta\t_\t_\t_\t_\t_\t_\t_\t_\n\n").unwrap();
+        assert!(
+            read[0]
+                .clone()
                 .with_multiword_tokens([(0, vec!["x", "y"])])
                 .is_err()
         );

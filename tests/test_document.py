@@ -781,6 +781,7 @@ def test_from_tokens_with_multiword_tokens():
     [
         ({3: ["a", "b"]}, ValueError, "multiword token 3"),
         ({-1: ["a", "b"]}, ValueError, "multiword token -1"),
+        ({10**30: ["a", "b"]}, ValueError, "multiword token"),
         ({0: ["a"]}, ValueError, "fewer than two forms"),
         ({0: ["a", ""]}, ValueError, "is empty or holds"),
         ({0: ["a", "b\tc"]}, ValueError, "is empty or holds"),
@@ -794,6 +795,13 @@ def test_from_tokens_with_multiword_tokens():
 def test_from_tokens_with_wrong_multiword_tokens(words, error, message):
     with pytest.raises(error, match=message):
         Document.from_tokens("a b c", [0, 2, 4], [1, 3, 5], words=words)
+
+
+def test_multiword_tokens_at_once():
+    doc = Segmenter("es").segment("Vengo del mar, voy al cine")
+    assert [token.text for token in doc.multiword_tokens] == ["del", "al"]
+    assert [token.index for token in doc.multiword_tokens] == [1, 5]
+    assert Segmenter("ru").segment("Вася идёт").multiword_tokens == []
 
 
 def test_no_multiword_tokens_in_russian():
