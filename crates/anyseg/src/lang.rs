@@ -150,10 +150,12 @@ impl Conventions {
                     }
                 }
                 "phone_digits" => {
-                    let range = value
-                        .split_once('-')
-                        .and_then(|(low, high)| Some((low.parse().ok()?, high.parse().ok()?)));
-                    conventions.phone_digits = Some(range.unwrap_or_else(|| wrong(line)));
+                    conventions.phone_digits = (value != "none").then(|| {
+                        value
+                            .split_once('-')
+                            .and_then(|(low, high)| Some((low.parse().ok()?, high.parse().ok()?)))
+                            .unwrap_or_else(|| wrong(line))
+                    });
                 }
                 "script" => {
                     conventions.script = match value {
@@ -215,6 +217,8 @@ pub(crate) struct Tables {
     pub(crate) indefinite: HashSet<String>,
     /// Hyphenated words that stay whole whatever the rules say
     pub(crate) whole: HashSet<String>,
+    /// The number of parts of the longest word of `whole`
+    pub(crate) whole_parts: usize,
     /// Numerals: two of them, or a word and a numeral, split at a hyphen
     pub(crate) numerals: HashSet<String>,
     /// First parts that do not inflect: their hyphenated words stay whole
@@ -283,12 +287,18 @@ impl Tables {
             emoticon_starts[usize::from(emoticon.as_bytes()[0])] = true;
             emoticon_lengths |= 1 << emoticon.len();
         }
+        let whole = list(files.whole);
         Tables {
             abbreviations: list(files.abbreviations),
             not_abbreviations: list(files.not_abbreviations),
             particles: list(files.particles),
             indefinite: list(files.indefinite),
-            whole: list(files.whole),
+            whole_parts: whole
+                .iter()
+                .map(|word| word.matches('-').count() + 1)
+                .max()
+                .unwrap_or(0),
+            whole,
             numerals: list(files.numerals),
             prefixes: list(files.prefixes),
             endings: list(files.endings),
@@ -481,6 +491,39 @@ mod conventions {
     }
 
     #[test]
+    fn whole_words_of_several_parts() {
+        let whole = "mother-in-law\nsars-cov-2\nwi-fi";
+        for conventions in ["hyphens = split", "hyphens = inflected"] {
+            let tables = Tables::new(Files {
+                conventions,
+                whole,
+                numerals: "in\nlaw\ncov",
+                ..Files::default()
+            });
+            assert_eq!(
+                tokens(&tables, "mother-in-law SARS-CoV-2 Wi-Fi"),
+                ["mother-in-law", "SARS-CoV-2", "Wi-Fi"],
+                "{conventions}"
+            );
+        }
+        let tables = Tables::new(Files {
+            conventions: "hyphens = split",
+            whole,
+            ..Files::default()
+        });
+        // A part of a listed word and a chain around one are not the word
+        assert_eq!(
+            tokens(&tables, "in-law step-mother-in-law"),
+            [
+                "in", "-", "law", "step", "-", "mother", "-", "in", "-", "law"
+            ]
+        );
+        // A linear scan: a quadratic one takes seconds
+        let long = format!("{}a", "a-".repeat(40_000));
+        assert_eq!(tokens(&tables, &long).concat(), long);
+    }
+
+    #[test]
     fn ranges() {
         assert_eq!(
             tokens(&language(""), "6-4 1.5-2.5 713-654-0365 XIX-XX"),
@@ -539,6 +582,32 @@ mod conventions {
             tokens(&language("dotted = split"), "S.A. y"),
             ["S.", "A.", "y"]
         );
+        // A sentence glued to a short word is not an abbreviation
+        assert_eq!(
+            tokens(&language(""), "Lo vi.Yo no, it.He, no.Y, de.la"),
+            [
+                "Lo", "vi", ".", "Yo", "no", ",", "it", ".", "He", ",", "no", ".", "Y", ",", "de",
+                ".", "la"
+            ]
+        );
+        assert_eq!(sentence_count(&language(""), "Lo vi.Yo no"), 2);
+        assert_eq!(
+            tokens(&language(""), "M.Sc. p.ej. d.C. LL.D. K.O. x"),
+            ["M.Sc.", "p.ej.", "d.C.", "LL.D.", "K.O.", "x"]
+        );
+        // After a hyphen, in one token or after the token of the hyphen
+        assert_eq!(
+            tokens(&language(""), "Un grupo pro-EE.UU. llegó"),
+            ["Un", "grupo", "pro-EE.UU.", "llegó"]
+        );
+        assert_eq!(
+            sentence_count(&language(""), "Un grupo pro-EE.UU. llegó"),
+            1
+        );
+        assert_eq!(
+            tokens(&language("hyphens = split"), "anti-U.S. policy"),
+            ["anti", "-", "U.S.", "policy"]
+        );
         // A linear scan: a quadratic one takes seconds
         let long = "a.".repeat(40_000);
         assert_eq!(tokens(&language(""), &long).concat(), long);
@@ -590,6 +659,15 @@ mod conventions {
             tokens(&language("percent_endings = yes"), "20%-ish"),
             ["20%-ish"]
         );
+        // Commas between numbers and a comma after a group that is not of three digits are not groups
+        assert_eq!(
+            tokens(&language("digit_groups = comma"), "18,19,20 7,5 1,000,5"),
+            ["18", ",", "19", ",", "20", "7", ",", "5", "1,000", ",", "5"]
+        );
+        assert_eq!(
+            tokens(&language(""), "3.5,4.5 12.05,7 1.012.345,6"),
+            ["3.5", ",", "4.5", "12.05", ",", "7", "1.012.345,6"]
+        );
     }
 
     #[test]
@@ -606,6 +684,36 @@ mod conventions {
             ),
             ["8", "800", "555", "35", "35"]
         );
+        assert_eq!(
+            tokens(&language("digit_groups = space\nphone_digits = none"), text),
+            ["8 800 555", "35", "35"]
+        );
+    }
+
+    #[test]
+    fn units_after_numbers() {
+        let count =
+            |conventions: &'static str, text: &str| sentence_count(&language(conventions), text);
+        assert_eq!(count("digit_groups = space", "Hay 1 000 000 A. Luego"), 2);
+        assert_eq!(count("", "Hay 1012,72 A. Luego"), 2);
+        assert_eq!(count("", "Hay 1.012,72 A. Luego"), 2);
+        assert_eq!(count("", "Hay 1.000.000 A. Luego"), 2);
+        assert_eq!(count("digit_groups = comma", "Hay 1,000,000 A. Luego"), 2);
+        assert_eq!(count("digit_groups = comma", "Hay 1,000.50 A. Luego"), 2);
+        // A date is not a quantity: the letter after it is an initial
+        assert_eq!(count("", "El 12.05.2009 A. Luego"), 1);
+        assert_eq!(count("digit_groups = space", "El 12.05.2009 A. Luego"), 1);
+    }
+
+    #[test]
+    fn final_abbreviations_with_capitals() {
+        let tables = Tables::new(Files {
+            final_abbreviations: "EE.UU.\na.m.",
+            ..Files::default()
+        });
+        assert_eq!(sentence_count(&tables, "Vino a.m. Fue"), 2);
+        assert_eq!(sentence_count(&tables, "Vino de EE.UU. Fue"), 2);
+        assert_eq!(sentence_count(&language(""), "Vino de EE.UU. Fue"), 1);
     }
 
     #[test]
@@ -653,6 +761,14 @@ mod conventions {
         });
         assert_eq!(tokens(&tables, "сайт.рф"), ["сайт.рф"]);
         assert_eq!(sentence_count(&tables, "Hola о_О Adiós"), 2);
+        // Whatever byte an emoticon of the lists starts with
+        let tables = Tables::new(Files {
+            emoticons: "(^_^)\n>_<\n⌐■_■",
+            ..Files::default()
+        });
+        for text in ["Hola >_< Adiós", "Hola (^_^) Adiós", "Hola ⌐■_■ Adiós"] {
+            assert_eq!(sentence_count(&tables, text), 2, "{text}");
+        }
     }
 
     #[test]

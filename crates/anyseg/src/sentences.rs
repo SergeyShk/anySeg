@@ -2,7 +2,7 @@
 
 use crate::Span;
 use crate::document::{Line, LineBreak};
-use crate::lang::Tables;
+use crate::lang::{DigitGroups, Tables};
 use crate::tokens::{Exceptions, is_alpha, is_emoji, is_mark, is_word};
 
 /// Marks that start a list item at the beginning of a line
@@ -46,8 +46,13 @@ fn is_emoticon(piece: &str, tables: &Tables) -> bool {
     let bytes = piece.as_bytes();
     match bytes.first() {
         Some(b':' | b';' | b'=') => bytes.len() > 1,
-        Some(&bracket @ (b')' | b'(')) => bytes.len() > 1 && bytes.iter().all(|&b| b == bracket),
-        Some(0xE2 | 0xF0) => piece.chars().next().is_some_and(is_emoji),
+        Some(&bracket @ (b')' | b'(')) => {
+            (bytes.len() > 1 && bytes.iter().all(|&b| b == bracket))
+                || tables.is_listed_emoticon(piece)
+        }
+        Some(0xE2 | 0xF0) => {
+            piece.chars().next().is_some_and(is_emoji) || tables.is_listed_emoticon(piece)
+        }
         Some(_) => tables.is_listed_emoticon(piece),
         None => false,
     }
@@ -83,16 +88,34 @@ fn is_number(piece: &str) -> bool {
     piece.starts_with(|c: char| c.is_ascii_digit()) || piece.chars().all(|c| "IVXLCDM".contains(c))
 }
 
-/// An integer or a decimal number, which a unit may follow, but not a year, a date or a time: «5», «1,5», «15 000»
-fn is_quantity(piece: &str) -> bool {
+/// An integer or a decimal number, which a unit may follow, but not a year, a date or a time: «5», «1,5», «15 000»,
+/// and with marks between groups of three digits where the language groups digits so: «1.012,72»
+fn is_quantity(piece: &str, groups: DigitGroups) -> bool {
     let year = piece.len() == 4
         && piece.starts_with(['1', '2'])
         && piece.bytes().all(|byte| byte.is_ascii_digit());
+    let group_mark = match groups {
+        DigitGroups::Space => None,
+        DigitGroups::Point => Some('.'),
+        DigitGroups::Comma => Some(','),
+    };
+    let marks = piece
+        .char_indices()
+        .filter(|&(at, c)| {
+            matches!(c, ',' | '.')
+                && !(Some(c) == group_mark
+                    && piece[at + 1..]
+                        .bytes()
+                        .take_while(u8::is_ascii_digit)
+                        .count()
+                        == 3)
+        })
+        .count();
     piece.starts_with(|c: char| c.is_ascii_digit())
         && piece.chars().all(|c| {
             c.is_ascii_digit() || matches!(c, ',' | '.' | ' ' | '\u{a0}' | '\u{202f}' | '\u{2009}')
         })
-        && piece.matches([',', '.']).count() <= 1
+        && marks <= 1
         && !year
 }
 
@@ -413,8 +436,10 @@ impl Splitter<'_> {
         for position in (index.saturating_sub(3)..=index).rev() {
             let piece = self.piece(position);
             let abbreviation = is_abbreviation(piece) && lowercase(piece);
-            // A token of the user with inner periods keys as its parts: «т.д.» as «т д»
-            let word = if abbreviation {
+            // A token with inner periods keys as its parts: «т.д.» as «т д», «EE.UU.» as «ee uu»
+            let word = if abbreviation
+                || (is_abbreviation(piece) && piece[..piece.len() - 1].contains('.'))
+            {
                 piece[..piece.len() - 1]
                     .split('.')
                     .map(|part| self.tables.key(part))
@@ -477,7 +502,8 @@ impl Splitter<'_> {
             previous.is_some_and(|piece| is_abbreviation(piece) && piece.chars().count() == 2);
         (!initials && !script.contains(letter) && capital.is_some_and(|c| script.contains(c)))
             || (letter.is_uppercase()
-                && previous.is_some_and(is_quantity)
+                && previous
+                    .is_some_and(|piece| is_quantity(piece, self.tables.conventions.digit_groups))
                 && !(index >= 2 && self.piece(index - 2) == ":"))
     }
 
@@ -962,6 +988,9 @@ mod tests {
             .map(|span| span.slice(text))
             .collect();
         assert_eq!(spans, ["Купили хлеб и т.д.", "Потом ушли."]);
+        let custom = Segmenter::new("ru").unwrap().with_tokens(["Т.Д."]).unwrap();
+        let text = "Купили хлеб и Т.Д. Потом ушли.";
+        assert_eq!(custom.sentenize(text).len(), 2);
         assert_eq!(
             sentences("[12:01] Вася: привет\n[12:02] Петя: здарова"),
             ["[12:01] Вася: привет", "[12:02] Петя: здарова"]

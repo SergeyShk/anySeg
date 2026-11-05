@@ -608,13 +608,14 @@ impl Scanner<'_> {
             {
                 Joint::Point
             }
+            // A comma ends groups of three digits or is the only mark: «1.012,72», «4,5», but «3.5,4.5»
             ',' if digits
                 && after.is_ascii_digit()
-                && only(match groups {
-                    DigitGroups::Space => Joint::Thousands,
-                    DigitGroups::Point => Joint::Point,
-                    DigitGroups::Comma => Joint::Comma,
-                }) =>
+                && match groups {
+                    DigitGroups::Space => only(Joint::Thousands),
+                    DigitGroups::Point => only(Joint::Point) && (kinds == 0 || piece.len() == 3),
+                    DigitGroups::Comma => only(Joint::Comma) && self.digits_end(next) - next == 3,
+                } =>
             {
                 Joint::Comma
             }
@@ -670,13 +671,42 @@ impl Scanner<'_> {
         match conventions.hyphens {
             Hyphens::Whole => false,
             Hyphens::Split => {
-                let tables = self.tables;
-                let (left_key, right_key) = (tables.key(left), tables.key(right));
-                !tables.prefixes.contains(&left_key)
-                    && !tables.whole.contains(&format!("{left_key}-{right_key}"))
+                !self.tables.prefixes.contains(&self.tables.key(left))
+                    && !self.listed_whole(runs, joints, index)
             }
             Hyphens::Inflected => self.inflected_parts(runs, joints, index),
         }
+    }
+
+    /// Whether the word with the hyphen after the run `index` stays whole by the list: the two runs around the
+    /// hyphen or all the runs joined by hyphens. A chain longer than any word of the list is not read: «a-a-a-…»
+    fn listed_whole(&self, runs: &[Span], joints: &[Joint], index: usize) -> bool {
+        let tables = self.tables;
+        let key = |range: &[Span]| {
+            range
+                .iter()
+                .map(|run| tables.key(run.slice(self.text)))
+                .collect::<Vec<_>>()
+                .join("-")
+        };
+        if tables.whole.contains(&key(&runs[index..=index + 1])) {
+            return true;
+        }
+        let limit = tables.whole_parts;
+        if limit <= 2 {
+            return false;
+        }
+        let hyphen = |joint: usize| joints.get(joint) == Some(&Joint::Hyphen);
+        let mut first = index;
+        while first > 0 && hyphen(first - 1) && index + 2 - first <= limit {
+            first -= 1;
+        }
+        let mut last = index + 1;
+        while hyphen(last) && last + 1 - first < limit {
+            last += 1;
+        }
+        let longer = (first > 0 && hyphen(first - 1)) || hyphen(last);
+        !longer && tables.whole.contains(&key(&runs[first..=last]))
     }
 
     /// Whether a hyphen is a token of its own in a language whose words split where their parts inflect
@@ -696,7 +726,7 @@ impl Scanner<'_> {
         {
             return true;
         }
-        if tables.whole.contains(&format!("{left_key}-{right_key}")) {
+        if self.listed_whole(runs, joints, index) {
             return false;
         }
         // A particle closes the word: «де» inside «Рио-де-Жанейро» is not one
@@ -798,10 +828,13 @@ impl Scanner<'_> {
                 first = runs[index + 1].start;
             }
         }
-        let mut end = runs[runs.len() - 1].end;
-        if first == runs[runs.len() - 1].start && self.abbreviation(first, end) {
+        let last = runs[runs.len() - 1];
+        let mut end = last.end;
+        if let Some(stop) = self.dotted_abbreviation(last.start, last.end) {
+            end = stop;
+        } else if first == last.start && self.abbreviation(first, end) {
             end += 1;
-        } else if is_digits(runs[runs.len() - 1].slice(self.text)) {
+        } else if is_digits(last.slice(self.text)) {
             end = self.percent_ending(end);
         }
         self.push(first, end)
@@ -818,11 +851,14 @@ impl Scanner<'_> {
             return None;
         }
         let mut stop = end;
+        let mut part = start;
         while self.get(stop) == Some('.') && self.get(stop + 1).is_some_and(is_alpha) {
             let next = self.run(stop + 1);
-            if !short(&self.text[stop + 1..next]) {
+            let piece = &self.text[stop + 1..next];
+            if !short(piece) || self.glued(&self.text[part..stop], piece, next) {
                 break;
             }
+            part = stop + 1;
             stop = next;
         }
         if stop == end {
@@ -830,6 +866,19 @@ impl Scanner<'_> {
         }
         let period = self.get(stop) == Some('.') && self.get(stop + 1) != Some('.');
         Some(if period { stop + 1 } else { stop })
+    }
+
+    /// Whether the part `piece` that ends at `end` starts a sentence glued to the short word `before`, and not an
+    /// abbreviation: «it.He», «vi.Yo», «no.Y luego»; but «Ph.D.», «M.Sc.», «p.ej.», «a.m.»
+    fn glued(&self, before: &str, piece: &str, end: usize) -> bool {
+        if !before.ends_with(char::is_lowercase) {
+            return false;
+        }
+        let word = before.chars().count() == 2;
+        if piece.chars().count() == 2 {
+            return word || piece.starts_with(char::is_uppercase);
+        }
+        word && self.get(end) != Some('.')
     }
 
     /// The end of a name of the language joined to the next word by a period: «Яндекс.Маркете»
