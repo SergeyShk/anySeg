@@ -159,6 +159,8 @@ def test_blank_text(segmenter, text):
         f"{HIGH}{HIGH}. {LOW}{HIGH}",
         "ок. " * 3000 + HIGH,
     ],
+    # The test name goes to an environment variable, which Windows limits in length
+    ids=["inside", "alone", "pair", "several", "long"],
 )
 def test_lone_surrogate(segmenter, text):
     # They count as U+FFFD, at the same positions, and the spans keep them

@@ -362,28 +362,30 @@ mod tests {
         3\tё\t_\t_\t_\t_\t_\t_\t_\tSpaceAfter=No\n3.1\tx\t_\t_\t_\t_\t_\t_\t_\t_\n4\t.\t_\t_\t_\t_\t_\t_\t_\t_\n\n\
         # text = x\n1\tx\t_\t_\t_\t_\t_\t_\t_\t_\n\n";
 
+    fn reads_back(doc: &Document) {
+        let read = Document::from_state(doc.text.clone(), &doc.to_state()).unwrap();
+        assert_eq!(&read, doc);
+        assert_eq!(read.to_conllu(), doc.to_conllu());
+    }
+
     #[test]
     fn documents_read_back() {
-        let mut docs = read_conllu(CONLLU).unwrap();
-        #[cfg(feature = "ru")]
-        {
-            let segmenter = crate::Segmenter::new("ru").unwrap();
-            let mut doc = segmenter.segment("Ёж идёт.\nмимо\n\n\nКот");
-            doc.set_columns(
-                [(Column::Upos, [Some("NOUN"), None, None, None, None])],
-                Some(vec![Some(2), Some(0), None, None, None]),
-            )
-            .unwrap();
-            docs.push(doc);
-            docs.push(segmenter.segment(""));
-            docs.push(segmenter.segment("Ёж идёт.\nмимо"));
-        }
-        for doc in docs {
-            let state = doc.to_state();
-            let read = Document::from_state(doc.text.clone(), &state).unwrap();
-            assert_eq!(read, doc);
-            assert_eq!(read.to_conllu(), doc.to_conllu());
-        }
+        reads_back(&read_conllu(CONLLU).unwrap()[0]);
+    }
+
+    #[test]
+    #[cfg(feature = "ru")]
+    fn segmented_documents_read_back() {
+        let segmenter = crate::Segmenter::new("ru").unwrap();
+        let mut doc = segmenter.segment("Ёж идёт.\nмимо\n\n\nКот");
+        doc.set_columns(
+            [(Column::Upos, [Some("NOUN"), None, None, None, None])],
+            Some(vec![Some(2), Some(0), None, None, None]),
+        )
+        .unwrap();
+        reads_back(&doc);
+        reads_back(&segmenter.segment(""));
+        reads_back(&segmenter.segment("Ёж идёт.\nмимо"));
     }
 
     #[test]
