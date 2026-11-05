@@ -645,7 +645,8 @@ impl Document {
     }
 
     /// Set word columns and heads at once; nothing changes if a value is wrong. The values of a column are any
-    /// iterable of optional strings, so that they need not be on the heap one by one.
+    /// iterable of optional strings, so that they need not be on the heap one by one; heads alone are set by
+    /// [`set_heads`](Self::set_heads).
     ///
     /// # Errors
     ///
@@ -666,6 +667,15 @@ impl Document {
             .map(|(column, values)| CheckedColumn::new(column, values, count))
             .collect::<Result<Vec<_>, _>>()?;
         self.set_checked_columns(columns, heads)
+    }
+
+    /// Set the heads of the words; nothing changes if a head is wrong.
+    ///
+    /// # Errors
+    ///
+    /// [`DocumentError`] if there is not one head per word or a head is not 0 or the ID of a word of its sentence.
+    pub fn set_heads(&mut self, heads: Vec<Option<u32>>) -> Result<(), DocumentError> {
+        self.set_checked_columns(Vec::new(), Some(heads))
     }
 
     /// Set columns that are checked already, and heads, at once; nothing changes if a head is wrong.
@@ -932,6 +942,12 @@ mod tests {
         );
         doc.set_columns([(Column::Lemma, [None::<&str>; 3])], None)
             .unwrap();
+        doc.set_heads(vec![None, Some(1), None]).unwrap();
+        assert_eq!(doc.head(1), Some(1));
+        assert_eq!(
+            doc.set_heads(vec![None]).unwrap_err(),
+            DocumentError("head has 1 values for 3 words".to_owned())
+        );
         doc.set_columns([(Column::Upos, [None::<&str>; 3])], None)
             .unwrap();
         assert!(doc.columns.is_none());

@@ -7,7 +7,7 @@ use std::fs::File;
 use std::io::{self, BufRead, BufReader, BufWriter, IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
 
-use crate::layout::{is_separator, one_line};
+use crate::layout::{self, is_separator, one_line};
 use crate::{ConlluWriter, Document, Language, Segmenter};
 
 const HELP: &str = "\
@@ -70,13 +70,16 @@ fn closed_stdout() -> bool {
 }
 
 /// The buffer of the input: the output is flushed when it is empty and the next read may wait for input
+#[cfg(not(test))]
 const INPUT_BUFFER: usize = 1 << 16;
+#[cfg(test)]
+const INPUT_BUFFER: usize = 1 << 9;
 
 /// The longest text without blank lines that is segmented at once: a longer one is written without its last
 /// sentence, and a longer line is cut at a space, so that the memory does not grow with the input. The allocator of
-/// macOS does not give back blocks of more than 4 MiB, which the tokens of larger pieces reach
+/// macOS does not give back blocks of more than 4 MiB, which the tokens of larger pieces reach, at two bytes a token
 #[cfg(not(test))]
-const PARAGRAPH: usize = 1 << 19;
+const PARAGRAPH: usize = 1 << 18;
 #[cfg(test)]
 const PARAGRAPH: usize = 1 << 12;
 
@@ -298,6 +301,7 @@ fn execute(
         ready: 0,
         continued: false,
         carry: Vec::new(),
+        out: String::new(),
     };
     let mut code = 0;
     for file in files {
@@ -511,6 +515,8 @@ struct Writer<'a> {
     continued: bool,
     /// The end of a line longer than PARAGRAPH, which the next read gives
     carry: Vec<u8>,
+    /// The output of a sentence, kept between the pieces: a block of its own for each would not be given back
+    out: String,
 }
 
 impl Writer<'_> {
@@ -543,8 +549,9 @@ impl Writer<'_> {
         let mut end = false;
         let mut number = 0;
         let mut invalid = None;
-        // A line longer than PARAGRAPH is read in pieces: the piece starts a line
+        // A line longer than PARAGRAPH is read in pieces: the piece starts a line, and the line so far is blank
         let mut starts = true;
+        let mut line_blank = false;
         // A line of UTF-8 with non-ASCII bytes was read: before it, wrong bytes and NUL mean another encoding of
         // the file (cp1251, UTF-16 without BOM), after it a damaged line
         let mut utf8 = false;
@@ -571,10 +578,15 @@ impl Writer<'_> {
             if number == 1 && first {
                 line = line.strip_prefix('\u{feff}').unwrap_or(line);
             }
-            // A blank line ends the paragraphs before it, which are segmented as in the whole text: in pieces of
-            // about INPUT_BUFFER, or as soon as the next read may wait
-            if first && ended && blank(line) {
-                // It also ends a paragraph written whole, of one sentence longer than PARAGRAPH
+            line_blank = (first || line_blank) && blank(line);
+            if !line_blank {
+                self.text.push_str(line);
+                if self.text.len() >= PARAGRAPH || !ended {
+                    self.write_long().map_err(Failure::Write)?;
+                }
+            } else if ended {
+                // A blank line ends the paragraphs before it, which are segmented as in the whole text: in pieces of
+                // about INPUT_BUFFER, or as soon as the next read may wait. It also ends a paragraph written whole
                 if blank(&self.text) {
                     self.continued = false;
                 }
@@ -584,11 +596,6 @@ impl Writer<'_> {
                 }
                 if self.ready >= INPUT_BUFFER {
                     self.write_ready().map_err(Failure::Write)?;
-                }
-            } else {
-                self.text.push_str(line);
-                if self.text.len() >= PARAGRAPH {
-                    self.write_long().map_err(Failure::Write)?;
                 }
             }
         }
@@ -694,10 +701,10 @@ impl Writer<'_> {
             _ => (count - 1, doc.sentence(count - 1).span.start),
         };
         self.write_sentences(&doc, written)?;
-        // The last sentence may itself start a paragraph (after U+2029)
+        // The last sentence may itself start a paragraph (after U+2029), and the separators dropped may end one
         self.continued = match count {
-            0 => self.continued,
-            1 => true,
+            0 => self.continued && !closes_paragraph(doc.text()),
+            1 => !closes_paragraph(&doc.text()[doc.sentence(0).span.end..]),
             _ => doc.paragraph(doc.paragraph_count() - 1).sentences.start < count - 1,
         };
         self.text = doc.text()[keep..].to_owned();
@@ -707,7 +714,7 @@ impl Writer<'_> {
 
     /// The first `count` sentences of a document in the format of the output, written sentence by sentence
     fn write_sentences(&mut self, doc: &Document, count: usize) -> io::Result<()> {
-        let mut out = String::new();
+        self.out.clear();
         for paragraph in 0..doc.paragraph_count() {
             let sentences = doc.paragraph(paragraph).sentences;
             if sentences.start >= count {
@@ -717,7 +724,7 @@ impl Writer<'_> {
                 self.conllu.continue_paragraph();
             } else {
                 if self.format == Format::Sentences && self.paragraphs > 0 {
-                    out.push('\n');
+                    self.out.push('\n');
                 }
                 self.paragraphs += 1;
             }
@@ -725,19 +732,21 @@ impl Writer<'_> {
                 match self.format {
                     Format::Tokens => {
                         for token in doc.sentence(sentence).tokens {
-                            out.push_str(doc.tokens()[token].slice(doc.text()));
-                            out.push('\n');
+                            self.out.push_str(doc.tokens()[token].slice(doc.text()));
+                            self.out.push('\n');
                         }
-                        out.push('\n');
+                        self.out.push('\n');
                     }
                     Format::Sentences => {
                         let text = doc.sentence(sentence).span.slice(doc.text());
-                        let _ = writeln!(out, "{}", one_line(text));
+                        let _ = writeln!(self.out, "{}", one_line(text));
                     }
-                    Format::Conllu => self.conllu.write(doc, sentence..sentence + 1, &mut out),
+                    Format::Conllu => self
+                        .conllu
+                        .write(doc, sentence..sentence + 1, &mut self.out),
                 }
-                self.output.write_all(out.as_bytes())?;
-                out.clear();
+                self.output.write_all(self.out.as_bytes())?;
+                self.out.clear();
             }
         }
         self.pending = true;
@@ -759,6 +768,11 @@ impl Writer<'_> {
 /// A text of nothing but separators
 fn blank(text: &str) -> bool {
     text.chars().all(is_separator)
+}
+
+/// The separators after a sentence hold the end of its paragraph: U+2029 or a blank line
+fn closes_paragraph(separators: &str) -> bool {
+    layout::paragraphs(&format!("x{separators}x")).len() > 1
 }
 
 /// The line at which the start of the input shows another encoding than UTF-8: a byte order mark of UTF-16, NUL
@@ -955,6 +969,29 @@ mod tests {
         assert!(conllu.ends_with("# text = Раму.\n1\tРаму\t_\t_\t_\t_\t_\t_\t_\tSpaceAfter=No\n2\t.\t_\t_\t_\t_\t_\t_\t_\t_\n\n"), "{conllu}");
         let (_, sentences, _) = command(&["-l", "ru", "-f", "sentences"], speech.as_bytes());
         assert!(sentences.ends_with(" раму\n\nРаму.\n"), "{sentences}");
+        // A sentence longer than PARAGRAPH on one line is cut, without a new paragraph
+        let line = "мама мыла раму ".repeat(PARAGRAPH / 5);
+        let (_, conllu, _) = command(&args, line.as_bytes());
+        assert!(conllu.matches("# sent_id").count() > 1, "{conllu}");
+        assert_eq!(conllu.matches("# newpar").count(), 1);
+        // A blank line ends a paragraph whatever its length, and so does what follows a sentence written whole
+        for text in [
+            format!("Кот спит.\n{}\nЁж идёт.", " ".repeat(3 * PARAGRAPH)),
+            format!("Кот спит.\n{}\nЁж идёт.", "\u{200b}".repeat(PARAGRAPH)),
+            format!(
+                "{}кот.\u{2029}\nЁж идёт.",
+                "мама мыла раму ".repeat(PARAGRAPH / 15)
+            ),
+            format!(
+                "{}кот.\u{c}\u{c}\nЁж идёт.",
+                "мама мыла раму ".repeat(PARAGRAPH / 15)
+            ),
+        ] {
+            let (_, conllu, _) = command(&args, text.as_bytes());
+            assert_eq!(conllu.matches("# newpar").count(), 2, "{text:?}");
+            let (_, out, _) = command(&["-l", "ru", "-f", "sentences"], text.as_bytes());
+            assert!(out.ends_with("\n\nЁж идёт.\n"), "{out}");
+        }
         let separated = "Мама мыла раму.\u{2029}".repeat(PARAGRAPH / 10);
         let (_, conllu, _) = command(&args, separated.as_bytes());
         assert_eq!(conllu.matches("# newpar").count(), PARAGRAPH / 10);

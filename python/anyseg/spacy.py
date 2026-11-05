@@ -33,7 +33,7 @@ except ModuleNotFoundError as error:
     raise ImportError('anyseg.spacy needs spaCy: pip install "anyseg[spacy]"') from error
 
 import numpy
-from spacy.attrs import IDX, LENGTH, SENT_START
+from spacy.attrs import IDX, IS_SPACE, LENGTH, SENT_START
 from spacy.language import Language
 from spacy.pipeline.senter import senter_score
 from spacy.tokens import Doc
@@ -119,6 +119,7 @@ class Tokenizer:
     ) -> None:
         self.vocab = vocab
         self.segmenter = Segmenter(lang, abbreviations=abbreviations, tokens=tokens)
+        vocab.lex_attr_getters[IS_SPACE] = is_gap  # type: ignore[attr-defined]
 
     def __call__(self, text: str) -> Doc:
         """
@@ -359,6 +360,7 @@ def to_doc(document: Document, vocab: Vocab) -> Doc:
     tokens = document.tokens
     if len(document.words) != len(tokens):
         raise ValueError("a document with multiword tokens cannot be converted")
+    vocab.lex_attr_getters[IS_SPACE] = is_gap  # type: ignore[attr-defined]
     words, spaces, indices = layout(vocab, document.text, tokens.starts, tokens.ends)
     sentence_starts: list[bool | int | None] = [not index for index in range(len(words))]
     for sentence in document.sentences[1:]:
@@ -614,6 +616,23 @@ def relations(
     return heads, deprels
 
 
+def is_gap(string: str) -> bool:
+    """
+    Rule of a vocabulary for is_space: a word of nothing but what separates the tokens of anySeg
+
+    Description:
+        The rule goes with the vocabulary, so that the lexemes it makes in a worker of nlp.pipe,
+        in a pickle or from a DocBin have is_space too
+
+    Arguments:
+        string (str): Word
+
+    Returns:
+        bool: The word is whitespace
+    """
+    return bool(string) and all(character in SEPARATORS for character in string)
+
+
 def layout(
     vocab: Vocab, text: str, starts: list[int], ends: list[int]
 ) -> tuple[list[str], list[bool], list[int]]:
@@ -649,7 +668,7 @@ def layout(
             gap = gap[1:]
         if gap:
             # Invisible separators are no whitespace to spaCy: the components after the tokenizer
-            # would take them for words
+            # would take them for words. A lexeme made before the rule of is_gap is set by hand
             vocab[gap].is_space = True
             words.append(gap)
             spaces.append(False)

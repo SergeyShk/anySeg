@@ -10,7 +10,7 @@ from anyseg import Document, Segmenter, read_conllu
 
 spacy = pytest.importorskip("spacy")
 
-from spacy.tokens import Doc  # noqa: E402
+from spacy.tokens import Doc, DocBin  # noqa: E402
 from spacy.training import Example  # noqa: E402
 from spacy.util import get_words_and_spaces  # noqa: E402
 from spacy.vocab import Vocab  # noqa: E402
@@ -104,6 +104,24 @@ def test_tokenizer_invisible_separators_are_whitespace(gap):
         assert doc.text == text
         assert [token.is_space for token in doc] == [False, True, False]
         assert doc[1].text.isspace() or not doc[1].is_alpha
+
+
+def test_invisible_separators_stay_whitespace_out_of_the_process():
+    nlp = spacy.blank("ru", config=TOKENIZER)
+    doc = nlp("из\u200bстали")
+    expected = [False, True, False]
+    assert [token.is_space for token in pickle.loads(pickle.dumps(doc))] == expected
+    other = spacy.blank("ru", config=TOKENIZER)
+    restored = next(DocBin(docs=[doc]).get_docs(other.vocab))
+    assert [token.is_space for token in restored] == expected
+    # The rule goes with a pickled vocabulary, and the lexeme made before it is marked by hand
+    vocab = Vocab()
+    assert not vocab["\u2060"].is_space
+    assert not to_doc(Segmenter("ru").segment("а"), vocab)[0].is_space
+    assert [
+        token.is_space for token in to_doc(Segmenter("ru").segment("а\u2060б"), vocab)
+    ] == expected
+    assert pickle.loads(pickle.dumps(vocab))["\u200b"].is_space
 
 
 def test_tokenizer_spaces_stay_whitespace():
