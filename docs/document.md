@@ -5,7 +5,7 @@ A segmented text: its tokens, its words with the columns of [CoNLL-U](https://un
 *   The text is never changed: tokens, sentences, paragraphs and lines are its spans, with positions in the characters of the Python string.
 *   A token holds one word or, for a multiword token, several (Spanish «del» is «de» + «el»). The segmenter gives one word per token.
 *   Sentences hold whole tokens, paragraphs - the parts of the text between blank lines - hold whole sentences, and lines are those of the paragraphs.
-*   Words have the columns of CoNLL-U, empty until set; [`set_columns`](#set_columns) is the only change of a document, so a document can be shared between threads.
+*   Words have the columns of CoNLL-U, empty until set; [`set_columns`](#set_columns) is the only change of a document, so a document can be shared between threads. It can be pickled with its columns, to go to another process; its parts cannot.
 
 === "Code"
 
@@ -192,7 +192,7 @@ Exceptions:
 to_conllu(*, doc_id=None)
 ```
 
-The document in CoNLL-U, every sentence followed by a blank line. A document read from CoNLL-U is written as it was read, with the columns set since. Otherwise every sentence gets the comments `sent_id` and `text`, the first one `newdoc` and every paragraph `newpar`, and the space after a token inside a paragraph goes to MISC: `SpaceAfter=No` when there is none and `SpacesAfter` when it is not one space. Forms, the comment `text` and the values are in Unicode NFC, as CoNLL-U requires; the document keeps its text.
+The document in CoNLL-U, every sentence followed by a blank line. A document read from CoNLL-U is written as it was read, with the columns set since. Otherwise every sentence gets the comments `sent_id` and `text`, the first one `newdoc` and every paragraph `newpar`, and the space after a token inside a paragraph goes to MISC: `SpaceAfter=No` when there is none and `SpacesAfter` when it is not one space. Forms, the comment `text` and the values are in Unicode NFC, as CoNLL-U requires, and a lone surrogate is U+FFFD; the document keeps its text.
 
 | Parameter | Type | Default | Description |
 | :-------- | :--- | :------ | :---------- |

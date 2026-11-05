@@ -2,8 +2,9 @@
 //!
 //! The text is never changed: a token or a sentence is a [`Span`] of byte offsets into the text
 //! it was cut from. [`Segmenter::segment`] gives a [`Document`]: tokens, words with the columns of
-//! CoNLL-U, sentences, paragraphs and lines, read from and written to CoNLL-U by [`read_conllu`]
-//! and [`Document::to_conllu`]. Every language is a Cargo feature: `ru` (Russian, on by default).
+//! CoNLL-U, sentences, paragraphs and lines, read from and written to CoNLL-U by [`read_conllu`],
+//! [`Document::to_conllu`] and [`ConlluWriter`]. Every language is a Cargo feature: `ru` (Russian,
+//! on by default).
 //!
 //! ```
 //! # #[cfg(feature = "ru")] {
@@ -30,12 +31,15 @@ mod document;
 mod lang;
 mod layout;
 mod sentences;
+mod state;
 mod tokens;
 
 use sentences::Split;
 use tokens::Exceptions;
 
-pub use conllu::{ConlluError, read_conllu};
+pub use conllu::{ConlluError, ConlluWriter, read_conllu};
+#[doc(hidden)]
+pub use document::CheckedColumn;
 pub use document::{Column, Document, DocumentError, Line, LineBreak, Paragraph, Sentence};
 
 /// A piece of a text: `&text[start..end]`, in bytes
@@ -281,8 +285,8 @@ impl Segmenter {
         self.segment_string(text.to_owned())
     }
 
-    /// The document of a text it keeps, without a copy
-    pub(crate) fn segment_string(&self, text: String) -> Document {
+    /// The document of a text as [`segment`](Self::segment) gives it, without a copy of the text
+    pub fn segment_string(&self, text: String) -> Document {
         let split = self.split(&text, true);
         Document::segmented(
             text,
@@ -386,6 +390,7 @@ mod tests {
             ["Мама мыла раму.", "Рама чистая.", "Утро"]
         );
         let doc = segmenter.segment(text);
+        assert_eq!(doc, segmenter.segment_string(text.to_owned()));
         assert_eq!(doc.tokens(), segmenter.tokenize(text));
         let sentences: Vec<Span> = (0..doc.sentence_count())
             .map(|index| doc.sentence(index).span)

@@ -6,8 +6,10 @@ use std::ops::Range;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError, RwLock, RwLockReadGuard, TryLockError};
 
-use anyseg::Column;
-use pyo3::exceptions::{PyException, PyIndexError, PyOverflowError, PyTypeError, PyValueError};
+use anyseg::{CheckedColumn, Column};
+use pyo3::exceptions::{
+    PyException, PyIndexError, PyOverflowError, PyTypeError, PyUnicodeEncodeError, PyValueError,
+};
 use pyo3::marker::Ungil;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict, PyIterator, PyList, PySlice, PyString, PyTuple, PyType};
@@ -28,15 +30,96 @@ fn detached<T: Ungil>(py: Python<'_>, long: bool, work: impl Ungil + FnOnce() ->
     if long { py.detach(work) } else { work() }
 }
 
-/// Runs the work on the text of a string in UTF-8. A long text goes to a temporary `bytes`: `&str` would leave
-/// a copy of it cached in the string for its lifetime
-fn with_str<R>(text: &Bound<'_, PyString>, work: impl FnOnce(&str) -> PyResult<R>) -> PyResult<R> {
-    if length(text) <= DETACH {
-        return work(text.to_str()?);
+/// A string in UTF-8
+enum Encoded<'a, 'py> {
+    /// Cached in the string
+    Cached(&'a str),
+    /// A long string, in a temporary `bytes`: `&str` would leave a copy of it cached in the string for its lifetime
+    Bytes(Bound<'py, PyBytes>),
+    /// A string with lone surrogates, which Python encodes to three bytes each, and its text with U+FFFD in their
+    /// place: `&str` cannot hold them, and the offsets of the two are the same in bytes and in characters
+    Surrogates(Bound<'py, PyBytes>, String),
+}
+
+impl<'a, 'py> Encoded<'a, 'py> {
+    /// The string in UTF-8; a lone surrogate is an error
+    fn strict(text: &'a Bound<'py, PyString>) -> PyResult<Self> {
+        if length(text) <= DETACH {
+            text.to_str().map(Encoded::Cached)
+        } else {
+            text.encode_utf8().map(Encoded::Bytes)
+        }
     }
-    let bytes = text.encode_utf8()?;
-    // SAFETY: Python encodes a string to valid UTF-8 or fails on a lone surrogate
-    work(unsafe { std::str::from_utf8_unchecked(bytes.as_bytes()) })
+
+    fn new(text: &'a Bound<'py, PyString>) -> PyResult<Self> {
+        let py = text.py();
+        match Self::strict(text) {
+            Err(error) if error.is_instance_of::<PyUnicodeEncodeError>(py) => {
+                // SAFETY: the object is a live string, and the function returns a new `bytes` or null with an error
+                // set
+                let source = unsafe {
+                    let bytes = ffi::PyUnicode_AsEncodedString(
+                        text.as_ptr(),
+                        c"utf-8".as_ptr(),
+                        c"surrogatepass".as_ptr(),
+                    );
+                    Bound::from_owned_ptr_or_err(py, bytes)?.cast_into_unchecked::<PyBytes>()
+                };
+                let mut replaced = source.as_bytes().to_vec();
+                // 0xED before 0xA0 and above starts a surrogate, and no other character
+                for at in 0..replaced.len().saturating_sub(2) {
+                    if replaced[at] == 0xED && replaced[at + 1] >= 0xA0 {
+                        replaced[at..at + 3].copy_from_slice("\u{fffd}".as_bytes());
+                    }
+                }
+                let replaced = String::from_utf8(replaced)
+                    .map_err(|error| PyValueError::new_err(error.to_string()))?;
+                Ok(Encoded::Surrogates(source, replaced))
+            }
+            other => other,
+        }
+    }
+
+    /// The text for the core
+    fn text(&self) -> &str {
+        match self {
+            Encoded::Cached(text) => text,
+            // SAFETY: without an error handler Python encodes a string to valid UTF-8 only
+            Encoded::Bytes(bytes) => unsafe { std::str::from_utf8_unchecked(bytes.as_bytes()) },
+            Encoded::Surrogates(_, text) => text,
+        }
+    }
+
+    /// The bytes of the string itself
+    fn source(&self) -> &[u8] {
+        match self {
+            Encoded::Surrogates(source, _) => source.as_bytes(),
+            _ => self.text().as_bytes(),
+        }
+    }
+}
+
+/// Runs the work on the text of a string for the core and on the bytes of the string itself, with the same offsets
+fn with_str<R>(
+    text: &Bound<'_, PyString>,
+    work: impl FnOnce(&str, &[u8]) -> PyResult<R>,
+) -> PyResult<R> {
+    let encoded = Encoded::new(text)?;
+    work(encoded.text(), encoded.source())
+}
+
+/// The string of bytes that hold UTF-8 with lone surrogates, as `Encoded::source` gives them
+fn decoded<'py>(py: Python<'py>, bytes: &[u8]) -> PyResult<Bound<'py, PyString>> {
+    // SAFETY: the pointer and the length are those of a live slice, and the function returns a new string or null
+    // with an error set
+    unsafe {
+        let text = ffi::PyUnicode_DecodeUTF8(
+            bytes.as_ptr().cast(),
+            bytes.len() as ffi::Py_ssize_t,
+            c"surrogatepass".as_ptr(),
+        );
+        Ok(Bound::from_owned_ptr_or_err(py, text)?.cast_into_unchecked())
+    }
 }
 
 /// The number of characters of a string, without `__len__` of a subclass
@@ -168,15 +251,24 @@ struct Span {
     start: usize,
     #[pyo3(get)]
     end: usize,
-    #[pyo3(get)]
-    text: String,
+    /// UTF-8, or the bytes of `Encoded::source` for a piece with lone surrogates
+    bytes: Box<[u8]>,
 }
 
 #[pymethods]
 impl Span {
     #[new]
-    fn new(start: usize, end: usize, text: String) -> Self {
-        Span { start, end, text }
+    fn new(start: usize, end: usize, text: &Bound<'_, PyString>) -> PyResult<Self> {
+        Ok(Span {
+            start,
+            end,
+            bytes: Encoded::new(text)?.source().into(),
+        })
+    }
+
+    #[getter]
+    fn text<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyString>> {
+        decoded(py, &self.bytes)
     }
 
     fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
@@ -184,24 +276,29 @@ impl Span {
             "Span(start={}, end={}, text={})",
             self.start,
             self.end,
-            repr(py, &self.text)?
+            self.text(py)?.repr()?
         ))
     }
 
-    fn __reduce__<'py>(slf: &Bound<'py, Self>) -> (Bound<'py, PyType>, (usize, usize, String)) {
+    fn __reduce__<'py>(
+        slf: &Bound<'py, Self>,
+    ) -> PyResult<(Bound<'py, PyType>, Bound<'py, PyTuple>)> {
+        let py = slf.py();
         let span = slf.get();
-        (slf.get_type(), (span.start, span.end, span.text.clone()))
+        let arguments = (span.start, span.end, span.text(py)?).into_pyobject(py)?;
+        Ok((slf.get_type(), arguments))
     }
 }
 
-fn spans(text: &str, spans: Vec<anyseg::Span>) -> Vec<Span> {
+/// The spans with the pieces of `source`, the bytes of the string of `text`
+fn spans(text: &str, source: &[u8], spans: Vec<anyseg::Span>) -> Vec<Span> {
     char_offsets(text, spans.iter().copied())
         .into_iter()
         .zip(spans)
         .map(|((start, end), span)| Span {
             start,
             end,
-            text: span.slice(text).to_owned(),
+            bytes: source[span.start..span.end].into(),
         })
         .collect()
 }
@@ -220,9 +317,9 @@ fn spans(text: &str, spans: Vec<anyseg::Span>) -> Vec<Span> {
 ///     ['сущ.', 'C++']
 ///
 /// Description:
-///     Tokens and sentences are spans of the text, which is never changed. A segmenter is
-///     immutable, can be shared between threads and pickled, and equals the segmenters of the
-///     same language and lists
+///     Tokens and sentences are spans of the text, which is never changed. A lone surrogate counts
+///     as U+FFFD, and the spans keep it. A segmenter is immutable, can be shared between threads
+///     and pickled, and equals the segmenters of the same language and lists
 ///
 /// Arguments:
 ///     lang (str): ISO 639-1 code of the language: "ru"
@@ -341,17 +438,14 @@ impl Segmenter {
     ///
     /// Returns:
     ///     list[Span]: Tokens in order
-    ///
-    /// Raises:
-    ///     UnicodeEncodeError: If the text contains a lone surrogate
     fn tokenize<'py>(
         &self,
         py: Python<'py>,
         text: &Bound<'py, PyString>,
     ) -> PyResult<Bound<'py, PyList>> {
-        with_str(text, |text| {
+        with_str(text, |text, source| {
             let spans = detached(py, text.len() > DETACH, || {
-                spans(text, self.inner.tokenize(text))
+                spans(text, source, self.inner.tokenize(text))
             });
             untracked_list(py, spans)
         })
@@ -377,17 +471,14 @@ impl Segmenter {
     ///
     /// Returns:
     ///     list[Span]: Sentences in order
-    ///
-    /// Raises:
-    ///     UnicodeEncodeError: If the text contains a lone surrogate
     fn sentenize<'py>(
         &self,
         py: Python<'py>,
         text: &Bound<'py, PyString>,
     ) -> PyResult<Bound<'py, PyList>> {
-        with_str(text, |text| {
+        with_str(text, |text, source| {
             let spans = detached(py, text.len() > DETACH, || {
-                spans(text, self.inner.sentenize(text))
+                spans(text, source, self.inner.sentenize(text))
             });
             untracked_list(py, spans)
         })
@@ -406,20 +497,17 @@ impl Segmenter {
     ///
     /// Returns:
     ///     Document: Segmented text
-    ///
-    /// Raises:
-    ///     UnicodeEncodeError: If the text contains a lone surrogate
     fn segment<'py>(
         &self,
         py: Python<'py>,
         text: Bound<'py, PyString>,
     ) -> PyResult<Bound<'py, Document>> {
-        let parts = with_str(&text, |text| {
+        let parts = with_str(&text, |text, _| {
             Ok(detached(py, text.len() > DETACH, || {
                 Parts::new(self.inner.segment(text))
             }))
         })?;
-        untracked(py, Document::new(parts, &text))
+        untracked(py, Document::new(parts, &text)?)
     }
 
     /// Documents of texts
@@ -428,10 +516,10 @@ impl Segmenter {
     ///     The documents of segment in the order of the texts. The texts are taken from the
     ///     iterable as the documents are asked for, batch_size at a time, and a batch is segmented
     ///     without the GIL on up to threads threads, at most one per core and per 4 KB of the
-    ///     batch. A text that is not a string or holds a lone surrogate raises its error after the
-    ///     documents of the texts before it, and ends the iteration; so does an error of the
-    ///     iterable, except that an interrupt comes at once. The iterator is not thread-safe: a
-    ///     call while another runs raises ValueError
+    ///     batch. A text that is not a string raises its error after the documents of the texts
+    ///     before it, and ends the iteration; so does an error of the iterable, except that an
+    ///     interrupt comes at once. The iterator is not thread-safe: a call while another runs
+    ///     raises ValueError
     ///
     /// Arguments:
     ///     texts (Iterable[str]): Texts
@@ -444,7 +532,6 @@ impl Segmenter {
     /// Raises:
     ///     ValueError: If threads or batch_size is less than 1
     ///     TypeError: If texts is a string or not iterable, or a text is not a string
-    ///     UnicodeEncodeError: If a text contains a lone surrogate
     #[pyo3(signature = (texts, *, threads = 1, batch_size = 1000))]
     fn pipe<'py>(
         slf: &Bound<'py, Self>,
@@ -615,41 +702,23 @@ impl Pipe {
                 },
             }
         }
-        // A long text goes to a temporary `bytes`, as in `with_str`
-        let mut encoded: Vec<Option<Bound<'_, PyBytes>>> = Vec::with_capacity(strings.len());
+        let mut encoded = Vec::with_capacity(strings.len());
         for text in &strings {
-            let result = if length(text) > DETACH {
-                text.encode_utf8().map(Some)
-            } else {
-                text.to_str().map(|_| None)
-            };
-            match result {
-                Ok(bytes) => encoded.push(bytes),
+            match Encoded::new(text) {
+                Ok(text) => encoded.push(text),
                 Err(error) => {
                     failure = Some(error);
                     break;
                 }
             }
         }
-        strings.truncate(encoded.len());
-        let views = strings
-            .iter()
-            .zip(&encoded)
-            .map(|(text, bytes)| match bytes {
-                // SAFETY: Python encodes a string to valid UTF-8 or fails on a lone surrogate
-                Some(bytes) => Ok(unsafe { std::str::from_utf8_unchecked(bytes.as_bytes()) }),
-                None => text.to_str(),
-            })
-            .collect::<PyResult<Vec<&str>>>()?;
+        let views: Vec<&str> = encoded.iter().map(Encoded::text).collect();
         let segmenter = &self.segmenter.get().inner;
         let parts = py.detach(|| segment_all(segmenter, &views, self.threads));
-        state.taken += strings.len();
-        state.ready.extend(
-            parts
-                .into_iter()
-                .zip(&strings)
-                .map(|(parts, text)| Document::new(parts, text)),
-        );
+        state.taken += parts.len();
+        for (parts, text) in parts.into_iter().zip(&strings) {
+            state.ready.push_back(Document::new(parts, text)?);
+        }
         if failure.is_some() || strings.len() < self.batch_size {
             state.texts = None;
         }
@@ -724,7 +793,7 @@ fn segment_all(segmenter: &anyseg::Segmenter, texts: &[&str], threads: usize) ->
 ///     several; words have the columns of CoNLL-U, empty until set. Sentences hold whole tokens,
 ///     paragraphs (the parts of the text between blank lines) hold whole sentences, and lines are
 ///     those of the paragraphs. Tokens, words and the other parts are views of the document;
-///     set_columns is its only change, and a document can be shared between threads
+///     set_columns is its only change, and a document can be shared between threads and pickled
 ///
 /// Methods:
 ///     column: Values of a column of the words
@@ -887,19 +956,25 @@ impl Parts {
 impl Document {
     /// The document with the string it was made from, or a new one: a subclass of `str` may have attributes,
     /// and a cycle through them and the untracked views would never be collected
-    fn new(parts: Parts, text: &Bound<'_, PyString>) -> Self {
+    fn new(parts: Parts, text: &Bound<'_, PyString>) -> PyResult<Self> {
         let text = if text.is_exact_instance_of::<PyString>() {
             text.clone().unbind()
         } else {
-            PyString::new(text.py(), parts.inner.text()).unbind()
+            // SAFETY: the object is a live string, and the function returns a new exact string or null with an error
+            // set
+            unsafe {
+                Bound::from_owned_ptr_or_err(text.py(), ffi::PyUnicode_FromObject(text.as_ptr()))?
+                    .cast_into_unchecked::<PyString>()
+                    .unbind()
+            }
         };
-        Document {
+        Ok(Document {
             inner: RwLock::new(parts.inner),
             text,
             tokens: parts.tokens,
             lines: parts.lines,
             structure: parts.structure,
-        }
+        })
     }
 
     /// The text of the document between two character offsets
@@ -915,9 +990,40 @@ impl Document {
         self.inner.read().unwrap_or_else(PoisonError::into_inner)
     }
 
+    /// Some word has a form other than the text of its token
+    fn has_forms(&self) -> bool {
+        *self.structure.forms.get_or_init(|| {
+            let inner = self.read();
+            (0..inner.word_count()).any(|word| {
+                let token = inner.tokens()[inner.word_token(word)].slice(inner.text());
+                !std::ptr::eq(inner.form(word), token)
+            })
+        })
+    }
+
     fn cover(&self, tokens: &Range<usize>) -> (usize, usize) {
         (self.tokens[tokens.start].0, self.tokens[tokens.end - 1].1)
     }
+}
+
+/// A column of the core from a list of strings, without a copy of its values on the way
+fn checked_column(
+    column: Column,
+    values: &Bound<'_, PyAny>,
+    words: usize,
+) -> PyResult<CheckedColumn> {
+    let values = values.extract::<Vec<Option<Bound<'_, PyString>>>>()?;
+    let mut failure = None;
+    let strings = values.iter().map(|value| {
+        value
+            .as_ref()
+            .and_then(|value| value.to_str().map_err(|error| failure = Some(error)).ok())
+    });
+    let checked = CheckedColumn::new(column, strings, words);
+    if let Some(error) = failure {
+        return Err(error);
+    }
+    checked.map_err(|error| PyValueError::new_err(error.to_string()))
 }
 
 /// The parts of a document of the tokens given in characters, checked
@@ -1019,6 +1125,14 @@ impl Document {
     /// Raises:
     ///     ValueError: If there is no such column
     fn column<'py>(&self, py: Python<'py>, name: &str) -> PyResult<Bound<'py, PyList>> {
+        // The form of a token is a piece of the string itself, with its lone surrogates
+        if name == "form" && !self.has_forms() {
+            let structure = &self.structure;
+            let forms = (0..structure.word_count())
+                .map(|word| self.piece(py, self.tokens[structure.word_token(word)]))
+                .collect::<PyResult<Vec<_>>>()?;
+            return PyList::new(py, forms);
+        }
         // Strings and integers only under the lock: a list may start a collection, whose finalizers may
         // release the GIL to a thread that waits for the lock
         let values = {
@@ -1094,7 +1208,8 @@ impl Document {
                 }
                 heads = Some(converted);
             } else if let Some(column_name) = Column::from_name(&name) {
-                values.push((column_name, column.extract::<Vec<Option<String>>>()?));
+                let words = self.structure.word_count();
+                values.push(checked_column(column_name, &column, words)?);
             } else {
                 return Err(PyValueError::new_err(format!(
                     "{} cannot be set, expected: {}",
@@ -1108,7 +1223,7 @@ impl Document {
             self.inner
                 .write()
                 .unwrap_or_else(PoisonError::into_inner)
-                .set_columns(values, heads)
+                .set_checked_columns(values, heads)
         })
         .map_err(|error| PyValueError::new_err(error.to_string()))
     }
@@ -1163,10 +1278,10 @@ impl Document {
                     .collect::<PyResult<Vec<_>>>()
             })
             .transpose()?;
-        let parts = with_str(&text, |string| {
+        let parts = with_str(&text, |string, _| {
             parts_of_tokens(string, &starts, &ends, sentence_starts.as_deref())
         })?;
-        untracked(text.py(), Document::new(parts, &text))
+        untracked(text.py(), Document::new(parts, &text)?)
     }
 
     /// Document in CoNLL-U
@@ -1179,7 +1294,8 @@ impl Document {
     ///     invisible separators are left out, line breaks other than CR and LF become LF and
     ///     whitespace other than tabs becomes a space; the comment text is the tokens with these
     ///     spaces, line breaks turned into spaces. Forms, the comment text and column values are in
-    ///     Unicode NFC, as CoNLL-U requires; the document keeps its text
+    ///     Unicode NFC, as CoNLL-U requires, and a lone surrogate is U+FFFD; the document keeps its
+    ///     text
     ///
     /// Arguments:
     ///     doc_id (str | None): ID of the document: newdoc gets it and sent_id becomes ID-N (the ID
@@ -1204,8 +1320,16 @@ impl Document {
         .map_err(|error| PyValueError::new_err(error.to_string()))
     }
 
-    fn __reduce__(slf: &Bound<'_, Self>) -> PyResult<()> {
-        Err(not_picklable(slf.as_any())?)
+    fn __reduce__<'py>(
+        slf: &Bound<'py, Self>,
+    ) -> PyResult<(Bound<'py, PyAny>, Bound<'py, PyTuple>)> {
+        let py = slf.py();
+        let doc = slf.get();
+        let text = doc.text.bind(py);
+        let state = detached(py, length(text) > DETACH, || doc.read().to_state());
+        let restore = py.import("anyseg._anyseg")?.getattr("_restore_document")?;
+        let arguments = (text, PyBytes::new(py, &state)).into_pyobject(py)?;
+        Ok((restore, arguments))
     }
 
     fn __repr__(&self) -> String {
@@ -1615,14 +1739,7 @@ impl Word {
     #[getter]
     fn form<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyString>> {
         let doc = self.doc.get();
-        let forms = *doc.structure.forms.get_or_init(|| {
-            let inner = doc.read();
-            (0..inner.word_count()).any(|word| {
-                let token = inner.tokens()[inner.word_token(word)].slice(inner.text());
-                !std::ptr::eq(inner.form(word), token)
-            })
-        });
-        if forms {
+        if doc.has_forms() {
             return Ok(PyString::new(py, doc.read().form(self.index)));
         }
         doc.piece(py, doc.tokens[doc.structure.word_token(self.index)])
@@ -1689,12 +1806,9 @@ impl Word {
     }
 
     fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
+        let form = self.form(py)?.repr()?;
         let inner = self.doc.get().read();
-        let mut out = format!(
-            "Word(id={}, form={}",
-            inner.word_id(self.index),
-            repr(py, inner.form(self.index))?
-        );
+        let mut out = format!("Word(id={}, form={form}", inner.word_id(self.index));
         for column in [Column::Lemma, Column::Upos, Column::Xpos, Column::Feats] {
             if let Some(value) = inner.column(column, self.index) {
                 out.push_str(&format!(", {}={}", column.name(), repr(py, value)?));
@@ -1943,20 +2057,36 @@ fn read_conllu<'py>(
     py: Python<'py>,
     text: &Bound<'py, PyString>,
 ) -> PyResult<Vec<Bound<'py, Document>>> {
-    let documents = with_str(text, |text| {
-        detached(py, text.len() > DETACH, || {
-            anyseg::read_conllu(text)
-                .map(|documents| documents.into_iter().map(Parts::new).collect::<Vec<_>>())
-        })
-        .map_err(|error| PyValueError::new_err(error.to_string()))
-    })?;
+    let encoded = Encoded::strict(text)?;
+    let text = encoded.text();
+    let documents = detached(py, text.len() > DETACH, || {
+        anyseg::read_conllu(text)
+            .map(|documents| documents.into_iter().map(Parts::new).collect::<Vec<_>>())
+    })
+    .map_err(|error| PyValueError::new_err(error.to_string()))?;
     documents
         .into_iter()
         .map(|parts| {
             let text = PyString::new(py, parts.inner.text());
-            untracked(py, Document::new(parts, &text))
+            untracked(py, Document::new(parts, &text)?)
         })
         .collect()
+}
+
+/// The document of a pickle, written by `Document.__reduce__`
+#[pyfunction]
+fn _restore_document<'py>(
+    text: Bound<'py, PyString>,
+    state: &[u8],
+) -> PyResult<Bound<'py, Document>> {
+    let py = text.py();
+    let parts = with_str(&text, |string, _| {
+        detached(py, string.len() > DETACH, || {
+            anyseg::Document::from_state(string.to_owned(), state).map(Parts::new)
+        })
+        .map_err(|error| PyValueError::new_err(error.to_string()))
+    })?;
+    untracked(py, Document::new(parts, &text)?)
 }
 
 /// The anyseg command with its arguments, without the name of the program: the exit code
@@ -1982,6 +2112,7 @@ fn _anyseg(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Paragraphs>()?;
     m.add_class::<Lines>()?;
     m.add_function(wrap_pyfunction!(read_conllu, m)?)?;
+    m.add_function(wrap_pyfunction!(_restore_document, m)?)?;
     m.add_function(wrap_pyfunction!(_main, m)?)?;
     m.add(
         "__version__",

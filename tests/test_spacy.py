@@ -10,7 +10,7 @@ from anyseg import Document, Segmenter, read_conllu
 
 spacy = pytest.importorskip("spacy")
 
-from spacy.tokens import Doc  # noqa: E402
+from spacy.tokens import Doc, DocBin  # noqa: E402
 from spacy.training import Example  # noqa: E402
 from spacy.util import get_words_and_spaces  # noqa: E402
 from spacy.vocab import Vocab  # noqa: E402
@@ -88,6 +88,71 @@ def test_tokenizer_whitespace_as_spacy():
         assert ([token.text for token in doc], [bool(token.whitespace_) for token in doc]) == (
             expected if text else ([], [])
         ), repr(text)
+
+
+@pytest.mark.parametrize(
+    "gap", ["\u200b\u200b", "\ufeff", "\u2060 ", " \u00ad", "\u200c\u200d", "\x01", " \u200b\n"]
+)
+def test_tokenizer_invisible_separators_are_whitespace(gap):
+    text = f"из{gap}стали"
+    tokenizer = Tokenizer(Vocab(), "ru")
+    for doc in (
+        tokenizer(text),
+        next(tokenizer.pipe([text])),
+        to_doc(Segmenter("ru").segment(text), Vocab()),
+    ):
+        assert doc.text == text
+        assert [token.is_space for token in doc] == [False, True, False]
+        assert doc[1].text.isspace() or not doc[1].is_alpha
+
+
+def test_invisible_separators_stay_whitespace_out_of_the_process():
+    nlp = spacy.blank("ru", config=TOKENIZER)
+    doc = nlp("из\u200bстали")
+    expected = [False, True, False]
+    assert [token.is_space for token in pickle.loads(pickle.dumps(doc))] == expected
+    other = spacy.blank("ru", config=TOKENIZER)
+    restored = next(DocBin(docs=[doc]).get_docs(other.vocab))
+    assert [token.is_space for token in restored] == expected
+    # The rule goes with a pickled vocabulary, and the lexeme made before it is marked by hand
+    vocab = Vocab()
+    assert not vocab["\u2060"].is_space
+    assert not to_doc(Segmenter("ru").segment("а"), vocab)[0].is_space
+    assert [
+        token.is_space for token in to_doc(Segmenter("ru").segment("а\u2060б"), vocab)
+    ] == expected
+    assert pickle.loads(pickle.dumps(vocab))["\u200b"].is_space
+
+
+def test_tokenizer_spaces_stay_whitespace():
+    tokenizer = Tokenizer(Vocab(), "ru")
+    assert [token.is_space for token in tokenizer("Ёж\n\n идёт  тут")] == [
+        False,
+        True,
+        False,
+        True,
+        False,
+    ]
+    # The tokens of a text are not marked as whitespace
+    assert not tokenizer("a\u200bb")[0].is_space
+    assert not tokenizer.vocab["a"].is_space
+
+
+def test_lone_surrogates(nlp):
+    high, low = chr(0xD83D), chr(0xDE00)
+    text = f"Ёж {high} идёт. {high}{low} Кот{low}\u200b спит"
+    kept = text.replace(high, "\ufffd").replace(low, "\ufffd")
+    assert nlp(text).text == kept
+    assert [token.text for token in nlp(text)] == [token.text for token in nlp(kept)]
+    assert [sentence.text for sentence in nlp(text).sents] == [
+        sentence.text for sentence in nlp(kept).sents
+    ]
+    assert next(nlp.tokenizer.pipe([text])).text == kept
+    document = Segmenter("ru").segment(text)
+    doc = to_doc(document, Vocab())
+    assert doc.text == kept
+    assert [token.idx for token in doc if not token.is_space] == document.tokens.starts
+    assert from_doc(doc).text == kept
 
 
 def test_tokenizer_settings():

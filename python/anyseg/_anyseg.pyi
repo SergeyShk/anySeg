@@ -17,6 +17,7 @@ __all__ = [
     "Words",
     "__version__",
     "_main",
+    "_restore_document",
     "read_conllu",
 ]
 __version__: str
@@ -282,3 +283,4 @@ class Lines(Sequence[Line]):
 
 def read_conllu(text: str) -> list[Document]: ...
 def _main(args: list[str]) -> int: ...
+def _restore_document(text: str, state: bytes) -> Document: ...
