@@ -184,7 +184,7 @@ An emoticon or an emoji after final marks stays in the sentence; without them, i
 
 ### Numbered items
 
-A number with a period at the start of a paragraph or a line marks a list item and stays in its sentence, as the UD guidelines ask. So does a number of up to three digits inside a line, at the start of a sentence or after a colon, before a capital letter, when the sentence before or after it has the number next to it. Any other number with a period after the end of a sentence, before a capital letter, is a sentence of its own: a heading, a year, an answer.
+A number with a period at the start of a paragraph or a line marks a list item and stays in its sentence, as the UD guidelines ask. So does a number of up to three digits inside a line before a capital letter: at the start of a sentence, when the sentence before or after it has the number next to it, and after a colon, when the sentence after it starts with the next number. Any other number with a period after the end of a sentence, before a capital letter, is a sentence of its own: a heading, a year, an answer.
 
 === "Code"
 
