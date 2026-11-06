@@ -1,0 +1,16 @@
+# Abbreviations as they are written, whatever comes after them: «EE. UU.», titles in capitals before a name in normal
+# case, «DR. Juan Pérez», and forms with a first capital letter of words that are no abbreviation in lowercase, «Col. Roma».
+EE
+UU
+SR
+SRA
+SRTA
+SRES
+DR
+DRA
+LIC
+ARQ
+PROF
+GRAL
+Col
+Vid

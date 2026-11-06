@@ -13,6 +13,21 @@ dotted = whole
 digit_groups = point
 phone_digits = none
 script = latin
+# A dash glued to a final mark with a space after it closes its line, a hyphen numbers an article: «La viuda.-- El niño»,
+# «Artículo 1.- Objeto»; a dash starts a line of dialogue before a digit as well: «¿Cuánto? —5 euros»
+dashes = closing
+# Marks that stay inside a token between letters or digits: «km/h», «15/01/2011», «I+D», «O`Neal», «sub'23», «d´Ebre»
+inner_marks = / + ` ' ’ ´
+# A sign before a digit is in the number after a space: «-5 grados»
+signed_numbers = yes
+# What follows the period of an ordinal number in one token: «3.º», «2.ª», «1.er»
+ordinal_endings = º ª er os as
+# Top-level domains that are words: with a first capital letter they start a sentence after a missing space: «casa.De»
+capital_words = de es me su
+# A word in capitals is no abbreviation of the lists unless a digit or another word in capitals follows: «PP.», «ART. 5»
+capital_abbreviations = context
+# Superscript digits are tokens of their own: «km²»
+superscripts = split
 # The accent of a verb goes when a pronoun joins it: «decírselo» is «decir», «se», «lo»
 enclitic_host_marks = U+0301
 # A verb has one of these letters before its ending

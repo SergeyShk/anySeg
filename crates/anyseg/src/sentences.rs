@@ -37,10 +37,10 @@ fn is_closing(piece: &str) -> bool {
     ) || is_entity(piece)
 }
 
-fn is_opening(piece: &str) -> bool {
+pub(crate) fn is_opening(piece: &str) -> bool {
     matches!(
         piece,
-        "«" | "„" | "“" | "\"" | "'" | "``" | "(" | "[" | "{" | "‘" | "‹"
+        "«" | "„" | "“" | "\"" | "'" | "``" | "(" | "[" | "{" | "‘" | "‹" | "¿" | "¡"
     ) || is_entity(piece)
 }
 
@@ -77,6 +77,18 @@ fn is_emphasis(piece: &str) -> bool {
 /// A mention, which starts a sentence after final marks or an emoticon: «Спасибо! @anna да»
 fn is_mention(piece: &str) -> bool {
     piece.len() > 1 && piece.starts_with('@')
+}
+
+/// A number with a sign in its token, where the language keeps it there: «-5»
+fn is_signed(piece: &str) -> bool {
+    let mut chars = piece.chars();
+    matches!(chars.next(), Some('-' | '\u{2212}'))
+        && chars.next().is_some_and(|c| c.is_ascii_digit())
+}
+
+/// A run of periods or a mark of ellipsis, maybe with other final marks: «...», «…»
+fn is_ellipsis(piece: &str) -> bool {
+    piece.starts_with(['…', '.']) && piece != "." && is_final(piece)
 }
 
 fn has_word(piece: &str) -> bool {
@@ -429,7 +441,10 @@ impl Splitter<'_> {
                 return (index, false);
             }
             let next = self.piece(index + 1);
-            return (index, words && (starts_upper(next) || is_mention(next)));
+            return (
+                index,
+                words && (starts_upper(next) || is_mention(next) || matches!(next, "¿" | "¡")),
+            );
         }
         if !candidate || self.omission(index) || self.leading_dot(index) {
             return (index, false);
@@ -450,6 +465,20 @@ impl Splitter<'_> {
         {
             last += 1;
         }
+        // A dash glued to the mark with a space after it: a hyphen numbers an article, «Artículo 1.- Objeto», and a
+        // longer dash closes a line of dialogue with its sentence, «La viuda.-- El niño»
+        if self.tables.conventions.closing_dashes
+            && last + 2 < count
+            && self.attached(last + 1)
+            && is_dash(self.piece(last + 1))
+            && !self.attached(last + 2)
+        {
+            if self.piece(last + 1) != "-" {
+                last += 1;
+            } else if self.piece(last) == "." {
+                return (last + 1, false);
+            }
+        }
         if last + 1 == count {
             return (last, false);
         }
@@ -462,12 +491,13 @@ impl Splitter<'_> {
             is_abbreviation(piece)
                 && self.starts(last + 1, false)
                 && (self.ends(index) || self.not_initial(index, last + 1))
+                && !self.final_abbreviation_goes_on(index)
         };
         (last, boundary)
     }
 
     /// Whether the tokens from `index` start a sentence: a capital letter, maybe after an opening quote or bracket,
-    /// and after final marks also a digit, a mention or a dash before a capital letter
+    /// and after final marks also a digit, a mention, an inverted mark or a dash before a capital letter
     fn starts(&self, index: usize, marks: bool) -> bool {
         let opens = |piece: &str| {
             piece.starts_with(|c: char| c.is_uppercase() || (marks && c.is_ascii_digit()))
@@ -484,16 +514,26 @@ impl Splitter<'_> {
                 .get(index + offset)
                 .map(|span| span.slice(self.text))
         };
+        let mut opening = 0;
+        while next(opening).is_some_and(|after| is_opening(after) && !matches!(after, "¿" | "¡"))
+        {
+            opening += 1;
+        }
+        if matches!(next(opening), Some("¿" | "¡")) {
+            // An inverted mark opens a sentence whatever comes after it, unless an ellipsis or a mark glued to it goes on
+            return (marks && !self.attached(index) && !is_ellipsis(self.piece(index - 1)))
+                || next(opening + 1).is_some_and(opens);
+        }
         if is_opening(piece) {
             return next(1).is_some_and(opens);
         }
         if !marks {
             return false;
         }
-        if is_mention(piece) {
+        if is_mention(piece) || is_signed(piece) {
             return true;
         }
-        if piece.starts_with(['…', '.']) && piece != "." && is_final(piece) {
+        if is_ellipsis(piece) {
             // An ellipsis before a capital letter opens a sentence: «Он вышел. … Тополиный пух»
             return next(1).is_some_and(starts_upper);
         }
@@ -505,9 +545,19 @@ impl Splitter<'_> {
             return next(1).is_some_and(starts_upper);
         }
         if is_dash(piece) {
-            return match next(1) {
-                Some(after) if is_opening(after) => next(2).is_some_and(starts_upper),
-                Some(after) => starts_upper(after),
+            // Hyphens of a dash may stand apart: «- - Según»
+            let mut offset = 1;
+            while next(offset).is_some_and(is_dash) {
+                offset += 1;
+            }
+            return match next(offset) {
+                Some("¿" | "¡") => true,
+                Some(after) if is_opening(after) => next(offset + 1).is_some_and(starts_upper),
+                Some(after) => {
+                    starts_upper(after)
+                        || (self.tables.conventions.closing_dashes
+                            && after.starts_with(|c: char| c.is_ascii_digit()))
+                }
                 None => false,
             };
         }
@@ -517,15 +567,21 @@ impl Splitter<'_> {
     /// Whether an abbreviation before a capital letter ends a sentence: one of the language that does («и т. д.»),
     /// or a lowercase one after a number, maybe through other lowercase ones («в 1914 г.», «15 тыс. руб.»)
     fn ends(&self, index: usize) -> bool {
+        if self.ends_as_written(index) {
+            return true;
+        }
         let lowercase = |piece: &str| !piece.chars().any(char::is_uppercase);
         // The abbreviations before this one and the word before them, as the list keys them: «т. д.», «и пр.»
         let mut key = String::new();
         for position in (index.saturating_sub(3)..=index).rev() {
             let piece = self.piece(position);
             let abbreviation = is_abbreviation(piece) && lowercase(piece);
-            // A token with inner periods keys as its parts: «т.д.» as «т д», «EE.UU.» as «ee uu»
+            // A token with inner periods keys as its parts, «т.д.» as «т д», and with capitals only where the list has
+            // no capitals of its own, so that «A.M.» is no «a. m.»
             let word = if abbreviation
-                || (is_abbreviation(piece) && piece[..piece.len() - 1].contains('.'))
+                || (is_abbreviation(piece)
+                    && piece[..piece.len() - 1].contains('.')
+                    && self.tables.final_abbreviations_written.is_empty())
             {
                 piece[..piece.len() - 1]
                     .split('.')
@@ -548,7 +604,13 @@ impl Splitter<'_> {
             }
         }
         // Back to a number over units: «5 млрд руб.», «60 км/ч.»
-        if !lowercase(self.piece(index)) {
+        let end = self.piece(index);
+        if !lowercase(end)
+            || self
+                .tables
+                .not_final_abbreviations
+                .contains(&self.tables.key(end.trim_end_matches('.')))
+        {
             return false;
         }
         for position in (index.saturating_sub(4)..index).rev() {
@@ -571,9 +633,52 @@ impl Splitter<'_> {
         false
     }
 
+    /// Whether the abbreviations up to this one are one that the language writes with capitals and that ends a
+    /// sentence: «44 a. C.», «EE. UU.», unlike the initials «Н. Э.» next to «н. э.»
+    fn ends_as_written(&self, index: usize) -> bool {
+        let written = &self.tables.final_abbreviations_written;
+        if written.is_empty() {
+            return false;
+        }
+        let mut key = String::new();
+        for position in (index.saturating_sub(3)..=index).rev() {
+            let piece = self.piece(position);
+            if !is_abbreviation(piece) {
+                return false;
+            }
+            let parts = piece[..piece.len() - 1].replace('.', " ");
+            key = if key.is_empty() {
+                parts
+            } else {
+                format!("{parts} {key}")
+            };
+            if written.contains(&key) {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Whether an abbreviation and the one after it make an abbreviation of the language that ends a sentence, so the
+    /// first does not end one after a number: «44 a. C.»
+    fn final_abbreviation_goes_on(&self, index: usize) -> bool {
+        let tables = self.tables;
+        // Without capitals in the list the abbreviation after this one is an initial: «5 т. Д. Иванов»
+        if tables.final_abbreviations_written.is_empty() {
+            return false;
+        }
+        let part = |position: usize| tables.key(self.piece(position).trim_end_matches('.'));
+        index + 1 < self.tokens.len()
+            && is_abbreviation(self.piece(index + 1))
+            && tables
+                .final_abbreviations
+                .contains(&format!("{} {}", part(index), part(index + 1)))
+    }
+
     /// Whether a single letter with a period before the capital letter at `next` is not an initial: a letter of
-    /// another script before a word of the language, as a variable or a name («через x. Тогда», «Витамин C. Его»), or
-    /// a capital letter after a quantity, as a unit («5 А. Напряжение»)
+    /// another script before a word of the language, as a variable or a name («через x. Тогда», «Витамин C. Его»), a
+    /// capital letter inside a sentence before a word of the language that seldom follows an initial («Felipe V. El
+    /// rey»), or a capital letter after a quantity, as a unit («5 А. Напряжение»)
     fn not_initial(&self, index: usize, next: usize) -> bool {
         let mut chars = self.piece(index).chars();
         let (Some(letter), Some('.'), None) = (chars.next(), chars.next(), chars.next()) else {
@@ -587,7 +692,21 @@ impl Splitter<'_> {
         let previous = index.checked_sub(1).map(|position| self.piece(position));
         let initials =
             previous.is_some_and(|piece| is_abbreviation(piece) && piece.chars().count() == 2);
+        let opener = || {
+            !self.tables.sentence_openers.is_empty()
+                && self.tokens[next..]
+                    .iter()
+                    .take(2)
+                    .map(|span| span.slice(self.text))
+                    .find(|piece| piece.starts_with(is_alpha))
+                    .is_some_and(|piece| {
+                        self.tables
+                            .sentence_openers
+                            .contains(&self.tables.key(piece))
+                    })
+        };
         (!initials && !script.contains(letter) && capital.is_some_and(|c| script.contains(c)))
+            || (!initials && index > self.sentence && letter.is_uppercase() && opener())
             || (letter.is_uppercase()
                 && previous
                     .is_some_and(|piece| is_quantity(piece, self.tables.conventions.digit_groups))
@@ -679,6 +798,7 @@ impl Splitter<'_> {
         let first = self.line_tokens[line + 1];
         let after = self.piece(first);
         let marker = after.chars().all(|c| BULLETS.contains(c))
+            || is_signed(after)
             || after.starts_with(is_emoji)
             || after.contains('\u{20e3}')
             || (first + 1 < self.tokens.len()
@@ -1339,6 +1459,10 @@ mod tests {
         let text = "Купили хлеб и Т.Д. Потом ушли.";
         assert_eq!(custom.sentenize(text).len(), 2);
         assert_eq!(
+            sentences("Масса 5 т. Д. Иванов вышел."),
+            ["Масса 5 т.", "Д. Иванов вышел."]
+        );
+        assert_eq!(
             sentences("[12:01] Вася: привет\n[12:02] Петя: здарова"),
             ["[12:01] Вася: привет", "[12:02] Петя: здарова"]
         );
@@ -1378,5 +1502,226 @@ mod tests {
             let spans = Segmenter::new("ru").unwrap().sentenize(&text);
             assert!(!spans.is_empty());
         }
+    }
+}
+
+#[cfg(all(test, feature = "es"))]
+mod spanish {
+    use crate::Segmenter;
+
+    fn sentences(text: &str) -> Vec<&str> {
+        Segmenter::new("es")
+            .unwrap()
+            .sentenize(text)
+            .iter()
+            .map(|span| span.slice(text))
+            .collect()
+    }
+
+    fn whole(text: &str) {
+        assert_eq!(sentences(text), [text]);
+    }
+
+    #[test]
+    fn inverted_marks() {
+        assert_eq!(
+            sentences("Hola. ¿Qué tal? ¡Bien! ¿o no? ¡ahora!"),
+            ["Hola.", "¿Qué tal?", "¡Bien!", "¿o no?", "¡ahora!"]
+        );
+        whole("Si vienes, ¿me avisas?");
+        whole("¡Ay! me duele.");
+        whole("Bueno... ¿qué dices?");
+        whole("Bueno...¿qué dices?");
+        assert_eq!(sentences("Fin.¿Qué?"), ["Fin.", "¿Qué?"]);
+        assert_eq!(sentences("Ganamos 🎉 ¡Vamos!"), ["Ganamos 🎉", "¡Vamos!"]);
+        assert_eq!(sentences("Jajaja :D ¿Y tú?"), ["Jajaja :D", "¿Y tú?"]);
+    }
+
+    #[test]
+    fn dialogue() {
+        assert_eq!(
+            sentences("—Hola —dijo—. ¿Qué tal? —Bien."),
+            ["—Hola —dijo—.", "¿Qué tal?", "—Bien."]
+        );
+        whole("—¿Vienes? —preguntó María.");
+        assert_eq!(
+            sentences("¿Por qué? - - Según Piqué, no. - - ¿Cómo?"),
+            ["¿Por qué?", "- - Según Piqué, no.", "- - ¿Cómo?"]
+        );
+        assert_eq!(sentences("¿Cuánto? —5 euros."), ["¿Cuánto?", "—5 euros."]);
+        assert_eq!(sentences("Era tarde. —¿qué?"), ["Era tarde.", "—¿qué?"]);
+    }
+
+    #[test]
+    fn dashes_glued_to_marks() {
+        assert_eq!(
+            sentences("Está muy baja.--Tiene fiebre."),
+            ["Está muy baja.", "--Tiene fiebre."]
+        );
+        whole("Dijo que sí.--dijo él.");
+        assert_eq!(
+            sentences("La viuda.-- El niño llegó."),
+            ["La viuda.--", "El niño llegó."]
+        );
+        assert_eq!(
+            sentences("Para asombro de Mahoma.--\nOtra lengua clama."),
+            ["Para asombro de Mahoma.--", "Otra lengua clama."]
+        );
+        whole("¡Está lejos!--\n  al ángel de la muerte.");
+        whole("El Sr.--\nGarcía vino.");
+        whole("IV.--\nDe los fines.");
+        whole("Artículo 1.- Objeto del reglamento.");
+        whole("PRIMERO.- Aprobar el plan.");
+        whole("EE.UU.-China firmaron.");
+    }
+
+    #[test]
+    fn abbreviations() {
+        assert_eq!(
+            sentences("El Sr. García y la Dra. López llegaron. Vino Dña. María."),
+            [
+                "El Sr. García y la Dra. López llegaron.",
+                "Vino Dña. María."
+            ]
+        );
+        assert_eq!(
+            sentences("Pesas, etc. Además, no. Es el mar. Luego."),
+            ["Pesas, etc.", "Además, no.", "Es el mar.", "Luego."]
+        );
+        assert_eq!(
+            sentences("Llegó a las 3 p. m. Comimos. Murió en 44 a. C. Nació en 10 d. C. Luego."),
+            [
+                "Llegó a las 3 p. m.",
+                "Comimos.",
+                "Murió en 44 a. C.",
+                "Nació en 10 d. C.",
+                "Luego."
+            ]
+        );
+        whole("Nació en el 44 a. C. en Roma.");
+        assert_eq!(
+            sentences("Trabaja en EE.UU. Su hermano no."),
+            ["Trabaja en EE.UU.", "Su hermano no."]
+        );
+        assert_eq!(
+            sentences("Mide 5 cm. Pesa 3 kg."),
+            ["Mide 5 cm.", "Pesa 3 kg."]
+        );
+        whole("Véase p. 45 y pág. 7.");
+        whole("Frutas, p. ej. Manzanas.");
+    }
+
+    #[test]
+    fn initials_and_words_after_them() {
+        whole("Vino J. L. Borges.");
+        whole("Lo dijo M. De la Cruz.");
+        assert_eq!(
+            sentences("El rey Juan Carlos I. Su hijo reina."),
+            ["El rey Juan Carlos I.", "Su hijo reina."]
+        );
+        assert_eq!(
+            sentences("Tomo vitamina C. Es buena."),
+            ["Tomo vitamina C.", "Es buena."]
+        );
+        // Initials stay initials before such a word, as «J. L. Es» has one more letter before it
+        whole("Vino J. L. Es.");
+        // A letter that starts a sentence is a label
+        whole("A. El sujeto llegó.");
+        whole("I. Los hechos son estos.");
+        whole("General J. Las Heras llegó.");
+        whole("El matemático A.M. Turing murió.");
+        whole("Vino D.C. Smith ayer.");
+    }
+
+    #[test]
+    fn signed_numbers() {
+        assert_eq!(sentences("Compra:\n-2 kilos"), ["Compra:", "-2 kilos"]);
+        assert_eq!(
+            sentences("Hace frío. -5 grados."),
+            ["Hace frío.", "-5 grados."]
+        );
+        whole("Hace frío, -5 grados.");
+    }
+
+    #[test]
+    fn quotes_before_inverted_marks() {
+        assert_eq!(
+            sentences("Se fue. \"¿por qué?\""),
+            ["Se fue.", "\"¿por qué?\""]
+        );
+        assert_eq!(
+            sentences("Se fue. (\"¡sigan!\")"),
+            ["Se fue.", "(\"¡sigan!\")"]
+        );
+        assert_eq!(
+            sentences("Mide 5 cm. \"¿Qué?\""),
+            ["Mide 5 cm.", "\"¿Qué?\""]
+        );
+        whole("Mide 5 cm. \"¿qué?\"");
+        whole("Bueno... \"¿qué dices?\"");
+        whole("Bueno.... ¿qué dices?");
+        whole("Bueno… ¿qué dices?");
+    }
+
+    #[test]
+    fn dashes_after_other_marks() {
+        assert_eq!(sentences("¿Vienes?- Sí, voy."), ["¿Vienes?", "- Sí, voy."]);
+        whole("Artículo 1.- Objeto de la ley.");
+    }
+
+    #[test]
+    fn abbreviations_after_numbers_that_go_on() {
+        whole("Vive en la calle 15 esq. Centro.");
+        whole("Es la 3.ª ed. Madrid.");
+        whole("C/ Mayor 5, 3.º dcha. Madrid.");
+        whole("C/ Mayor 5, 2.º izqda. Barcelona.");
+        whole("A las 5 sta. María.");
+        assert_eq!(
+            sentences("Lo dijo Pérez et al. Luego vino."),
+            ["Lo dijo Pérez et al.", "Luego vino."]
+        );
+        for end in ["ss", "sig", "sigs", "sgte", "sgtes"] {
+            let reference = format!("Véase pág. 15 y {end}.");
+            assert_eq!(
+                sentences(&format!("{reference} Los resultados fueron buenos.")),
+                [reference.as_str(), "Los resultados fueron buenos."]
+            );
+        }
+        whole("Véanse los arts. 5 y ss. de la ley.");
+        whole("Véase pág. 15 y ss., donde se dice.");
+    }
+
+    #[test]
+    fn words_in_capitals() {
+        whole("EL SR. GARCÍA VINO.");
+        whole("ART. 5 DE LA LEY.");
+        whole("Fue en EE. UU. y luego.");
+        assert_eq!(
+            sentences("Es del PP. Luego vino."),
+            ["Es del PP.", "Luego vino."]
+        );
+        assert_eq!(
+            sentences("Es del PP. Y ERC perdió."),
+            ["Es del PP.", "Y ERC perdió."]
+        );
+        whole("EL SR. Y LA SRA. GARCÍA VINIERON.");
+        whole("VINO EL SR. A CASA.");
+        assert_eq!(
+            sentences("Es del PP. Y luego vino."),
+            ["Es del PP.", "Y luego vino."]
+        );
+        whole("DR. Juan Pérez llegó.");
+        whole("Vive en la Col. Roma.");
+        whole("Vid. García, 2010.");
+        assert_eq!(
+            sentences("Comí col. Luego fui a casa."),
+            ["Comí col.", "Luego fui a casa."]
+        );
+        whole("La Ley No. 45 rige.");
+        whole("Los decretos Nos. 5 y 6 rigen.");
+        assert_eq!(
+            sentences("Dijo que no. Se fue."),
+            ["Dijo que no.", "Se fue."]
+        );
     }
 }

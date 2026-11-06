@@ -1,0 +1,34 @@
+# Words with a capital letter that seldom follow an initial: before them, a single capital letter with a period ends a
+# sentence, as in «Felipe V. El rey». Words that names mostly start with, as «De», «La», «Los», are not here; «El» and «Su»
+# are here at the price of «M. El Baradei» and «Y. Su», as they start sentences far more often than they follow initials.
+el
+un
+una
+unos
+unas
+en
+se
+su
+sus
+es
+son
+fue
+era
+este
+esta
+estos
+estas
+pero
+para
+por
+con
+como
+cuando
+sin
+hay
+luego
+tiene
+durante
+desde
+según
+además
