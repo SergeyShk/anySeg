@@ -89,6 +89,18 @@ pub(crate) struct Conventions {
     pub(crate) enclitic_stem_letters: Vec<char>,
     /// A token with a first capital letter after a word or a comma is a name, which stays whole
     pub(crate) capital_after_word_whole: bool,
+    /// A dash glued to a final mark with a space after it closes its line, and a dash opens a line before a digit
+    pub(crate) closing_dashes: bool,
+    /// Marks that stay inside a token between letters or digits
+    pub(crate) inner_marks: Vec<char>,
+    /// A sign before a digit after a space is in the number
+    pub(crate) signed_numbers: bool,
+    /// What follows the period of an ordinal number in one token
+    pub(crate) ordinal_endings: Vec<String>,
+    /// Superscript digits are tokens of their own
+    pub(crate) split_superscripts: bool,
+    /// A top-level domain may have a first capital letter
+    pub(crate) capital_domains: bool,
 }
 
 impl Default for Conventions {
@@ -110,6 +122,12 @@ impl Default for Conventions {
             enclitic_host_marks: Vec::new(),
             enclitic_stem_letters: Vec::new(),
             capital_after_word_whole: false,
+            closing_dashes: false,
+            inner_marks: Vec::new(),
+            signed_numbers: false,
+            ordinal_endings: Vec::new(),
+            split_superscripts: false,
+            capital_domains: true,
         }
     }
 }
@@ -204,6 +222,20 @@ impl Conventions {
                         .filter_map(|letter| letter.chars().next())
                         .collect();
                 }
+                "dashes" => conventions.closing_dashes = flag("closing", "opening"),
+                "inner_marks" => {
+                    conventions.inner_marks = value
+                        .split_whitespace()
+                        .filter_map(|mark| mark.chars().next())
+                        .collect();
+                }
+                "signed_numbers" => conventions.signed_numbers = flag("yes", "no"),
+                "ordinal_endings" => {
+                    conventions.ordinal_endings =
+                        value.split_whitespace().map(str::to_owned).collect();
+                }
+                "superscripts" => conventions.split_superscripts = flag("split", "whole"),
+                "capital_domains" => conventions.capital_domains = flag("yes", "no"),
                 "capital_after_word" => {
                     conventions.capital_after_word_whole = flag("whole", "words");
                 }
@@ -236,6 +268,7 @@ struct Files {
     endings: &'static str,
     linkers: &'static str,
     final_abbreviations: &'static str,
+    sentence_openers: &'static str,
     dotted_names: &'static str,
     homoglyphs: &'static str,
     web_suffixes: &'static str,
@@ -256,6 +289,8 @@ pub(crate) struct Tables {
     pub(crate) abbreviations: HashSet<String>,
     /// Lowercase single letters that never take such a period
     pub(crate) not_abbreviations: HashSet<String>,
+    /// Words with capitals, as written, that are no abbreviation although their lowercase form is
+    pub(crate) capital_not_abbreviations: HashSet<String>,
     /// Particles after a hyphen that are tokens of their own
     pub(crate) particles: HashSet<String>,
     /// Words that keep the particle «-то» of an indefinite word
@@ -274,6 +309,10 @@ pub(crate) struct Tables {
     pub(crate) linkers: HashSet<String>,
     /// Abbreviations, as the keys of their words joined by spaces, that end a sentence before a capital letter
     pub(crate) final_abbreviations: HashSet<String>,
+    /// The same, written with capitals, for tokens with these capitals
+    pub(crate) final_abbreviations_written: HashSet<String>,
+    /// Words with a capital letter that follow no initial
+    pub(crate) sentence_openers: HashSet<String>,
     /// Names joined to the next word by a period: «Яндекс.Маркет»
     pub(crate) dotted_names: HashSet<String>,
     /// Latin letters that stand for letters of the language in its words
@@ -402,7 +441,14 @@ impl Tables {
                 .collect(),
             enclitic_exceptions: list(files.enclitic_exceptions),
             abbreviations: list(files.abbreviations),
-            not_abbreviations: list(files.not_abbreviations),
+            not_abbreviations: lines(files.not_abbreviations)
+                .filter(|line| !line.contains(char::is_uppercase))
+                .map(|line| fold(line, &marks))
+                .collect(),
+            capital_not_abbreviations: lines(files.not_abbreviations)
+                .filter(|line| line.contains(char::is_uppercase))
+                .map(str::to_owned)
+                .collect(),
             particles: list(files.particles),
             indefinite: list(files.indefinite),
             whole_parts: whole
@@ -424,6 +470,16 @@ impl Tables {
                         .join(" ")
                 })
                 .collect(),
+            final_abbreviations_written: lines(files.final_abbreviations)
+                .filter(|line| line.contains(char::is_uppercase))
+                .map(|line| {
+                    line.split(|c: char| c == '.' || c.is_whitespace())
+                        .filter(|word| !word.is_empty())
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                })
+                .collect(),
+            sentence_openers: list(files.sentence_openers),
             dotted_names: list(files.dotted_names),
             homoglyphs: lines(files.homoglyphs)
                 .filter_map(|line| {
@@ -513,6 +569,10 @@ pub(crate) fn tables(language: Language) -> &'static Tables {
             SPANISH.get_or_init(|| {
                 Tables::new(Files {
                     conventions: include_str!("../data/es/conventions.txt"),
+                    abbreviations: include_str!("../data/es/abbreviations.txt"),
+                    not_abbreviations: include_str!("../data/es/not_abbreviations.txt"),
+                    final_abbreviations: include_str!("../data/es/final_abbreviations.txt"),
+                    sentence_openers: include_str!("../data/es/sentence_openers.txt"),
                     multiword: include_str!("../data/es/multiword.txt"),
                     multiword_names: include_str!("../data/es/multiword_names.txt"),
                     multiword_exceptions: include_str!("../data/es/multiword_exceptions.txt"),
@@ -916,6 +976,54 @@ mod conventions {
         for text in ["Hola >_< Adiós", "Hola (^_^) Adiós", "Hola ⌐■_■ Adiós"] {
             assert_eq!(sentence_count(&tables, text), 2, "{text}");
         }
+    }
+
+    #[test]
+    fn spanish_rules_are_conventions() {
+        let tokens_of = |conventions: &'static str, text: &str| -> Vec<String> {
+            tokens(&language(conventions), text)
+                .into_iter()
+                .map(str::to_owned)
+                .collect()
+        };
+        assert_eq!(tokens_of("", "km/h"), ["km", "/", "h"]);
+        assert_eq!(tokens_of("inner_marks = /", "km/h"), ["km/h"]);
+        assert_eq!(tokens_of("", "de -5"), ["de", "-", "5"]);
+        assert_eq!(tokens_of("signed_numbers = yes", "de -5"), ["de", "-5"]);
+        assert_eq!(tokens_of("", "1.er"), ["1", ".", "er"]);
+        assert_eq!(tokens_of("ordinal_endings = er", "1.er"), ["1.er"]);
+        assert_eq!(tokens_of("", "km²"), ["km²"]);
+        assert_eq!(tokens_of("superscripts = split", "km²"), ["km", "²"]);
+        assert_eq!(tokens_of("", "casa.De"), ["casa.De"]);
+        assert_eq!(
+            tokens_of("capital_domains = no", "casa.De"),
+            ["casa", ".", "De"]
+        );
+        assert_eq!(sentence_count(&language(""), "Era tarde.-- El niño"), 2);
+        assert_eq!(
+            sentence_count(&language("dashes = closing"), "Es 1.- Objeto"),
+            1
+        );
+        assert_eq!(sentence_count(&language(""), "Es 1.- Objeto"), 2);
+        assert_eq!(sentence_count(&language(""), "Sí? —5 euros"), 1);
+        assert_eq!(
+            sentence_count(&language("dashes = closing"), "Sí? —5 euros"),
+            2
+        );
+    }
+
+    #[test]
+    fn capital_abbreviations_as_written() {
+        let tables = Tables::new(Files {
+            final_abbreviations: "a. C.\nd. c.\n",
+            sentence_openers: "el\n",
+            ..Files::default()
+        });
+        assert_eq!(sentence_count(&tables, "En 44 a. C. Luego"), 2);
+        assert_eq!(sentence_count(&tables, "En 44 A. C. Luego"), 1);
+        assert_eq!(sentence_count(&tables, "En 44 d. c. Luego"), 2);
+        assert_eq!(sentence_count(&tables, "Es Carlos V. El rey"), 2);
+        assert_eq!(sentence_count(&tables, "Es Carlos V. Rey"), 1);
     }
 
     #[test]

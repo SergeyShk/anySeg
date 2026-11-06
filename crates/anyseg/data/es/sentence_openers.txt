@@ -1,0 +1,35 @@
+# Words with a capital letter that follow no initial: before them, a single capital letter with a period ends a sentence:
+# «Felipe V. El rey», «Primera B. Angelo» does not count. Words that names start with, as «De», «La», are not here.
+el
+los
+las
+un
+una
+unos
+unas
+en
+se
+su
+sus
+es
+son
+fue
+era
+este
+esta
+estos
+estas
+pero
+para
+por
+con
+como
+cuando
+sin
+hay
+luego
+tiene
+durante
+desde
+según
+además

@@ -387,3 +387,18 @@ def test_language_is_required():
         tokenize(TEXT)
     with pytest.raises(TypeError):
         sentenize(TEXT, "ru")
+
+
+def test_spanish():
+    text = "¿Vienes? —preguntó el Sr. García. Sí, en 44 a. C. Luego vino del mar."
+    assert [span.text for span in sentenize(text, lang="es")] == [
+        "¿Vienes? —preguntó el Sr. García.",
+        "Sí, en 44 a. C.",
+        "Luego vino del mar.",
+    ]
+    assert [span.text for span in tokenize("Viene a -5 km/h", lang="es")] == [
+        "Viene",
+        "a",
+        "-5",
+        "km/h",
+    ]

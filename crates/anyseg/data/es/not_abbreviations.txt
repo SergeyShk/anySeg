@@ -1,0 +1,7 @@
+# Single letters that are words of their own and never take a period as an abbreviation
+e
+o
+u
+y
+# Letters in this case are not the abbreviation of the same letters in lowercase: «pp.» and the party «PP.»
+PP

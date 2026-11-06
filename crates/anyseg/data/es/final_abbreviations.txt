@@ -1,0 +1,14 @@
+# Abbreviations that end a sentence before a word with a capital letter, where the language decides. Other abbreviations
+# do so only when they follow a number: «a las 10 h. Luego».
+etc.
+a. C.
+d. C.
+a. m.
+p. m.
+EE. UU.
+S. A.
+S. L.
+Jr.
+Inc.
+Ltd.
+Co.
