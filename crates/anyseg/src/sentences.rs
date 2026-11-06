@@ -1680,6 +1680,15 @@ mod spanish {
             sentences("Lo dijo Pérez et al. Luego vino."),
             ["Lo dijo Pérez et al.", "Luego vino."]
         );
+        for end in ["ss", "sig", "sigs", "sgte", "sgtes"] {
+            let reference = format!("Véase pág. 15 y {end}.");
+            assert_eq!(
+                sentences(&format!("{reference} Los resultados fueron buenos.")),
+                [reference.as_str(), "Los resultados fueron buenos."]
+            );
+        }
+        whole("Véanse los arts. 5 y ss. de la ley.");
+        whole("Véase pág. 15 y ss., donde se dice.");
     }
 
     #[test]
@@ -1690,6 +1699,10 @@ mod spanish {
         assert_eq!(
             sentences("Es del PP. Luego vino."),
             ["Es del PP.", "Luego vino."]
+        );
+        assert_eq!(
+            sentences("Es del PP. Y ERC perdió."),
+            ["Es del PP.", "Y ERC perdió."]
         );
         whole("EL SR. Y LA SRA. GARCÍA VINIERON.");
         whole("VINO EL SR. A CASA.");

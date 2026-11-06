@@ -1106,20 +1106,15 @@ impl Scanner<'_> {
             .is_some_and(|c| c.is_ascii_digit())
     }
 
-    /// Whether a digit, a word in capitals or an initial follows: the context of an abbreviation in capitals; a word
-    /// of one letter counts only before another word in capitals, as «Y» may start a sentence
+    /// Whether a digit, a word in capitals or an initial follows: the context of an abbreviation in capitals
     fn capitals_or_digit_after(&self, start: usize) -> bool {
-        let in_capitals =
-            |word: &str| word.starts_with(char::is_uppercase) && !word.contains(char::is_lowercase);
         let next = self.after_spaces(start);
         let stop = self.run(next);
         let word = &self.text[next..stop];
         self.get(next).is_some_and(|c| c.is_ascii_digit())
-            || (in_capitals(word)
-                && (word.chars().nth(1).is_some() || self.get(stop) == Some('.') || {
-                    let after = self.after_spaces(stop);
-                    in_capitals(&self.text[after..self.run(after)])
-                }))
+            || (word.starts_with(char::is_uppercase)
+                && !word.contains(char::is_lowercase)
+                && (word.chars().nth(1).is_some() || self.get(stop) == Some('.')))
     }
 
     /// Punctuation and other symbols: runs of final marks, of hyphens and of some symbols are one token,
@@ -2002,6 +1997,7 @@ mod spanish {
         assert_eq!(tokens("El PP."), ["El", "PP", "."]);
         assert_eq!(tokens("El SR. Y LA"), ["El", "SR.", "Y", "LA"]);
         assert_eq!(tokens("El ART. Y luego"), ["El", "ART", ".", "Y", "luego"]);
+        assert_eq!(tokens("El PP. Y ERC"), ["El", "PP", ".", "Y", "ERC"]);
     }
 
     #[test]
