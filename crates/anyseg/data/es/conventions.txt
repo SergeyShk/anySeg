@@ -16,8 +16,8 @@ script = latin
 # A dash glued to a final mark with a space after it closes its line, a hyphen numbers an article: «La viuda.-- El niño»,
 # «Artículo 1.- Objeto»; a dash starts a line of dialogue before a digit as well: «¿Cuánto? —5 euros»
 dashes = closing
-# Marks that stay inside a token between letters or digits: «km/h», «15/01/2011», «I+D»
-inner_marks = / +
+# Marks that stay inside a token between letters or digits: «km/h», «15/01/2011», «I+D», «O`Neal», «sub'23»
+inner_marks = / + ` '
 # A sign before a digit is in the number after a space: «-5 grados»
 signed_numbers = yes
 # What follows the period of an ordinal number in one token: «3.º», «2.ª», «1.er»

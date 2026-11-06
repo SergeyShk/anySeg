@@ -477,8 +477,8 @@ impl Splitter<'_> {
         } else {
             is_abbreviation(piece)
                 && self.starts(last + 1, false)
-                && !self.final_abbreviation_goes_on(index)
                 && (self.ends(index) || self.not_initial(index, last + 1))
+                && !self.final_abbreviation_goes_on(index)
         };
         (last, boundary)
     }
@@ -666,18 +666,21 @@ impl Splitter<'_> {
         let previous = index.checked_sub(1).map(|position| self.piece(position));
         let initials =
             previous.is_some_and(|piece| is_abbreviation(piece) && piece.chars().count() == 2);
-        let opener = self.tokens[next..]
-            .iter()
-            .take(2)
-            .map(|span| span.slice(self.text))
-            .find(|piece| piece.starts_with(is_alpha))
-            .is_some_and(|piece| {
-                self.tables
-                    .sentence_openers
-                    .contains(&self.tables.key(piece))
-            });
+        let opener = || {
+            !self.tables.sentence_openers.is_empty()
+                && self.tokens[next..]
+                    .iter()
+                    .take(2)
+                    .map(|span| span.slice(self.text))
+                    .find(|piece| piece.starts_with(is_alpha))
+                    .is_some_and(|piece| {
+                        self.tables
+                            .sentence_openers
+                            .contains(&self.tables.key(piece))
+                    })
+        };
         (!initials && !script.contains(letter) && capital.is_some_and(|c| script.contains(c)))
-            || (!initials && letter.is_uppercase() && opener)
+            || (!initials && letter.is_uppercase() && opener())
             || (letter.is_uppercase()
                 && previous
                     .is_some_and(|piece| is_quantity(piece, self.tables.conventions.digit_groups))

@@ -805,6 +805,10 @@ impl Scanner<'_> {
         // Most words have no joints: one token, with the period of an abbreviation
         let digits = is_digits(&self.text[start..end]);
         let joins = self.get(end).is_some_and(|character| {
+            // Most words end at a space
+            if character == ' ' && !digits {
+                return false;
+            }
             matches!(
                 character,
                 '-' | '\u{2010}' | '\u{2011}' | '\'' | '\u{2019}' | '_'
@@ -1828,6 +1832,8 @@ mod spanish {
             "1993/99",
             "Reynard/Honda",
             "I+D",
+            "O`Neal",
+            "sub'23",
             "1990-1995",
             "1990–1995",
             "XIX-XX",
