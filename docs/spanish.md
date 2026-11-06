@@ -59,7 +59,7 @@ A token can hold several words, as the UD guidelines ask for the words that Span
 *   an infinitive or a gerund with pronouns is the verb and the pronouns, without the accent that the pronouns brought: «darlo», «dárselo», «viéndolo». Words that only look so stay whole: «parte», «muerte», «gobiernos». So does a verb with «os», as «-eros» and «-aros» end nouns far more often: «deciros»;
 *   frequent imperatives with pronouns are in a table: «dame», «dímelo», «hazlo», «véase». Other imperatives need a dictionary and stay one word: «cómpralo», «cálmate».
 
-Inside a sentence, a form with a first capital letter is a name and stays whole: «El Al». A string of the [list of tokens](segmenter.md#lists) stays one word.
+After a word, a number or a comma, a form with a first capital letter is a name and stays whole: «El Al». A string of the [list of tokens](segmenter.md#lists) stays one word.
 
 === "Code"
 
@@ -202,7 +202,7 @@ A dash starts a line of dialogue before a capital letter, a digit or an inverted
 
 ### Abbreviations { #sentence-abbreviations }
 
-An abbreviation ends a sentence before a capital letter when the language lists it as one that usually stands at the end - «etc.», «a. C.», «d. C.», «a. m.», «p. m.», «EE. UU.», «et al.», «y ss.» - or when it is in lowercase and follows a number, as a unit does: «Mide 5 cm.», but not one of an address, a title or an edition: «Calle 15 esq. Centro», «3.ª ed. Madrid». Other abbreviations and initials do not end a sentence: «el Sr. Pérez», «J. L. Borges», «A.M. Turing». A single capital letter inside a sentence does before a word that seldom follows an initial: «Felipe V. El rey», «vitamina C. Es buena»; such words as «El» and «Su» cost a name now and then: «M. El Baradei».
+An abbreviation ends a sentence before a capital letter when the language lists it as one that usually stands at the end - «etc.», «a. C.», «d. C.», «a. m.», «p. m.», «EE. UU.», «et al.», «y ss.» - or when it is in lowercase and follows a number, as a unit does: «Mide 5 cm.», but not one of an address, a title or an edition: «Calle 15 esq. Centro», «3.ª ed. Madrid». Other abbreviations and initials do not end a sentence: «el Sr. Pérez», «J. L. Borges», «A.M. Turing». A single capital letter inside a sentence does before a word that seldom follows an initial: «Felipe V. El rey», «vitamina C. Es buena»; such words as «El» and «Su» cost a name now and then: «M. El Baradei». So does a capital letter after a quantity, as a unit: «Son 5 A. Pesa», but not after a year, a date or a time: «Vino en 1990 A. Pérez».
 
 === "Code"
 
