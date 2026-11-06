@@ -1,0 +1,4 @@
+# Words that take a period as an abbreviation only before a digit: «la Ley No. 45», «los arts. 5 y 6», but «No. Se fue»,
+# «Electronic Arts. Luego».
+no
+arts

@@ -247,14 +247,12 @@ impl Segmenter {
     /// The tokens of a text in order. Whitespace, control characters and the invisible separators
     /// (zero width space, word joiner, byte order mark, and a soft hyphen and zero width
     /// (non-)joiner outside a word) separate tokens and are in none. Words keep their combining marks and soft hyphens;
-    /// hyphenated words, numbers with decimal commas and points, dates, times and digit groups,
-    /// URLs, e-mail addresses, file names, mentions, hashtags, emoticons and runs of emoji are one
-    /// token each, as are runs of final marks («?!», «...»). Abbreviations and initials keep their
-    /// period, except at the end of a sentence. Particles after a hyphen («Вася-то»), ranges
-    /// («2-3»), approximate numbers («два-три») and compounds whose first part inflects
-    /// («Ростова-на-Дону», «Формулы-1», «учеными-энтузиастами») split at the hyphen.
-    /// The lists of the language decide which words are abbreviations, particles and numerals;
-    /// the lists of the segmenter add abbreviations and strings that are one token each.
+    /// numbers with decimal marks, dates and times, URLs, e-mail addresses, file names, mentions,
+    /// hashtags, emoticons and runs of emoji are one token each. Abbreviations and initials keep
+    /// their period, except at the end of a sentence. The lists and conventions of the language
+    /// decide which words are abbreviations and how hyphens, ranges, digit groups, final marks and
+    /// other marks inside a word split; the lists of the segmenter add abbreviations and strings
+    /// that are one token each.
     pub fn tokenize(&self, text: &str) -> Vec<Span> {
         self.split(text, false).tokens
     }
@@ -262,14 +260,13 @@ impl Segmenter {
     /// The sentences of a text in order, from the start of the first token to the end of the last.
     /// A paragraph, the part of the text between blank lines, starts a sentence; inside it a
     /// sentence ends at final marks («.», «?!», «...») with the closing quotes and brackets after
-    /// them, when a capital letter, a digit, or a dash or an opening quote before a capital letter
-    /// follows. An abbreviation ends a sentence before a capital letter when the language lists it
-    /// («и т. д.») or it follows a number («в 1914 г.»); initials do not, but a single Latin letter
-    /// before a Cyrillic word («через x. Тогда») and a unit after a quantity («5 А.») do. A line
-    /// break starts a sentence before a list item or a line of dialogue, at a line without words
-    /// and after a line without final punctuation before a capital letter, except in verse and in
-    /// text wrapped at the width of the page (a line of the paragraph goes on with a lowercase
-    /// letter).
+    /// them, when the start of a sentence follows, such as a capital letter, a digit or an inverted
+    /// mark, maybe after a dash or an opening quote. An abbreviation ends a sentence before a capital
+    /// letter when the language lists it or it follows a number, and an initial as a rule does not;
+    /// the lists and conventions of the language decide the rest. A line break starts a sentence
+    /// before a list item or a line of dialogue, at a line without words and after a line without
+    /// final punctuation before a capital letter, except in verse and in text wrapped at the width
+    /// of the page (a line of the paragraph goes on with a lowercase letter).
     pub fn sentenize(&self, text: &str) -> Vec<Span> {
         let split = self.split(text, false);
         let tokens = &split.tokens;

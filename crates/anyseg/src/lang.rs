@@ -99,8 +99,10 @@ pub(crate) struct Conventions {
     pub(crate) ordinal_endings: Vec<String>,
     /// Superscript digits are tokens of their own
     pub(crate) split_superscripts: bool,
-    /// A top-level domain may have a first capital letter
-    pub(crate) capital_domains: bool,
+    /// Top-level domains that are words, which start a sentence with a first capital letter
+    pub(crate) capital_words: Vec<String>,
+    /// A word in capitals is no abbreviation of the lists unless a digit or another word in capitals follows
+    pub(crate) capitals_need_context: bool,
 }
 
 impl Default for Conventions {
@@ -127,7 +129,8 @@ impl Default for Conventions {
             signed_numbers: false,
             ordinal_endings: Vec::new(),
             split_superscripts: false,
-            capital_domains: true,
+            capital_words: Vec::new(),
+            capitals_need_context: false,
         }
     }
 }
@@ -235,7 +238,13 @@ impl Conventions {
                         value.split_whitespace().map(str::to_owned).collect();
                 }
                 "superscripts" => conventions.split_superscripts = flag("split", "whole"),
-                "capital_domains" => conventions.capital_domains = flag("yes", "no"),
+                "capital_words" => {
+                    conventions.capital_words =
+                        value.split_whitespace().map(str::to_owned).collect();
+                }
+                "capital_abbreviations" => {
+                    conventions.capitals_need_context = flag("context", "any");
+                }
                 "capital_after_word" => {
                     conventions.capital_after_word_whole = flag("whole", "words");
                 }
@@ -269,6 +278,9 @@ struct Files {
     linkers: &'static str,
     final_abbreviations: &'static str,
     sentence_openers: &'static str,
+    capital_abbreviations: &'static str,
+    digit_abbreviations: &'static str,
+    not_final_abbreviations: &'static str,
     dotted_names: &'static str,
     homoglyphs: &'static str,
     web_suffixes: &'static str,
@@ -289,8 +301,12 @@ pub(crate) struct Tables {
     pub(crate) abbreviations: HashSet<String>,
     /// Lowercase single letters that never take such a period
     pub(crate) not_abbreviations: HashSet<String>,
-    /// Words with capitals, as written, that are no abbreviation although their lowercase form is
-    pub(crate) capital_not_abbreviations: HashSet<String>,
+    /// Abbreviations written in capitals, as they are in any context
+    pub(crate) capital_abbreviations: HashSet<String>,
+    /// Words that take a period as an abbreviation only before a digit
+    pub(crate) digit_abbreviations: HashSet<String>,
+    /// Abbreviations that do not end a sentence after a number
+    pub(crate) not_final_abbreviations: HashSet<String>,
     /// Particles after a hyphen that are tokens of their own
     pub(crate) particles: HashSet<String>,
     /// Words that keep the particle «-то» of an indefinite word
@@ -441,14 +457,12 @@ impl Tables {
                 .collect(),
             enclitic_exceptions: list(files.enclitic_exceptions),
             abbreviations: list(files.abbreviations),
-            not_abbreviations: lines(files.not_abbreviations)
-                .filter(|line| !line.contains(char::is_uppercase))
-                .map(|line| fold(line, &marks))
-                .collect(),
-            capital_not_abbreviations: lines(files.not_abbreviations)
-                .filter(|line| line.contains(char::is_uppercase))
+            not_abbreviations: list(files.not_abbreviations),
+            capital_abbreviations: lines(files.capital_abbreviations)
                 .map(str::to_owned)
                 .collect(),
+            digit_abbreviations: list(files.digit_abbreviations),
+            not_final_abbreviations: list(files.not_final_abbreviations),
             particles: list(files.particles),
             indefinite: list(files.indefinite),
             whole_parts: whole
@@ -573,6 +587,9 @@ pub(crate) fn tables(language: Language) -> &'static Tables {
                     not_abbreviations: include_str!("../data/es/not_abbreviations.txt"),
                     final_abbreviations: include_str!("../data/es/final_abbreviations.txt"),
                     sentence_openers: include_str!("../data/es/sentence_openers.txt"),
+                    capital_abbreviations: include_str!("../data/es/capital_abbreviations.txt"),
+                    digit_abbreviations: include_str!("../data/es/digit_abbreviations.txt"),
+                    not_final_abbreviations: include_str!("../data/es/not_final_abbreviations.txt"),
                     multiword: include_str!("../data/es/multiword.txt"),
                     multiword_names: include_str!("../data/es/multiword_names.txt"),
                     multiword_exceptions: include_str!("../data/es/multiword_exceptions.txt"),
@@ -996,7 +1013,7 @@ mod conventions {
         assert_eq!(tokens_of("superscripts = split", "km²"), ["km", "²"]);
         assert_eq!(tokens_of("", "casa.De"), ["casa.De"]);
         assert_eq!(
-            tokens_of("capital_domains = no", "casa.De"),
+            tokens_of("capital_words = de", "casa.De"),
             ["casa", ".", "De"]
         );
         assert_eq!(sentence_count(&language(""), "Era tarde.-- El niño"), 2);

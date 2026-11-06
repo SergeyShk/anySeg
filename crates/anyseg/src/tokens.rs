@@ -8,6 +8,7 @@ use unicode_normalization::char::{compose, is_combining_mark};
 use crate::Span;
 use crate::lang::{DigitGroups, Hyphens, Tables};
 use crate::layout::is_separator;
+use crate::sentences::is_opening;
 
 fn char_at(text: &str, index: usize) -> Option<char> {
     text.get(index..)?.chars().next()
@@ -62,10 +63,17 @@ fn is_roman(text: &str) -> bool {
     !text.is_empty() && text.chars().all(|character| "IVXLCDM".contains(character))
 }
 
-/// A word with a first capital letter and lowercase letters after it: the start of a sentence after a missing space,
-/// and no top-level domain: «casa.De pronto»
+/// A word with a first capital letter and lowercase letters after it
 fn capitalized(text: &str) -> bool {
     text.starts_with(char::is_uppercase) && text.contains(char::is_lowercase)
+}
+
+/// A superscript digit, which a language may keep as a token of its own: «km²», «nota¹»
+fn is_superscript(character: char) -> bool {
+    matches!(
+        character,
+        '\u{b9}' | '\u{b2}' | '\u{b3}' | '\u{2070}' | '\u{2074}'..='\u{2079}'
+    )
 }
 
 fn is_digits(text: &str) -> bool {
@@ -226,9 +234,12 @@ impl Scanner<'_> {
             return self.push(index, end);
         }
         if is_word(character) || (is_mark(character) && self.marks_start_word(index)) {
+            if self.tables.conventions.split_superscripts && is_superscript(character) {
+                return self.push(index, index + character.len_utf8());
+            }
             // Only a word followed by «@» or by a dot or a dash before a letter or a digit can start an e-mail
             // address or a domain
-            let run = self.superscript_end(index, self.run(index));
+            let run = self.run(index);
             let web = match self.get(run) {
                 Some('@') => true,
                 Some(next @ ('.' | '-' | '_' | '+' | '%')) => {
@@ -271,7 +282,7 @@ impl Scanner<'_> {
                 if self.tables.conventions.signed_numbers
                     && self.get(next).is_some_and(|c| c.is_ascii_digit())
                     && self.text[..index].chars().next_back().is_none_or(|c| {
-                        c.is_whitespace() || matches!(c, '(' | '[' | '«' | '"')
+                        c.is_whitespace() || is_opening(c.encode_utf8(&mut [0; 4]))
                     }) =>
             {
                 let first = self.out.len();
@@ -460,8 +471,9 @@ impl Scanner<'_> {
         let labels = self.domain_chain;
         let mut end = self
             .host(start, labels, |top| {
-                self.tables.web_suffixes.contains(&self.tables.key(top))
-                    && (self.tables.conventions.capital_domains || !capitalized(top))
+                let key = self.tables.key(top);
+                self.tables.web_suffixes.contains(&key)
+                    && !(capitalized(top) && self.tables.conventions.capital_words.contains(&key))
             })
             .ok_or(labels)?;
         if self.get(end) == Some(':') && self.get(end + 1).is_some_and(|c| c.is_ascii_digit()) {
@@ -592,9 +604,22 @@ impl Scanner<'_> {
 
     /// A run of letters and digits with the combining marks and joiners inside it
     fn run(&self, start: usize) -> usize {
+        if self.tables.conventions.split_superscripts {
+            self.run_to::<true>(start)
+        } else {
+            self.run_to::<false>(start)
+        }
+    }
+
+    /// A run, up to a superscript digit if `SUPERSCRIPTS`: it runs for every word, so the choice is made once
+    #[inline]
+    fn run_to<const SUPERSCRIPTS: bool>(&self, start: usize) -> usize {
         let rest = &self.text[start..self.end];
         let mut chars = rest.char_indices().peekable();
         while let Some((offset, character)) = chars.next() {
+            if SUPERSCRIPTS && is_superscript(character) {
+                return start + offset;
+            }
             if is_word(character) || is_mark(character) {
                 continue;
             }
@@ -608,7 +633,7 @@ impl Scanner<'_> {
     }
 
     /// The joint after the run `last`, if the text goes on with the next run of the same word or number;
-    /// `kinds` are the bits of the joints since the last hyphen, those of the current number
+    /// `kinds` are the bits of the joints since the last hyphen or inner mark, those of the current number
     fn joint(&self, last: Span, kinds: u8) -> Option<(Joint, usize)> {
         let piece = last.slice(self.text);
         let character = self.get(last.end)?;
@@ -840,7 +865,8 @@ impl Scanner<'_> {
         let mut joints = Vec::new();
         let mut kinds = 0;
         while let Some((joint, next)) = self.joint(runs[runs.len() - 1], kinds) {
-            kinds = if joint == Joint::Hyphen {
+            // A mark inside a token starts a new number, as a hyphen does: «30/1.992»
+            kinds = if matches!(joint, Joint::Hyphen | Joint::Inner) {
                 0
             } else {
                 kinds | joint.bit()
@@ -899,19 +925,6 @@ impl Scanner<'_> {
             .iter()
             .any(|ending| ending == &self.text[end + 1..stop])
             .then_some(stop)
-    }
-
-    /// The end of a run of letters and digits up to a superscript digit, or of that digit, where it is a token
-    #[inline]
-    fn superscript_end(&self, start: usize, end: usize) -> usize {
-        if !self.tables.conventions.split_superscripts {
-            return end;
-        }
-        match self.text[start..end].find(['\u{b2}', '\u{b3}']) {
-            Some(0) => start + 2,
-            Some(offset) => start + offset,
-            None => end,
-        }
     }
 
     /// The end of an abbreviation with periods inside it, in a language that keeps it in one token: «EE.UU.», «U.S.»,
@@ -1066,8 +1079,37 @@ impl Scanner<'_> {
             return word.chars().any(char::is_uppercase)
                 || !self.tables.not_abbreviations.contains(&word_key);
         }
+        if self.tables.digit_abbreviations.contains(&word_key) {
+            return self.digit_after(end + 1);
+        }
         self.tables.abbreviations.contains(&word_key)
-            && !self.tables.capital_not_abbreviations.contains(word)
+            && !(self.tables.conventions.capitals_need_context
+                && !word.contains(char::is_lowercase)
+                && !self.tables.capital_abbreviations.contains(word)
+                && !self.capitals_or_digit_after(end + 1))
+    }
+
+    /// The position of the first character from `start` that is no space
+    fn after_spaces(&self, start: usize) -> usize {
+        self.text[start..self.end]
+            .find(|c: char| !c.is_whitespace())
+            .map_or(self.end, |offset| start + offset)
+    }
+
+    fn digit_after(&self, start: usize) -> bool {
+        self.get(self.after_spaces(start))
+            .is_some_and(|c| c.is_ascii_digit())
+    }
+
+    /// Whether a digit, a word in capitals or an initial follows: the context of an abbreviation in capitals
+    fn capitals_or_digit_after(&self, start: usize) -> bool {
+        let next = self.after_spaces(start);
+        let stop = self.run(next);
+        let word = &self.text[next..stop];
+        self.get(next).is_some_and(|c| c.is_ascii_digit())
+            || (word.starts_with(char::is_uppercase)
+                && !word.contains(char::is_lowercase)
+                && (word.chars().nth(1).is_some() || self.get(stop) == Some('.')))
     }
 
     /// Punctuation and other symbols: runs of final marks, of hyphens and of some symbols are one token,
@@ -1833,7 +1875,9 @@ mod spanish {
             "Reynard/Honda",
             "I+D",
             "O`Neal",
+            "d´Ebre",
             "sub'23",
+            "sub’23",
             "1990-1995",
             "1990–1995",
             "XIX-XX",
@@ -1846,6 +1890,13 @@ mod spanish {
     }
 
     #[test]
+    fn numbers_on_both_sides_of_a_mark() {
+        for token in ["30/1.992", "1.500/2.000", "3,5+2,5", "10:30/11:30"] {
+            assert_eq!(tokens(&format!("Es {token} hoy")), ["Es", token, "hoy"]);
+        }
+    }
+
+    #[test]
     fn signs_of_numbers() {
         assert_eq!(tokens("de -5 grados"), ["de", "-5", "grados"]);
         assert_eq!(tokens("-5,5 grados"), ["-5,5", "grados"]);
@@ -1854,6 +1905,8 @@ mod spanish {
         assert_eq!(tokens("sí-5"), ["sí-5"]);
         assert_eq!(tokens("- 5"), ["-", "5"]);
         assert_eq!(tokens("a.-5"), ["a.", "-", "5"]);
+        assert_eq!(tokens("“-5”"), ["“", "-5", "”"]);
+        assert_eq!(tokens("¿-5?"), ["¿", "-5", "?"]);
     }
 
     #[test]
@@ -1872,6 +1925,11 @@ mod spanish {
             ["10", "km", "²", "y", "5", "cm", "³"]
         );
         assert_eq!(tokens("² km"), ["²", "km"]);
+        assert_eq!(tokens("km²/h"), ["km", "²", "/", "h"]);
+        assert_eq!(tokens("m/s²"), ["m/s", "²"]);
+        assert_eq!(tokens("-5²"), ["-5", "²"]);
+        assert_eq!(tokens("nota¹ y"), ["nota", "¹", "y"]);
+        assert_eq!(tokens("a²b²c"), ["a", "²", "b", "²", "c"]);
     }
 
     #[test]
@@ -1882,6 +1940,7 @@ mod spanish {
             ["www.ejemplo.es", "y", "ejemplo.es"]
         );
         assert_eq!(tokens("EJEMPLO.ES"), ["EJEMPLO.ES"]);
+        assert_eq!(tokens("Amazon.Com y X.Org"), ["Amazon.Com", "y", "X.Org"]);
     }
 
     #[test]
@@ -1899,5 +1958,28 @@ mod spanish {
             ["Vino", ",", "etc", ".", "Luego"]
         );
         assert_eq!(tokens("Sí y. No"), ["Sí", "y", ".", "No"]);
+        assert_eq!(tokens("Pérez et al., y"), ["Pérez", "et", "al.", ",", "y"]);
+    }
+
+    #[test]
+    fn abbreviations_only_before_a_digit() {
+        assert_eq!(tokens("La Ley No. 45"), ["La", "Ley", "No.", "45"]);
+        assert_eq!(tokens("No. Se fue"), ["No", ".", "Se", "fue"]);
+        assert_eq!(tokens("los arts. 5 y 6"), ["los", "arts.", "5", "y", "6"]);
+        assert_eq!(
+            tokens("Electronic Arts. Luego"),
+            ["Electronic", "Arts", ".", "Luego"]
+        );
+    }
+
+    #[test]
+    fn abbreviations_in_capitals() {
+        assert_eq!(tokens("ART. 5"), ["ART.", "5"]);
+        assert_eq!(tokens("EL SR. GARCÍA"), ["EL", "SR.", "GARCÍA"]);
+        assert_eq!(tokens("EL DR. J. GARCÍA"), ["EL", "DR.", "J.", "GARCÍA"]);
+        assert_eq!(tokens("EE. UU. y"), ["EE.", "UU.", "y"]);
+        assert_eq!(tokens("El PP. Luego"), ["El", "PP", ".", "Luego"]);
+        assert_eq!(tokens("El PP.\nLuego"), ["El", "PP", ".", "Luego"]);
+        assert_eq!(tokens("El PP."), ["El", "PP", "."]);
     }
 }

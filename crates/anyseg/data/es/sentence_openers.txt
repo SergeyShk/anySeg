@@ -1,8 +1,7 @@
-# Words with a capital letter that follow no initial: before them, a single capital letter with a period ends a sentence:
-# «Felipe V. El rey», «Primera B. Angelo» does not count. Words that names start with, as «De», «La», are not here.
+# Words with a capital letter that seldom follow an initial: before them, a single capital letter with a period ends a
+# sentence, as in «Felipe V. El rey». Words that names mostly start with, as «De», «La», «Los», are not here; «El» and «Su»
+# are here at the price of «M. El Baradei» and «Y. Su», as they start sentences far more often than they follow initials.
 el
-los
-las
 un
 una
 unos
