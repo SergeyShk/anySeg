@@ -768,6 +768,42 @@ def test_multiword_tokens_of_pipe():
         assert len(document.tokens) == 3
 
 
+def test_from_tokens_with_multiword_tokens():
+    doc = Document.from_tokens("Vengo del mar", [0, 6, 10], [5, 9, 13], words={1: ("de", "el")})
+    assert doc.column("form") == ["Vengo", "de", "el", "mar"]
+    assert [word.form for word in doc.tokens[1].words] == ["de", "el"]
+    doc = Document.from_tokens("Vengo", [0], [5], words={})
+    assert len(doc.words) == 1
+
+
+@pytest.mark.parametrize(
+    ("words", "error", "message"),
+    [
+        ({3: ["a", "b"]}, ValueError, "multiword token 3"),
+        ({-1: ["a", "b"]}, ValueError, "multiword token -1"),
+        ({10**30: ["a", "b"]}, ValueError, "multiword token"),
+        ({0: ["a"]}, ValueError, "fewer than two forms"),
+        ({0: ["a", ""]}, ValueError, "is empty or holds"),
+        ({0: ["a", "b\tc"]}, ValueError, "is empty or holds"),
+        ({0: ["a", "b\nc"]}, ValueError, "is empty or holds"),
+        ({0: "ab"}, TypeError, "str"),
+        ({0: [1, 2]}, TypeError, "str"),
+        ({"0": ["a", "b"]}, TypeError, "int"),
+        ([(0, ["a", "b"])], TypeError, "mapping"),
+    ],
+)
+def test_from_tokens_with_wrong_multiword_tokens(words, error, message):
+    with pytest.raises(error, match=message):
+        Document.from_tokens("a b c", [0, 2, 4], [1, 3, 5], words=words)
+
+
+def test_multiword_tokens_at_once():
+    doc = Segmenter("es").segment("Vengo del mar, voy al cine")
+    assert [token.text for token in doc.multiword_tokens] == ["del", "al"]
+    assert [token.index for token in doc.multiword_tokens] == [1, 5]
+    assert Segmenter("ru").segment("Вася идёт").multiword_tokens == []
+
+
 def test_no_multiword_tokens_in_russian():
     doc = Segmenter("ru").segment("Вася del")
     assert len(doc.words) == len(doc.tokens) == 2

@@ -12,7 +12,9 @@ use pyo3::exceptions::{
 };
 use pyo3::marker::Ungil;
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyDict, PyIterator, PyList, PySlice, PyString, PyTuple, PyType};
+use pyo3::types::{
+    PyBytes, PyDict, PyIterator, PyList, PyMapping, PySlice, PyString, PyTuple, PyType,
+};
 use pyo3::{IntoPyObjectExt, PyClass, PyClassInitializer, PyTraverseError, PyVisit, ffi};
 
 const COLUMNS: &str = "form, lemma, upos, xpos, feats, head, deprel, deps, misc";
@@ -1028,12 +1030,31 @@ fn checked_column(
     checked.map_err(|error| PyValueError::new_err(error.to_string()))
 }
 
+/// The multiword tokens of a mapping, in the order of the tokens
+fn multiword_tokens(words: &Bound<'_, PyAny>) -> PyResult<Vec<(usize, Vec<String>)>> {
+    let words = words
+        .cast::<PyMapping>()
+        .map_err(|_| PyTypeError::new_err("words must be a mapping of tokens to their forms"))?;
+    let mut tokens = Vec::new();
+    for item in words.items()?.iter() {
+        let (token, forms): (Bound<'_, PyAny>, Vec<String>) = item.extract()?;
+        let token = clamped(&token)?;
+        let token = usize::try_from(token).map_err(|_| {
+            PyValueError::new_err(format!("multiword token {token} is not in the document"))
+        })?;
+        tokens.push((token, forms));
+    }
+    tokens.sort_unstable_by_key(|(token, _)| *token);
+    Ok(tokens)
+}
+
 /// The parts of a document of the tokens given in characters, checked
 fn parts_of_tokens(
     string: &str,
     starts: &[isize],
     ends: &[isize],
     sentence_starts: Option<&[usize]>,
+    words: Option<Vec<(usize, Vec<String>)>>,
 ) -> PyResult<Parts> {
     let length = string.chars().count() as isize;
     let mut previous = 0;
@@ -1073,6 +1094,7 @@ fn parts_of_tokens(
         })
         .collect();
     let inner = anyseg::Document::from_tokens(string.to_owned(), tokens, sentence_starts)
+        .and_then(|document| document.with_multiword_tokens(words.unwrap_or_default()))
         .map_err(|error| PyValueError::new_err(error.to_string()))?;
     Ok(Parts::new(inner))
 }
@@ -1094,6 +1116,27 @@ impl Document {
     fn words<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, Words>> {
         let end = slf.get().structure.word_count();
         untracked(slf.py(), Words::new(slf, 0..end))
+    }
+
+    /// Tokens of several words, in order
+    #[getter]
+    fn multiword_tokens<'py>(slf: &Bound<'py, Self>) -> PyResult<Vec<Bound<'py, Token>>> {
+        let structure = &slf.get().structure;
+        if structure.token_words.is_empty() {
+            return Ok(Vec::new());
+        }
+        (0..structure.token_words.len() - 1)
+            .filter(|&index| structure.token_words[index + 1] - structure.token_words[index] > 1)
+            .map(|index| {
+                untracked(
+                    slf.py(),
+                    Token {
+                        doc: slf.clone().unbind(),
+                        index,
+                    },
+                )
+            })
+            .collect()
     }
 
     #[getter]
@@ -1233,14 +1276,17 @@ impl Document {
     /// Document of the tokens of a text
     ///
     /// Description:
-    ///     A token holds one word. Paragraphs are the parts of the text between blank lines, and
-    ///     every paragraph starts a sentence; without sentence starts a paragraph is one sentence
+    ///     A token holds one word, except those given in words. Paragraphs are the parts of the
+    ///     text between blank lines, and every paragraph starts a sentence; without sentence
+    ///     starts a paragraph is one sentence
     ///
     /// Arguments:
     ///     text (str): Text
     ///     starts (list[int]): Positions of the first characters of the tokens
     ///     ends (list[int]): Positions after their last characters
     ///     sentence_starts (list[int] | None): Indices of the tokens that start sentences
+    ///     words (Mapping[int, Sequence[str]] | None): Forms of the words of the multiword tokens,
+    ///         by the index of the token
     ///
     /// Returns:
     ///     Document: Document of the tokens
@@ -1248,16 +1294,20 @@ impl Document {
     /// Raises:
     ///     ValueError: If the lists differ in length, a token is empty, out of the text, overlaps
     ///         the token before it, starts or ends with whitespace or runs over a paragraph
-    ///         boundary, the text between the tokens holds anything but whitespace, or the
-    ///         sentence starts are not increasing token indices
-    ///     TypeError: If a list holds something other than integers
+    ///         boundary, the text between the tokens holds anything but whitespace, the
+    ///         sentence starts are not increasing token indices, words names a token that is
+    ///         not in the document or has fewer than two forms, or a form is empty or holds a
+    ///         tab or a line break
+    ///     TypeError: If a list holds something other than integers, or words is not a mapping
+    ///         of integers to sequences of strings
     #[staticmethod]
-    #[pyo3(signature = (text, starts, ends, *, sentence_starts=None))]
+    #[pyo3(signature = (text, starts, ends, *, sentence_starts=None, words=None))]
     fn from_tokens<'py>(
         text: Bound<'py, PyString>,
         #[pyo3(from_py_with = clamped_list)] starts: Vec<isize>,
         #[pyo3(from_py_with = clamped_list)] ends: Vec<isize>,
         #[pyo3(from_py_with = optional_clamped_list)] sentence_starts: Option<Vec<isize>>,
+        words: Option<Bound<'py, PyAny>>,
     ) -> PyResult<Bound<'py, Document>> {
         if starts.len() != ends.len() {
             return Err(PyValueError::new_err(format!(
@@ -1280,8 +1330,9 @@ impl Document {
                     .collect::<PyResult<Vec<_>>>()
             })
             .transpose()?;
+        let words = words.as_ref().map(multiword_tokens).transpose()?;
         let parts = with_str(&text, |string, _| {
-            parts_of_tokens(string, &starts, &ends, sentence_starts.as_deref())
+            parts_of_tokens(string, &starts, &ends, sentence_starts.as_deref(), words)
         })?;
         untracked(text.py(), Document::new(parts, &text)?)
     }
