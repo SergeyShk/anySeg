@@ -22,6 +22,7 @@ keywords = [
     "spacy",
     "NLP",
     "russian",
+    "spanish",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -40,6 +41,7 @@ classifiers = [
     "Topic :: Text Processing :: Linguistic",
     "Typing :: Typed",
     "Natural Language :: Russian",
+    "Natural Language :: Spanish",
 ]
 dependencies = []
 

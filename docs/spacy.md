@@ -45,12 +45,16 @@ The tokenizer and the component register with spaCy when the package is installe
     custom = {"@tokenizers": "anyseg.Tokenizer.v1", "tokens": ["C++"]}
     nlp = spacy.blank("ru", config={"nlp": {"tokenizer": custom}})
     [(token.text, token.whitespace_) for token in nlp("Язык C++\n\nКот  спит")]
+    spanish = spacy.blank("es", config={"nlp": {"tokenizer": tokenizer}})
+    doc = spanish("Vengo del mar")
+    [token.text for token in doc], doc[1]._.anyseg_words
     ```
 
 === "Result"
 
     ```
     [('Язык', ' '), ('C++', ''), ('\n\n', ''), ('Кот', ' '), (' ', ''), ('спит', '')]
+    (['Vengo', 'del', 'mar'], [{'form': 'de'}, {'form': 'el'}])
     ```
 
 The settings are in the configuration, so a saved pipeline loads with the tokenizer, and a pickled `Doc` of such a pipeline needs anySeg to load. A trained pipeline takes it when it is loaded:
@@ -95,12 +99,20 @@ With the tokenizer and the component, `ru_core_news_sm` 3.8.0 finds sentences an
 
 | Test set | Sentences, spaCy | Sentences, anySeg | LAS, spaCy | LAS, anySeg |
 | :------- | ---------------: | ----------------: | ---------: | ----------: |
-| SynTagRus | 95.39 | **98.53** | 81.83 | **82.96** |
+| SynTagRus | 95.39 | **98.92** | 81.83 | **82.95** |
 | Taiga | 80.42 | **89.92** | 71.55 | **73.39** |
 | GSD | 85.85 | **96.32** | 75.80 | **79.34** |
 | PUD | 96.45 | **99.25** | 86.14 | **87.26** |
 
-The tokenizer gives 2.7 M tokens per second, nearly ten times as many as the tokenizer of spaCy; with the component, 1.5 M against 0.26 M with the `sentencizer` of spaCy (SynTagRus test, one thread, Apple M3 Pro).
+With both, `es_core_news_sm` 3.8.0 does so on the test parts of the Spanish treebanks too. The parser reads the tokens of the text, and [`from_doc`](#from_doc) gives the words of the multiword tokens for the score:
+
+| Test set | Sentences, spaCy | Sentences, anySeg | LAS, spaCy | LAS, anySeg |
+| :------- | ---------------: | ----------------: | ---------: | ----------: |
+| AnCora | 97.70 | **98.58** | 80.43 | **82.05** |
+| GSD | 88.14 | **90.97** | 69.35 | **71.09** |
+| PUD | 97.34 | **98.65** | 73.35 | **74.56** |
+
+The tokenizer gives 2.3 M tokens per second, nearly ten times as many as the tokenizer of spaCy; with the component, 1.4 M against 0.24 M with the `sentencizer` of spaCy (SynTagRus test, one thread, Apple M3 Pro). On AnCora test it gives 2.2 M against 0.43 M, and 1.5 M against 0.40 M.
 
 ## Documents { #documents }
 

@@ -40,8 +40,8 @@ The object keeps them read-only: `lang` is the code of the language, `abbreviati
 
 The rules of a language know the common abbreviations and the usual kinds of tokens; a text of a special field may need more.
 
-*   **Abbreviations** are words that keep a period after them: `"сущ"` or `"сущ."`, in any case. Such a word with its period is one token and ends a sentence as the [abbreviations of the language](russian.md#sentence-abbreviations) do. The segmenter keeps them lowercase, without the period and the stress marks.
-*   **Tokens** are strings that are one token each, as written: `"C++"`, `"т.н."`. A string matches where a token would start and no letter or digit adjoins it; of several strings that match at one place, the longest wins.
+*   **Abbreviations** are words that keep a period after them: `"сущ"` or `"сущ."`, in any case. Such a word with its period is one token and ends a sentence as the abbreviations of the language do: [Russian](russian.md#sentence-abbreviations), [Spanish](spanish.md#sentence-abbreviations). The segmenter keeps them lowercase, without the period and the stress marks.
+*   **Tokens** are strings that are one token each, as written: `"C++"`, `"т.н."`. A string matches where a token would start and no letter or digit adjoins it; of several strings that match at one place, the longest wins. Such a token is one word.
 
 === "Code"
 
@@ -71,7 +71,7 @@ The rules of a language know the common abbreviations and the usual kinds of tok
 tokenize(text)
 ```
 
-The tokens of the text in order. Whitespace, control characters and the invisible separators - zero width space, word joiner, byte order mark, and a soft hyphen and zero width (non-)joiner outside a word - separate the tokens and are in none of them. How a language splits its text, see [Russian](russian.md).
+The tokens of the text in order. Whitespace, control characters and the invisible separators - zero width space, word joiner, byte order mark, and a soft hyphen and zero width (non-)joiner outside a word - separate the tokens and are in none of them. How a language splits its text, see [Russian](russian.md) and [Spanish](spanish.md).
 
 | Parameter | Type | Default | Description |
 | :-------- | :--- | :------ | :---------- |
@@ -102,7 +102,7 @@ The tokens of the text in order. Whitespace, control characters and the invisibl
 sentenize(text)
 ```
 
-The sentences of the text in order, each from the start of its first token to the end of its last one. A paragraph - the part of the text between blank lines - always starts a sentence; inside it, final marks, abbreviations, emoticons and line breaks end sentences by the rules of the [language](russian.md#sentences).
+The sentences of the text in order, each from the start of its first token to the end of its last one. A paragraph - the part of the text between blank lines - always starts a sentence; inside it, final marks, abbreviations, emoticons and line breaks end sentences by the rules of the language: [Russian](russian.md#sentences), [Spanish](spanish.md#sentences).
 
 | Parameter | Type | Default | Description |
 | :-------- | :--- | :------ | :---------- |
@@ -136,7 +136,7 @@ The sentences of the text in order, each from the start of its first token to th
 segment(text)
 ```
 
-The [document](document.md) of the text: its tokens as `tokenize` gives them, their words, its sentences as `sentenize` gives them, its paragraphs and their lines. The document keeps the text and gives the parts as views of it.
+The [document](document.md) of the text: its tokens as `tokenize` gives them, their words, its sentences as `sentenize` gives them, its paragraphs and their lines. A token holds several words where the language writes them together: [Spanish](spanish.md#multiword) «del» is «de» and «el». The document keeps the text and gives the parts as views of it.
 
 | Parameter | Type | Default | Description |
 | :-------- | :--- | :------ | :---------- |
@@ -147,12 +147,14 @@ The [document](document.md) of the text: its tokens as `tokenize` gives them, th
     ``` python
     doc = segmenter.segment("Ёж идёт домой.\n\nКот спит")
     [sentence.text for sentence in doc.sentences], len(doc.tokens)
+    [word.form for word in Segmenter("es").segment("Vengo del mar").words]
     ```
 
 === "Result"
 
     ```
     (['Ёж идёт домой.', 'Кот спит'], 6)
+    ['Vengo', 'de', 'el', 'mar']
     ```
 
 </div>

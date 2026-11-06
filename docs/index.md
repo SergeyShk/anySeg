@@ -2,7 +2,7 @@
 
 ![anySeg](img/anyseg.svg)
 
-**anySeg** segments text into tokens, words and sentences with their positions in the source text: a Rust core and a Python package without dependencies. The text is never changed - every token and sentence is a span of the original string - and the tokens follow the conventions of [Universal Dependencies](https://universaldependencies.org/), so the results can be compared with the treebanks and with the tools trained on them. One package serves all languages: the rules are shared, and a language brings its lists. Russian comes first, Spanish and English follow.
+**anySeg** segments text into tokens, words and sentences with their positions in the source text: a Rust core and a Python package without dependencies. The text is never changed - every token and sentence is a span of the original string - and the tokens follow the conventions of [Universal Dependencies](https://universaldependencies.org/), so the results can be compared with the treebanks and with the tools trained on them. One package serves all languages: the rules are shared, and a language brings its lists. Russian and Spanish are here, English follows.
 
 !!! note "Early version"
     Before 1.0 the API may change between 0.x versions.
@@ -42,6 +42,14 @@
     How Russian text is split: abbreviations, hyphenated words, numbers, the web, dialogue, lists and verse
 
     [:octicons-arrow-right-24: Russian](russian.md)
+
+-   :material-alphabet-latin:{ .lg .middle } __Spanish__
+
+    ---
+
+    How Spanish text is split: multiword tokens, abbreviations, numbers, inverted marks, dialogue and articles
+
+    [:octicons-arrow-right-24: Spanish](spanish.md)
 
 -   :material-pipe:{ .lg .middle } __spaCy__
 
