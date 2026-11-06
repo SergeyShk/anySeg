@@ -37,7 +37,7 @@ In Windows PowerShell 5.1 the `>` redirection and a pipeline (`Get-Content text.
 
 ### tokens
 
-A token per line and a blank line after every sentence.
+A token per line and a blank line after every sentence. A multiword token is one line: the words are in `conllu`.
 
 ``` bash
 echo "Ёж идёт домой. Кот спит" | anyseg -l ru
@@ -60,7 +60,7 @@ A sentence per line, its line breaks turned into spaces, and a blank line betwee
 
 ### conllu
 
-CoNLL-U as [`to_conllu`](document.md#to_conllu) writes it: every file starts with `# newdoc`, every paragraph with `# newpar`, and the sentences are numbered through the whole output; the space after a token goes to MISC.
+CoNLL-U as [`to_conllu`](document.md#to_conllu) writes it: every file starts with `# newdoc`, every paragraph with `# newpar`, and the sentences are numbered through the whole output; the space after a token goes to MISC, and a [multiword token](spanish.md#multiword) has its line before the lines of its words.
 
 ``` bash
 echo "Ёж идёт.  Кот" | anyseg -l ru -f conllu
@@ -78,6 +78,23 @@ echo "Ёж идёт.  Кот" | anyseg -l ru -f conllu
 # sent_id = 2
 # text = Кот
 1	Кот	_	_	_	_	_	_	_	_
+
+```
+
+``` bash
+echo "Vengo del mar" | anyseg -l es -f conllu
+```
+
+```
+# newdoc
+# newpar
+# sent_id = 1
+# text = Vengo del mar
+1	Vengo	_	_	_	_	_	_	_	_
+2-3	del	_	_	_	_	_	_	_	_
+2	de	_	_	_	_	_	_	_	_
+3	el	_	_	_	_	_	_	_	_
+4	mar	_	_	_	_	_	_	_	_
 
 ```
 

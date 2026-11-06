@@ -3,7 +3,7 @@
 A segmented text: its tokens, its words with the columns of [CoNLL-U](https://universaldependencies.org/format.html), its sentences, its paragraphs and their lines. A document comes from [`Segmenter.segment`](segmenter.md#segment), from [`Document.from_tokens`](#from_tokens) or from [`read_conllu`](#read_conllu).
 
 *   The text is never changed: tokens, sentences, paragraphs and lines are its spans, with positions in the characters of the Python string.
-*   A token holds one word or, for a multiword token, several (Spanish «del» is «de» + «el»). The segmenter gives them where the language joins words in one token.
+*   A token holds one word or, for a multiword token, several ([Spanish](spanish.md#multiword) «del» is «de» + «el»). The segmenter gives them where the language joins words in one token.
 *   Sentences hold whole tokens, paragraphs - the parts of the text between blank lines - hold whole sentences, and lines are those of the paragraphs.
 *   Words have the columns of CoNLL-U, empty until set; [`set_columns`](#set_columns) is the only change of a document, so a document can be shared between threads. It can be pickled with its columns, to go to another process; its parts cannot.
 
@@ -206,7 +206,7 @@ Exceptions:
 to_conllu(*, doc_id=None)
 ```
 
-The document in CoNLL-U, every sentence followed by a blank line. A document read from CoNLL-U is written as it was read, with the columns set since. Otherwise every sentence gets the comments `sent_id` and `text`, the first one `newdoc` and every paragraph `newpar`, and the space after a token inside a paragraph goes to MISC: `SpaceAfter=No` when there is none and `SpacesAfter` when it is not one space. Forms, the comment `text` and the values are in Unicode NFC, as CoNLL-U requires, and a lone surrogate is U+FFFD; the document keeps its text.
+The document in CoNLL-U, every sentence followed by a blank line. A document read from CoNLL-U is written as it was read, with the columns set since. Otherwise every sentence gets the comments `sent_id` and `text`, the first one `newdoc` and every paragraph `newpar`, and the space after a token inside a paragraph goes to MISC: `SpaceAfter=No` when there is none and `SpacesAfter` when it is not one space. A multiword token has its line before the lines of its words, with the range of their IDs. Forms, the comment `text` and the values are in Unicode NFC, as CoNLL-U requires, and a lone surrogate is U+FFFD; the document keeps its text.
 
 | Parameter | Type | Default | Description |
 | :-------- | :--- | :------ | :---------- |
@@ -221,6 +221,7 @@ Exceptions:
     ``` python
     print(doc.to_conllu(), end="")
     print(Segmenter("ru").segment("Ёж идёт.  Кот спит").to_conllu(doc_id="news-1"), end="")
+    print(Segmenter("es").segment("Vengo del mar").to_conllu(), end="")
     ```
 
 === "Result"
@@ -246,6 +247,16 @@ Exceptions:
     # text = Кот спит
     1	Кот	_	_	_	_	_	_	_	_
     2	спит	_	_	_	_	_	_	_	_
+
+    # newdoc
+    # newpar
+    # sent_id = 1
+    # text = Vengo del mar
+    1	Vengo	_	_	_	_	_	_	_	_
+    2-3	del	_	_	_	_	_	_	_	_
+    2	de	_	_	_	_	_	_	_	_
+    3	el	_	_	_	_	_	_	_	_
+    4	mar	_	_	_	_	_	_	_	_
     ```
 
 </div>
