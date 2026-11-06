@@ -25,12 +25,12 @@ A word keeps its accents and soft hyphens, and a word with an apostrophe or a si
 
 ### Abbreviations and initials { #abbreviations }
 
-A common abbreviation keeps its period: «Sr.», «Dra.», «Ud.», «pág.», «p. ej.», «aprox.», «ene.»; so does a single letter - an initial «J.» or a lowercase letter of an abbreviation, except the words «y», «e», «o», «u». An abbreviation written without spaces is one token: «EE.UU.», «S.A.». At the end of a sentence, the period of an abbreviation is a token of its own, as the UD guidelines ask.
+A common abbreviation keeps its period: «Sr.», «Dra.», «Ud.», «pág.», «p. ej.», «aprox.», «ene.»; so does a single letter - an initial «J.» or a lowercase letter of an abbreviation, except the words «y», «e», «o», «u». An abbreviation written without spaces is one token: «EE.UU.», «S.A.». At the end of a sentence, the period of an abbreviation is a token of its own.
 
 Some forms keep the period only where the text after them shows they are abbreviations:
 
 *   a word that is also a common word or a name, before a digit: «No. 45», «Nos. 5 y 6», «arts. 5 y 6», but «No. Se fue», «Electronic Arts. Luego»;
-*   a word in capitals, before a digit or another word in capitals: «ART. 5», «EL SR. GARCÍA», but «Es del PP. Luego». «EE. UU.», titles before a name in normal case - «DR. Juan Pérez» - and the forms «Col.» and «Vid.» keep it anywhere.
+*   a word in capitals, before a digit or another word in capitals: «ART. 5», «EL SR. GARCÍA», but «Es del PP. Luego». «EE. UU.», the commonest titles - «DR. Juan Pérez» - and the forms «Col.» and «Vid.» keep it anywhere.
 
 === "Code"
 
@@ -55,11 +55,11 @@ Some forms keep the period only where the text after them shows they are abbrevi
 
 A token can hold several words, as the UD guidelines ask for the words that Spanish writes together. The tokens stay those of the text, and a [document](document.md#word) gives their words:
 
-*   the contractions «del» and «al» are «de» + «el» and «a» + «el»; after a word, a form with a first capital letter is a name and stays whole: «El Al»;
-*   an infinitive or a gerund with pronouns is the verb and the pronouns, without the accent that the pronouns brought: «darlo», «dárselo», «viéndolo». Words that only look so stay whole: «parte», «muerte», «gobiernos»;
+*   the contractions «del» and «al» are «de» + «el» and «a» + «el»;
+*   an infinitive or a gerund with pronouns is the verb and the pronouns, without the accent that the pronouns brought: «darlo», «dárselo», «viéndolo». Words that only look so stay whole: «parte», «muerte», «gobiernos». So does a verb with «os», as «-eros» and «-aros» end nouns far more often: «deciros»;
 *   frequent imperatives with pronouns are in a table: «dame», «dímelo», «hazlo», «véase». Other imperatives need a dictionary and stay one word: «cómpralo», «cálmate».
 
-A string of the [list of tokens](segmenter.md#lists) stays one word.
+Inside a sentence, a form with a first capital letter is a name and stays whole: «El Al». A string of the [list of tokens](segmenter.md#lists) stays one word.
 
 === "Code"
 
@@ -87,7 +87,7 @@ A string of the [list of tokens](segmenter.md#lists) stays one word.
 
 ### Hyphens and marks inside a token { #hyphens }
 
-A hyphenated word is one token, and so is a range, with a hyphen or an en dash: «franco-alemán», «sub-23», «1990-1995», «1990–1995», «XIX-XX», «2,5-3,5». A slash and a plus between letters or digits stay inside a token too: «km/h», «y/o», «I+D», «15/01/2011», «30/1.992». With a space beside them, these marks are tokens of their own. A superscript digit is always a token of its own: «km²».
+A hyphenated word is one token, and so is a range: «franco-alemán», «sub-23», «1990-1995», «XIX-XX», «2,5-3,5»; between digits, an en dash joins them too: «1990–1995». A slash and a plus between letters or digits stay inside a token too: «km/h», «y/o», «I+D», «15/01/2011», «30/1.992». With a space beside them, these marks are tokens of their own. A superscript digit is always a token of its own: «km²».
 
 === "Code"
 
@@ -108,7 +108,7 @@ A hyphenated word is one token, and so is a range, with a hyphen or an en dash: 
 
 ### Numbers
 
-Decimal numbers with a comma, groups of three digits with points, times, three or more groups of digits joined by hyphens, as in phone numbers, and ordinal numbers with their ending are one token each. A sign before a digit is in the number after a space or an opening mark. Digits separated by spaces and a percent sign are tokens of their own.
+Decimal numbers with a comma, groups of three digits with points, times, three or more groups of digits joined by hyphens, as in phone numbers, and ordinal numbers with their ending are one token each. A minus before a digit is in the number after a space or an opening mark. Digits separated by spaces and a percent sign are tokens of their own.
 
 === "Code"
 
@@ -181,7 +181,7 @@ A paragraph always starts a sentence. Inside it, a sentence ends at final marks 
 
 ### Dialogue and articles { #dialogue }
 
-A dash starts a line of dialogue before a capital letter, a digit or an inverted mark; before a lowercase letter it brings the words of the author, which go on with the line. A dash glued to a final mark closes its sentence when it is longer than a hyphen, and a hyphen glued to a period numbers an article, which goes on after it.
+A dash starts a line of dialogue before a capital letter, a digit or an inverted mark; before a lowercase letter it brings the words of the author, which go on with the line. Glued to a final mark with a space after it, a dash longer than a hyphen closes its sentence, and a hyphen after a period numbers an article, which goes on after it.
 
 === "Code"
 
@@ -202,7 +202,7 @@ A dash starts a line of dialogue before a capital letter, a digit or an inverted
 
 ### Abbreviations { #sentence-abbreviations }
 
-An abbreviation ends a sentence before a capital letter when the language lists it as one that usually stands at the end - «etc.», «a. C.», «d. C.», «a. m.», «p. m.», «EE. UU.», «et al.», «y ss.» - or when it follows a number, as a unit does: «Mide 5 cm.», but not one of an address, a title or an edition: «Calle 15 esq. Centro», «3.ª ed. Madrid». Other abbreviations and initials do not end a sentence: «el Sr. Pérez», «J. L. Borges», «A.M. Turing». A single capital letter inside a sentence does before a word that seldom follows an initial: «Felipe V. El rey», «vitamina C. Es buena»; such words as «El» and «Su» cost a name now and then: «M. El Baradei».
+An abbreviation ends a sentence before a capital letter when the language lists it as one that usually stands at the end - «etc.», «a. C.», «d. C.», «a. m.», «p. m.», «EE. UU.», «et al.», «y ss.» - or when it is in lowercase and follows a number, as a unit does: «Mide 5 cm.», but not one of an address, a title or an edition: «Calle 15 esq. Centro», «3.ª ed. Madrid». Other abbreviations and initials do not end a sentence: «el Sr. Pérez», «J. L. Borges», «A.M. Turing». A single capital letter inside a sentence does before a word that seldom follows an initial: «Felipe V. El rey», «vitamina C. Es buena»; such words as «El» and «Su» cost a name now and then: «M. El Baradei».
 
 === "Code"
 
@@ -225,7 +225,7 @@ An abbreviation ends a sentence before a capital letter when the language lists 
 
 ### Posts and messages
 
-An emoticon or an emoji after final marks stays in the sentence; without them, it ends a sentence before a capital letter or an inverted mark, as a period would. A mention after final marks or an emoticon starts a sentence, and so does emphasis in Markdown before a capital letter. A separator of stars is a sentence of its own on a line of its own, or after final marks before a capital letter.
+An emoticon or an emoji after final marks stays in the sentence; without them, it ends a sentence before a capital letter or an inverted mark. A mention after final marks or an emoticon starts a sentence, and so does emphasis in Markdown before a capital letter. A separator of stars is a sentence of its own on a line of its own, or after final marks before a capital letter.
 
 === "Code"
 
@@ -264,7 +264,7 @@ A number with a period at the start of a paragraph or a line marks a list item a
 
 A paragraph is the part of the text between blank lines (or the paragraph separator U+2029). Inside a paragraph, a line break is a space, except where it starts a sentence:
 
-*   before a list item - a bullet, a number with its sign, an emoji, «1)», «1.», «a)» - or a line of dialogue;
+*   before a list item - a bullet, a number with a minus, an emoji, «1)», «1.», «a)» - or a line of dialogue;
 *   at a line without words: «***», «-»;
 *   after a line without final punctuation before a line with a capital letter: a heading, a line of a post. This rule is silent in text wrapped at the width of the page, where some line goes on with a lowercase letter, and in verse, except after a line without lowercase letters in a paragraph that has them, which is a heading. A paragraph reads as verse when some line ends with a comma or a semicolon before a line with a capital letter, or when its lines rhyme. Verse without rhymes and such marks splits by lines, as a post does.
 
