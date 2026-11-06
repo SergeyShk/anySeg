@@ -35,7 +35,8 @@ Some forms keep the period only where the text after them shows they are abbrevi
 === "Code"
 
     ``` python
-    [span.text for span in segmenter.tokenize("El Sr. Pérez, p. ej., pág. 7, aprox. 5, la Dra. J. Ruiz en EE.UU. y S.A. hoy")]
+    text = "El Sr. Pérez, p. ej., pág. 7, aprox. 5, la Dra. J. Ruiz en EE.UU. y S.A. hoy"
+    [span.text for span in segmenter.tokenize(text)]
     [span.text for span in segmenter.tokenize("Compró peras, etc.")]
     [span.text for span in segmenter.tokenize("La Ley No. 45. No. Se fue.")]
     [span.text for span in segmenter.tokenize("ART. 5 y DR. Juan Pérez. Es del PP. Luego")]
@@ -63,7 +64,8 @@ A string of the [list of tokens](segmenter.md#lists) stays one word.
 === "Code"
 
     ``` python
-    doc = segmenter.segment("Vengo del mar y voy al sol. Quiero dárselo, viéndolo bien. Dímelo, cómpralo, es parte de El Al.")
+    text = "Vengo del mar y voy al sol. Quiero dárselo, viéndolo bien. Dímelo, cómpralo, es parte de El Al."
+    doc = segmenter.segment(text)
     [(token.text, [word.form for word in token.words]) for token in doc.multiword_tokens]
     print(segmenter.segment("Vengo del mar").to_conllu(), end="")
     ```
@@ -90,7 +92,8 @@ A hyphenated word is one token, and so is a range, with a hyphen or an en dash: 
 === "Code"
 
     ``` python
-    [span.text for span in segmenter.tokenize("franco-alemán, sub-23, 1990-1995, 1990–1995, XIX-XX, 2,5-3,5")]
+    text = "franco-alemán, sub-23, 1990-1995, 1990–1995, XIX-XX, 2,5-3,5"
+    [span.text for span in segmenter.tokenize(text)]
     [span.text for span in segmenter.tokenize("km/h, y/o, I+D, 15/01/2011, 30/1.992, a / b")]
     [span.text for span in segmenter.tokenize("10 km², 5 m/s²")]
     ```
@@ -110,14 +113,14 @@ Decimal numbers with a comma, groups of three digits with points, times, three o
 === "Code"
 
     ``` python
-    text = "20.000, 1.500,50, 0,4, 12:30, +34-91-123-45-67, 3.º, 2.ª, 1.er, 3º, de -5 grados, 3 000, 15%"
+    text = "20.000, 1.500,50, 0,4, 12:30, +34-91-123-45-67, 3.º, 2.ª, 1.er, de -5 grados, 3 000, 15%"
     [span.text for span in segmenter.tokenize(text)]
     ```
 
 === "Result"
 
     ```
-    ['20.000', ',', '1.500,50', ',', '0,4', ',', '12:30', ',', '+34-91-123-45-67', ',', '3.º', ',', '2.ª', ',', '1.er', ',', '3º', ',', 'de', '-5', 'grados', ',', '3', '000', ',', '15', '%']
+    ['20.000', ',', '1.500,50', ',', '0,4', ',', '12:30', ',', '+34-91-123-45-67', ',', '3.º', ',', '2.ª', ',', '1.er', ',', 'de', '-5', 'grados', ',', '3', '000', ',', '15', '%']
     ```
 
 ### The web
@@ -162,7 +165,8 @@ A paragraph always starts a sentence. Inside it, a sentence ends at final marks 
 === "Code"
 
     ``` python
-    [span.text for span in segmenter.sentenize("¿Qué hora es? ¡Claro! ¡qué bien! Se fue. ¿por qué? Se fue. \"¿por qué?\"")]
+    text = '¿Qué hora es? ¡Claro! ¡qué bien! Se fue. ¿por qué? Se fue. "¿por qué?"'
+    [span.text for span in segmenter.sentenize(text)]
     [span.text for span in segmenter.sentenize("Bueno... ¿qué dices? Tal vez… Luego.")]
     [span.text for span in segmenter.sentenize("Vino a casa.Es tarde.")]
     ```
@@ -184,7 +188,8 @@ A dash starts a line of dialogue before a capital letter, a digit or an inverted
     ``` python
     [span.text for span in segmenter.sentenize("—¿Vienes? —preguntó ella. —Sí. —Y se fue.")]
     [span.text for span in segmenter.sentenize("¿Cuánto? —5 euros. La viuda.-- El niño lloró.")]
-    [span.text for span in segmenter.sentenize("Artículo 1.- Objeto de la ley. Artículo 2.- Ámbito.")]
+    text = "Artículo 1.- Objeto de la ley. Artículo 2.- Ámbito."
+    [span.text for span in segmenter.sentenize(text)]
     ```
 
 === "Result"
@@ -204,8 +209,10 @@ An abbreviation ends a sentence before a capital letter when the language lists 
     ``` python
     text = "Compró peras, etc. Luego se fue. Murió en 44 a. C. Vive en EE. UU. Trabaja. Mide 5 cm. Pesa 3 kg."
     [span.text for span in segmenter.sentenize(text)]
-    [span.text for span in segmenter.sentenize("Vino el Sr. Pérez. Calle 15 esq. Centro. Vino J. L. Borges.")]
-    [span.text for span in segmenter.sentenize("Fue Felipe V. El rey vino. Tomo vitamina C. Es buena.")]
+    text = "Vino el Sr. Pérez. Calle 15 esq. Centro. Vino J. L. Borges."
+    [span.text for span in segmenter.sentenize(text)]
+    text = "Fue Felipe V. El rey vino. Tomo vitamina C. Es buena."
+    [span.text for span in segmenter.sentenize(text)]
     ```
 
 === "Result"
@@ -223,7 +230,8 @@ An emoticon or an emoji after final marks stays in the sentence; without them, i
 === "Code"
 
     ``` python
-    [span.text for span in segmenter.sentenize("Hola 😀 ¿Qué tal? ¡Bien! :) Vamos. Gracias! @ana sí.")]
+    text = "Hola 😀 ¿Qué tal? ¡Bien! :) Vamos. Gracias! @ana sí."
+    [span.text for span in segmenter.sentenize(text)]
     [span.text for span in segmenter.sentenize("Texto. * * * Nuevo capítulo.")]
     ```
 
@@ -263,7 +271,8 @@ A paragraph is the part of the text between blank lines (or the paragraph separa
 === "Code"
 
     ``` python
-    [span.text for span in segmenter.sentenize("Capítulo 1\nIntroducción\nEste es el texto. Es corto.")]
+    text = "Capítulo 1\nIntroducción\nEste es el texto. Es corto."
+    [span.text for span in segmenter.sentenize(text)]
     [span.text for span in segmenter.sentenize("Compra:\n- pan\n-2 kilos\n1) leche\n✅ fruta")]
     verse = "Volverán las oscuras golondrinas\nen tu balcón sus nidos a colgar,\nY otra vez con el ala a sus cristales\njugando llamarán."
     [span.text for span in segmenter.sentenize(verse)]
