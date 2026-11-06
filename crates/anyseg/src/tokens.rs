@@ -639,6 +639,10 @@ impl Scanner<'_> {
         let character = self.get(last.end)?;
         let next = last.end + character.len_utf8();
         let after = self.get(next)?;
+        // A superscript that is a token of its own goes on with no word: «m-²»
+        if self.tables.conventions.split_superscripts && is_superscript(after) {
+            return None;
+        }
         let digits = is_digits(piece);
         let only = |kind: Joint| kinds & !kind.bit() == 0;
         let groups = self.tables.conventions.digit_groups;
@@ -1071,7 +1075,9 @@ impl Scanner<'_> {
             return false;
         }
         let word_key = self.tables.key(word);
-        if self.exceptions.abbreviations.contains(&word_key) {
+        if self.exceptions.abbreviations.contains(&word_key)
+            || self.tables.written_abbreviations.contains(word)
+        {
             return true;
         }
         if word_key.chars().count() == 1 {
@@ -1085,7 +1091,6 @@ impl Scanner<'_> {
         self.tables.abbreviations.contains(&word_key)
             && !(self.tables.conventions.capitals_need_context
                 && !word.contains(char::is_lowercase)
-                && !self.tables.capital_abbreviations.contains(word)
                 && !self.capitals_or_digit_after(end + 1))
     }
 
@@ -1101,15 +1106,20 @@ impl Scanner<'_> {
             .is_some_and(|c| c.is_ascii_digit())
     }
 
-    /// Whether a digit, a word in capitals or an initial follows: the context of an abbreviation in capitals
+    /// Whether a digit, a word in capitals or an initial follows: the context of an abbreviation in capitals; a word
+    /// of one letter counts only before another word in capitals, as «Y» may start a sentence
     fn capitals_or_digit_after(&self, start: usize) -> bool {
+        let in_capitals =
+            |word: &str| word.starts_with(char::is_uppercase) && !word.contains(char::is_lowercase);
         let next = self.after_spaces(start);
         let stop = self.run(next);
         let word = &self.text[next..stop];
         self.get(next).is_some_and(|c| c.is_ascii_digit())
-            || (word.starts_with(char::is_uppercase)
-                && !word.contains(char::is_lowercase)
-                && (word.chars().nth(1).is_some() || self.get(stop) == Some('.')))
+            || (in_capitals(word)
+                && (word.chars().nth(1).is_some() || self.get(stop) == Some('.') || {
+                    let after = self.after_spaces(stop);
+                    in_capitals(&self.text[after..self.run(after)])
+                }))
     }
 
     /// Punctuation and other symbols: runs of final marks, of hyphens and of some symbols are one token,
@@ -1930,6 +1940,12 @@ mod spanish {
         assert_eq!(tokens("-5²"), ["-5", "²"]);
         assert_eq!(tokens("nota¹ y"), ["nota", "¹", "y"]);
         assert_eq!(tokens("a²b²c"), ["a", "²", "b", "²", "c"]);
+        assert_eq!(tokens("kg m-³"), ["kg", "m", "-", "³"]);
+        assert_eq!(tokens("km/²"), ["km", "/", "²"]);
+        assert_eq!(tokens("10-²"), ["10", "-", "²"]);
+        assert_eq!(tokens("x+²"), ["x", "+", "²"]);
+        assert_eq!(tokens("a_²"), ["a", "_", "²"]);
+        assert_eq!(tokens("a'²"), ["a", "'", "²"]);
     }
 
     #[test]
@@ -1941,6 +1957,7 @@ mod spanish {
         );
         assert_eq!(tokens("EJEMPLO.ES"), ["EJEMPLO.ES"]);
         assert_eq!(tokens("Amazon.Com y X.Org"), ["Amazon.Com", "y", "X.Org"]);
+        assert_eq!(tokens("casa.Su madre"), ["casa", ".", "Su", "madre"]);
     }
 
     #[test]
@@ -1966,6 +1983,8 @@ mod spanish {
         assert_eq!(tokens("La Ley No. 45"), ["La", "Ley", "No.", "45"]);
         assert_eq!(tokens("No. Se fue"), ["No", ".", "Se", "fue"]);
         assert_eq!(tokens("los arts. 5 y 6"), ["los", "arts.", "5", "y", "6"]);
+        assert_eq!(tokens("Nos. 5 y 6"), ["Nos.", "5", "y", "6"]);
+        assert_eq!(tokens("Nos. Luego"), ["Nos", ".", "Luego"]);
         assert_eq!(
             tokens("Electronic Arts. Luego"),
             ["Electronic", "Arts", ".", "Luego"]
@@ -1981,5 +2000,16 @@ mod spanish {
         assert_eq!(tokens("El PP. Luego"), ["El", "PP", ".", "Luego"]);
         assert_eq!(tokens("El PP.\nLuego"), ["El", "PP", ".", "Luego"]);
         assert_eq!(tokens("El PP."), ["El", "PP", "."]);
+        assert_eq!(tokens("El SR. Y LA"), ["El", "SR.", "Y", "LA"]);
+        assert_eq!(tokens("El ART. Y luego"), ["El", "ART", ".", "Y", "luego"]);
+    }
+
+    #[test]
+    fn abbreviations_as_written() {
+        assert_eq!(tokens("DR. Juan Pérez"), ["DR.", "Juan", "Pérez"]);
+        assert_eq!(tokens("La Col. Roma"), ["La", "Col.", "Roma"]);
+        assert_eq!(tokens("Vid. García"), ["Vid.", "García"]);
+        assert_eq!(tokens("Comí col. Luego"), ["Comí", "col", ".", "Luego"]);
+        assert_eq!(tokens("Una vid. Luego"), ["Una", "vid", ".", "Luego"]);
     }
 }

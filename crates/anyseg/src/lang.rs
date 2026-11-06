@@ -278,7 +278,7 @@ struct Files {
     linkers: &'static str,
     final_abbreviations: &'static str,
     sentence_openers: &'static str,
-    capital_abbreviations: &'static str,
+    written_abbreviations: &'static str,
     digit_abbreviations: &'static str,
     not_final_abbreviations: &'static str,
     dotted_names: &'static str,
@@ -301,8 +301,8 @@ pub(crate) struct Tables {
     pub(crate) abbreviations: HashSet<String>,
     /// Lowercase single letters that never take such a period
     pub(crate) not_abbreviations: HashSet<String>,
-    /// Abbreviations written in capitals, as they are in any context
-    pub(crate) capital_abbreviations: HashSet<String>,
+    /// Abbreviations as they are written, whatever comes after them
+    pub(crate) written_abbreviations: HashSet<String>,
     /// Words that take a period as an abbreviation only before a digit
     pub(crate) digit_abbreviations: HashSet<String>,
     /// Abbreviations that do not end a sentence after a number
@@ -458,7 +458,7 @@ impl Tables {
             enclitic_exceptions: list(files.enclitic_exceptions),
             abbreviations: list(files.abbreviations),
             not_abbreviations: list(files.not_abbreviations),
-            capital_abbreviations: lines(files.capital_abbreviations)
+            written_abbreviations: lines(files.written_abbreviations)
                 .map(str::to_owned)
                 .collect(),
             digit_abbreviations: list(files.digit_abbreviations),
@@ -587,7 +587,7 @@ pub(crate) fn tables(language: Language) -> &'static Tables {
                     not_abbreviations: include_str!("../data/es/not_abbreviations.txt"),
                     final_abbreviations: include_str!("../data/es/final_abbreviations.txt"),
                     sentence_openers: include_str!("../data/es/sentence_openers.txt"),
-                    capital_abbreviations: include_str!("../data/es/capital_abbreviations.txt"),
+                    written_abbreviations: include_str!("../data/es/written_abbreviations.txt"),
                     digit_abbreviations: include_str!("../data/es/digit_abbreviations.txt"),
                     not_final_abbreviations: include_str!("../data/es/not_final_abbreviations.txt"),
                     multiword: include_str!("../data/es/multiword.txt"),

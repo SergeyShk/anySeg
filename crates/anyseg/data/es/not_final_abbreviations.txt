@@ -36,3 +36,13 @@ pza
 ed
 eds
 art
+dcha
+dcho
+izq
+izqda
+dto
+cra
+sta
+sto
+ltda
+mons

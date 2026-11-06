@@ -1673,6 +1673,9 @@ mod spanish {
     fn abbreviations_after_numbers_that_go_on() {
         whole("Vive en la calle 15 esq. Centro.");
         whole("Es la 3.ª ed. Madrid.");
+        whole("C/ Mayor 5, 3.º dcha. Madrid.");
+        whole("C/ Mayor 5, 2.º izqda. Barcelona.");
+        whole("A las 5 sta. María.");
         assert_eq!(
             sentences("Lo dijo Pérez et al. Luego vino."),
             ["Lo dijo Pérez et al.", "Luego vino."]
@@ -1688,7 +1691,21 @@ mod spanish {
             sentences("Es del PP. Luego vino."),
             ["Es del PP.", "Luego vino."]
         );
+        whole("EL SR. Y LA SRA. GARCÍA VINIERON.");
+        whole("VINO EL SR. A CASA.");
+        assert_eq!(
+            sentences("Es del PP. Y luego vino."),
+            ["Es del PP.", "Y luego vino."]
+        );
+        whole("DR. Juan Pérez llegó.");
+        whole("Vive en la Col. Roma.");
+        whole("Vid. García, 2010.");
+        assert_eq!(
+            sentences("Comí col. Luego fui a casa."),
+            ["Comí col.", "Luego fui a casa."]
+        );
         whole("La Ley No. 45 rige.");
+        whole("Los decretos Nos. 5 y 6 rigen.");
         assert_eq!(
             sentences("Dijo que no. Se fue."),
             ["Dijo que no.", "Se fue."]
