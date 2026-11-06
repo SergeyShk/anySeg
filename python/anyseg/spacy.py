@@ -692,9 +692,10 @@ def from_doc(doc: Doc) -> Document:
             pending = False
         starts.append(start)
         ends.append(start + len(rest.rstrip(SEPARATORS)))
-        value = given.get((token.idx, token.idx + len(text)))
-        if value is not None:
-            multiword[len(kept)] = checked_words(value, len(kept))
+        if given:
+            value = given.get((token.idx, token.idx + len(text)))
+            if value is not None:
+                multiword[len(kept)] = checked_words(value, len(kept))
         kept.append(token.i)
     document = Document.from_tokens(
         doc.text,
@@ -888,7 +889,11 @@ def given_relations(
             return None
         # Words may share a head token: the relation of the token tells which one gave its values
         standing[token] = next(
-            (offset for offset in found if given[offset].get("deprel") == deprels[token]),
+            (
+                offset
+                for offset in found
+                if (given[offset].get("deprel") or "dep") == deprels[token]
+            ),
             found[0],
         )
     word_heads: list[int | None] = []

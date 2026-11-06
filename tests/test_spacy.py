@@ -606,6 +606,20 @@ def test_the_relation_of_a_token_tells_its_word():
     assert back.column("head") == [4, 3, 0, 3]
 
 
+def test_the_word_without_a_relation_stands_for_its_token():
+    conllu = (
+        "# text = ab cd\n"
+        "1-2\tab\t_\t_\t_\t_\t_\t_\t_\t_\n"
+        "1\ta\t_\t_\t_\t_\t4\tb\t_\t_\n"
+        "2\tb\t_\t_\t_\t_\t3\t_\t_\t_\n"
+        "3-4\tcd\t_\t_\t_\t_\t_\t_\t_\t_\n"
+        "3\tc\t_\t_\t_\t_\t0\troot\t_\t_\n"
+        "4\td\t_\t_\t_\t_\t3\tz\t_\t_\n\n"
+    )
+    back = from_doc(to_doc(read_conllu(conllu)[0], Vocab()))
+    assert back.column("deprel") == ["b", "dep", "root", "z"]
+
+
 def test_a_merge_elsewhere_in_the_sentence():
     lines = ["# text = Quiero a mi madre darlo hoy"]
     for index, (form, head, relation) in enumerate(
