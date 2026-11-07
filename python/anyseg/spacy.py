@@ -686,7 +686,8 @@ def from_doc(doc: Doc) -> Document:
         head. A sentence has one root: the root of the parse or, if the sentence lacks it, the
         first word whose head is in another sentence; the other such words depend on the root
         with the relation dep.
-        A line break or a tab in a lemma, which merged tokens may have, becomes a space.
+        A line break or a tab inside a lemma, which merged tokens may have, becomes a space, with
+        the spaces around it, and at its edge goes away.
         A token with token._.anyseg_words is a multiword token. Its words keep the columns they
         have there, except the word marked main, which takes the value of the token, as a pipeline
         may have changed it; so an edit of that word in the extension gives way to the token.
@@ -759,7 +760,10 @@ def from_doc(doc: Doc) -> Document:
             columns[column] = [value(doc[index]) or None for index in kept]
     lemmas = columns.get("lemma")
     if lemmas and LINE_BREAKS.search("".join(filter(None, lemmas))):
-        columns["lemma"] = [lemma and (one_line(lemma) or None) for lemma in lemmas]
+        columns["lemma"] = [
+            (one_line(lemma) or None) if lemma and LINE_BREAKS.search(lemma) else lemma
+            for lemma in lemmas
+        ]
     if doc.has_annotation("DEP"):
         columns["head"], columns["deprel"] = relations(doc, document, kept, positions)
     if multiword:

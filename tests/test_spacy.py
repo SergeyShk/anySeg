@@ -585,8 +585,8 @@ def test_features_that_spacy_can_read():
 def test_lemma_of_merged_tokens(mark):
     doc = Doc(Vocab(), words=[f"Nueva{mark}York", "vino"], lemmas=[f"Nueva{mark}York", "venir"])
     assert from_doc(doc).column("lemma") == ["Nueva York", "venir"]
-    doc = Doc(Vocab(), words=["a", "b"], lemmas=[f"{mark}a", mark])
-    assert from_doc(doc).column("lemma") == ["a", None]
+    doc = Doc(Vocab(), words=["a", "b", "c"], lemmas=[f"{mark}a", mark, " c"])
+    assert from_doc(doc).column("lemma") == ["a", None, " c"]
 
 
 def test_parse_changed_after_to_doc():
