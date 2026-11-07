@@ -164,6 +164,12 @@ fn parse<'a>(
     }
     let id = fields[0];
     if id.contains('.') {
+        let empty = id.split_once('.').is_some_and(|(word, node)| {
+            plain_number(word).is_some() && plain_number(node).is_some_and(|node| node > 0)
+        });
+        if !empty {
+            return Err(error(format!("cannot read the ID {id:?}")));
+        }
         sentence.empty.push((sentence.lines, line.to_owned()));
         return Ok(());
     }
@@ -171,9 +177,8 @@ fn parse<'a>(
     let next = sentence.words.len() + 1;
     let rest = &line[id.len() + 1..];
     if let Some((first, last)) = id.split_once('-') {
-        let (first, last): (usize, usize) = match (first.parse(), last.parse()) {
-            (Ok(first), Ok(last)) => (first, last),
-            _ => return Err(error(format!("cannot read the ID {id:?}"))),
+        let (Some(first), Some(last)) = (plain_number(first), plain_number(last)) else {
+            return Err(error(format!("cannot read the ID {id:?}")));
         };
         if first != next || last <= first || multiword.is_some() {
             return Err(error(format!(
@@ -190,14 +195,15 @@ fn parse<'a>(
         });
         return Ok(());
     }
-    if id.parse::<usize>().ok() != Some(next) {
+    if plain_number(id) != Some(next) {
         return Err(error(format!("expected word {next}, got {id:?}")));
     }
     let head = match fields[6] {
         "_" => None,
         head => Some(
-            head.parse()
-                .map_err(|_| error(format!("cannot read the head {head:?}")))?,
+            plain_number(head)
+                .and_then(|head| head.try_into().ok())
+                .ok_or_else(|| error(format!("cannot read the head {head:?}")))?,
         ),
     };
     sentence.words.push(Word { line, head });
@@ -221,11 +227,18 @@ fn parse<'a>(
     Ok(())
 }
 
+/// A number as CoNLL-U writes it: digits without a sign and leading zeros
+fn plain_number(text: &str) -> Option<usize> {
+    let plain =
+        text.bytes().all(|byte| byte.is_ascii_digit()) && (text == "0" || !text.starts_with('0'));
+    plain.then(|| text.parse().ok()).flatten()
+}
+
 /// The documents of a CoNLL-U text: a `# newdoc` comment starts a document and `# newpar` a paragraph. The text
 /// of a sentence is its `# text` comment or, without it, the forms of its tokens with the spaces of `SpaceAfter`
 /// and `SpacesAfter`; sentences of a paragraph are joined by a space (none after `SpaceAfter=No`) and paragraphs
 /// by a blank line. Comments, multiword token lines and empty nodes are kept, so that
-/// [`Document::to_conllu`] writes the text back as it was, with LF line ends and heads as plain numbers. A byte
+/// [`Document::to_conllu`] writes the text back as it was, with LF line ends. A byte
 /// order mark at the start is skipped.
 ///
 /// # Errors
@@ -489,7 +502,7 @@ impl Document {
 
     /// The document in CoNLL-U as [`to_conllu`](Self::to_conllu) writes it, with `# newdoc id = ID` and
     /// `# sent_id = ID-N` (the ID in NFC), so that the sentences of several documents in one file have distinct
-    /// IDs.
+    /// IDs. A document read from CoNLL-U keeps its own comments and ignores the ID.
     ///
     /// # Errors
     ///
@@ -678,7 +691,8 @@ impl Document {
 }
 
 /// Writes documents into one CoNLL-U: the pieces of a long text, or several texts, with `# sent_id` numbered through
-/// all of them. Every sentence is written as [`Document::to_conllu`] writes it.
+/// all of them. Every sentence is written as [`Document::to_conllu`] writes it; a document read from CoNLL-U keeps its
+/// own comments, while the numbers go on past its sentences.
 ///
 /// ```
 /// # #[cfg(feature = "ru")] {
@@ -856,6 +870,29 @@ mod tests {
 2\tрублей\tрубль\tNOUN\t_\t_\t0\troot\t_\t_
 
 ";
+
+    #[test]
+    fn numbers_are_plain() {
+        let line = |id: &str, head: &str| format!("{id}\tx\t_\t_\t_\t_\t{head}\t_\t_\t_\n");
+        let read = |text: String| read_conllu(&format!("# text = x\n{text}\n"));
+        assert!(read(line("1", "0")).is_ok());
+        for id in ["+1", "01", "x"] {
+            assert!(read(line(id, "0")).is_err(), "{id}");
+        }
+        for head in ["+0", "00", "-1"] {
+            assert!(read(line("1", head)).is_err(), "{head}");
+        }
+        for empty in ["0.1", "1.1", "1.2"] {
+            assert!(read(line("1", "0") + &line(empty, "_")).is_ok(), "{empty}");
+        }
+        for empty in ["x.y", ".", "1.", ".1", "1.a", "1-2.5", "1.0", "+1.1"] {
+            assert!(read(line("1", "0") + &line(empty, "_")).is_err(), "{empty}");
+        }
+        for range in ["+1-+2", "01-02", "1-+2"] {
+            let words = line("1", "0") + &line("2", "1");
+            assert!(read(line(range, "_") + &words).is_err(), "{range}");
+        }
+    }
 
     #[test]
     fn round_trip() {

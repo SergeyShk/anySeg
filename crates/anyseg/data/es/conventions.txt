@@ -26,6 +26,16 @@ ordinal_endings = º ª er os as
 capital_words = de es me su
 # A word in capitals is no abbreviation of the lists unless a digit or another word in capitals follows: «PP.», «ART. 5»
 capital_abbreviations = context
+# «¿» and «¡» open a sentence, before a lowercase letter too
+inverted_marks = yes
+# The capitals in the list of final abbreviations are as written: «a. C.» ends a sentence, and «A.M. Turing» does not
+final_abbreviations = written
+# Endings of grammatical forms, which many words share: they make a rhyme with one more letter, «ventas» and «cuentas»
+weak_rhymes = os as es an en
+# The period of an abbreviation at the end of a sentence is a token of its own
+final_period = token
+# Letters that make one token with a degree sign
+degree_letters = CF
 # Superscript digits are tokens of their own: «km²»
 superscripts = split
 # The accent of a verb goes when a pronoun joins it: «decírselo» is «decir», «se», «lo»

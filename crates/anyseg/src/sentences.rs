@@ -40,7 +40,7 @@ fn is_closing(piece: &str) -> bool {
 pub(crate) fn is_opening(piece: &str) -> bool {
     matches!(
         piece,
-        "«" | "„" | "“" | "\"" | "'" | "``" | "(" | "[" | "{" | "‘" | "‹" | "¿" | "¡"
+        "«" | "„" | "“" | "\"" | "'" | "``" | "(" | "[" | "{" | "‘" | "‹"
     ) || is_entity(piece)
 }
 
@@ -163,15 +163,29 @@ fn begins_upper(line: &str) -> bool {
         .is_some_and(char::is_uppercase)
 }
 
-/// The last word of a line and its last two letters, unless it starts with a capital letter, as a name does
-fn ending(line: &str) -> Option<(&str, [char; 2])> {
+/// The last word of a line and its last two letters, or three after an ending of a grammatical form, unless it starts
+/// with a capital letter, as a name does
+fn ending<'a>(line: &'a str, weak: &[String]) -> Option<(&'a str, &'a str)> {
     let line = line.trim_end_matches(|c| !is_alpha(c));
     let word = line.rsplit(|c| !is_alpha(c)).next()?;
-    let mut letters = word.chars().rev();
-    let last = letters.next()?;
-    let before = letters.next()?;
+    let mut starts = word.char_indices().rev().map(|(start, _)| start);
+    let two = starts.nth(1)?;
+    let start = match starts.next() {
+        Some(three) if weak.iter().any(|ending| ending == &word[two..]) => three,
+        _ => two,
+    };
     word.starts_with(char::is_lowercase)
-        .then_some((word, [before, last]))
+        .then_some((word, &word[start..]))
+}
+
+/// The last two letters of a rhyme, which a grammatical form may share whatever comes before them
+fn last_two(end: &str) -> &str {
+    let start = end
+        .char_indices()
+        .rev()
+        .nth(1)
+        .map_or(0, |(start, _)| start);
+    &end[start..]
 }
 
 /// A line that does not end with punctuation: a heading, a line of a post
@@ -353,12 +367,13 @@ impl Splitter<'_> {
         if count < MIN_RHYMES {
             return false;
         }
-        let ends: Vec<Option<(&str, [char; 2])>> = self
+        let weak = &self.tables.conventions.weak_rhymes;
+        let ends: Vec<Option<(&str, &str)>> = self
             .lines
             .iter()
-            .map(|line| ending(line.slice(self.text)))
+            .map(|line| ending(line.slice(self.text), weak))
             .collect();
-        let rhymes: Vec<(usize, [char; 2])> = (0..count)
+        let rhymes: Vec<(usize, &str)> = (0..count)
             .filter_map(|index| {
                 let (word, letters) = ends[index]?;
                 (index.saturating_sub(RHYME_WINDOW)..count.min(index + RHYME_WINDOW + 1))
@@ -372,7 +387,10 @@ impl Splitter<'_> {
             && match rhymes.as_slice() {
                 [(first, _), (second, _)] => second - first == 2 && self.metre(),
                 [(_, letters), rest @ ..] => {
-                    rest.len() + 1 >= MIN_RHYMES && rest.iter().any(|(_, end)| end != letters)
+                    rest.len() + 1 >= MIN_RHYMES
+                        && rest
+                            .iter()
+                            .any(|(_, end)| last_two(end) != last_two(letters))
                 }
                 [] => false,
             }
@@ -443,7 +461,7 @@ impl Splitter<'_> {
             let next = self.piece(index + 1);
             return (
                 index,
-                words && (starts_upper(next) || is_mention(next) || matches!(next, "¿" | "¡")),
+                words && (starts_upper(next) || is_mention(next) || self.is_inverted(next)),
             );
         }
         if !candidate || self.omission(index) || self.leading_dot(index) {
@@ -496,6 +514,10 @@ impl Splitter<'_> {
         (last, boundary)
     }
 
+    fn is_inverted(&self, piece: &str) -> bool {
+        self.tables.conventions.inverted_marks && matches!(piece, "¿" | "¡")
+    }
+
     /// Whether the tokens from `index` start a sentence: a capital letter, maybe after an opening quote or bracket,
     /// and after final marks also a digit, a mention, an inverted mark or a dash before a capital letter
     fn starts(&self, index: usize, marks: bool) -> bool {
@@ -515,11 +537,10 @@ impl Splitter<'_> {
                 .map(|span| span.slice(self.text))
         };
         let mut opening = 0;
-        while next(opening).is_some_and(|after| is_opening(after) && !matches!(after, "¿" | "¡"))
-        {
+        while next(opening).is_some_and(is_opening) {
             opening += 1;
         }
-        if matches!(next(opening), Some("¿" | "¡")) {
+        if next(opening).is_some_and(|after| self.is_inverted(after)) {
             // An inverted mark opens a sentence whatever comes after it, unless an ellipsis or a mark glued to it goes on
             return (marks && !self.attached(index) && !is_ellipsis(self.piece(index - 1)))
                 || next(opening + 1).is_some_and(opens);
@@ -551,7 +572,7 @@ impl Splitter<'_> {
                 offset += 1;
             }
             return match next(offset) {
-                Some("¿" | "¡") => true,
+                Some(after) if self.is_inverted(after) => true,
                 Some(after) if is_opening(after) => next(offset + 1).is_some_and(starts_upper),
                 Some(after) => {
                     starts_upper(after)
@@ -576,12 +597,12 @@ impl Splitter<'_> {
         for position in (index.saturating_sub(3)..=index).rev() {
             let piece = self.piece(position);
             let abbreviation = is_abbreviation(piece) && lowercase(piece);
-            // A token with inner periods keys as its parts, «т.д.» as «т д», and with capitals only where the list has
-            // no capitals of its own, so that «A.M.» is no «a. m.»
+            // A token with inner periods keys as its parts, «т.д.» as «т д», and with capitals only where capitals in
+            // the list are not as written, so that «A.M.» is no «a. m.»
             let word = if abbreviation
                 || (is_abbreviation(piece)
                     && piece[..piece.len() - 1].contains('.')
-                    && self.tables.final_abbreviations_written.is_empty())
+                    && !self.tables.conventions.written_final_abbreviations)
             {
                 piece[..piece.len() - 1]
                     .split('.')
@@ -636,10 +657,10 @@ impl Splitter<'_> {
     /// Whether the abbreviations up to this one are one that the language writes with capitals and that ends a
     /// sentence: «44 a. C.», «EE. UU.», unlike the initials «Н. Э.» next to «н. э.»
     fn ends_as_written(&self, index: usize) -> bool {
-        let written = &self.tables.final_abbreviations_written;
-        if written.is_empty() {
+        if !self.tables.conventions.written_final_abbreviations {
             return false;
         }
+        let written = &self.tables.final_abbreviations_written;
         let mut key = String::new();
         for position in (index.saturating_sub(3)..=index).rev() {
             let piece = self.piece(position);
@@ -663,8 +684,8 @@ impl Splitter<'_> {
     /// first does not end one after a number: «44 a. C.»
     fn final_abbreviation_goes_on(&self, index: usize) -> bool {
         let tables = self.tables;
-        // Without capitals in the list the abbreviation after this one is an initial: «5 т. Д. Иванов»
-        if tables.final_abbreviations_written.is_empty() {
+        // Otherwise the abbreviation after this one is an initial: «5 т. Д. Иванов»
+        if !tables.conventions.written_final_abbreviations {
             return false;
         }
         let part = |position: usize| tables.key(self.piece(position).trim_end_matches('.'));
@@ -719,7 +740,7 @@ impl Splitter<'_> {
             && self.piece(index).starts_with(['…', '.'])
             && self.piece(index) != "."
             && self.attached(index)
-            && is_opening(self.piece(index - 1))
+            && (is_opening(self.piece(index - 1)) || self.is_inverted(self.piece(index - 1)))
             && (index == 1 || !self.attached(index - 1))
     }
 
@@ -1631,6 +1652,24 @@ mod spanish {
         whole("General J. Las Heras llegó.");
         whole("El matemático A.M. Turing murió.");
         whole("Vino D.C. Smith ayer.");
+    }
+
+    #[test]
+    fn rhymes_and_lists() {
+        for list in [
+            "Objetivos del proyecto\nMejorar los procesos\nReducir los costos\nAumentar las ventas\nRevisar las cuentas\nCapacitar a los empleados",
+            "Mejorar los resultados\nReducir los costos\nRevisar los contratos\nCapacitar a los empleados\nAtender a los mercados\nFirmar los acuerdos",
+            "Contactar a los clientes\nEvaluar a los estudiantes\nReunir a los docentes\nRevisar los planes\nActualizar los manuales\nCerrar las reuniones",
+            "Los niños cantan\nLas niñas bailan\nLos padres saltan\nLas madres hablan\nLos perros cazan\nLos gatos trepan",
+        ] {
+            assert_eq!(sentences(list).len(), 6, "{list}");
+        }
+        whole(
+            "Cultivo una rosa blanca\nEn junio como enero\nPara el amigo sincero\nQue me da su mano franca.",
+        );
+        whole(
+            "Amor que vino del mar\nY se fue con la marea\nQuiso mi pecho cantar\nLa pena que me rodea.",
+        );
     }
 
     #[test]

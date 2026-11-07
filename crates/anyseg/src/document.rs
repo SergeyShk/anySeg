@@ -64,7 +64,7 @@ pub struct Paragraph {
     pub tokens: Range<usize>,
 }
 
-/// A column of CoNLL-U that a word holds as text; `head` is a number and `form` comes from the tokens
+/// A column of CoNLL-U that a word holds as text; `head` is a number and `form` is set with the tokens
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Column {
     /// LEMMA: the lemma or the stem
@@ -399,6 +399,9 @@ impl Document {
         for sentence in self.sentence_tokens.windows(2) {
             for token in sentence[0]..sentence[1] {
                 let piece = self.tokens[token].slice(&self.text);
+                if !words::may_hold_several(tables, piece) {
+                    continue;
+                }
                 let before = |back: usize| {
                     (token >= sentence[0] + back)
                         .then(|| self.tokens[token - back].slice(&self.text))
@@ -485,12 +488,10 @@ impl Document {
         if multiword.is_empty() {
             return;
         }
-        if multiword.is_empty() {
-            return;
-        }
         let mut forms = Values::default();
         let mut token_words = Vec::with_capacity(self.tokens.len() + 1);
-        let mut word_tokens = Vec::with_capacity(self.tokens.len() + multiword.len());
+        let extra: usize = multiword.iter().map(|(_, words)| words.len() - 1).sum();
+        let mut word_tokens = Vec::with_capacity(self.tokens.len() + extra);
         let mut multiword = multiword.into_iter().peekable();
         for token in 0..self.tokens.len() {
             token_words.push(word_tokens.len());

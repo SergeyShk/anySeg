@@ -11,6 +11,12 @@ pub(crate) fn has_multiword(tables: &Tables) -> bool {
     !tables.multiword.is_empty() || !tables.enclitics.is_empty()
 }
 
+/// Most tokens end with other letters than what holds several words: neither a key nor a lookup
+#[inline]
+pub(crate) fn may_hold_several(tables: &Tables, token: &str) -> bool {
+    ends_right(&tables.multiword_ends, token)
+}
+
 /// The words of a token that holds several, in the case of the token; `previous` and `earlier` are the two tokens before
 /// it in its sentence. Most tokens hold one word and a lowercase one is its own key, so it runs without a copy for every
 /// token
@@ -61,6 +67,20 @@ pub(crate) fn expand<'a>(
     )
 }
 
+/// Whether the last two bytes of a word may be those of the table; bytes above ASCII may fold to anything
+#[inline]
+fn ends_right(table: &[u32; 256], word: &str) -> bool {
+    let bytes = word.as_bytes();
+    let Some((&last, rest)) = bytes.split_last() else {
+        return false;
+    };
+    let before = rest.last().copied().unwrap_or(0);
+    if last >= 0x80 || before >= 0x80 {
+        return true;
+    }
+    table[usize::from(last.to_ascii_lowercase())] >> (before.to_ascii_lowercase() & 31) & 1 == 1
+}
+
 /// The key of a token in the lists: the token itself if it is lowercase letters of Latin-1, which are in NFC
 fn key<'a>(tables: &Tables, token: &'a str) -> Cow<'a, str> {
     if tables.conventions.folds_nothing()
@@ -92,6 +112,9 @@ fn cased(word: String, index: usize, upper: bool, capitals: bool) -> String {
 /// A verb and one or two pronouns that joined its end. The pronouns have no marks, so a final «é» is no «e» of «te»:
 /// «desperté»; the verb loses the marks that it took for them
 fn enclitic_words(tables: &Tables, key: &str) -> Option<Vec<String>> {
+    if !ends_right(&tables.enclitic_ends, key) {
+        return None;
+    }
     let peel = |word: &str| -> Option<usize> {
         let found = tables
             .enclitics
@@ -118,6 +141,11 @@ fn enclitic_words(tables: &Tables, key: &str) -> Option<Vec<String>> {
 /// The verb before enclitics: as written if it ends with what keeps its marks, otherwise without the marks that it took
 /// for them; a whole verb of the list or an ending after a stem letter
 fn host<'a>(tables: &Tables, word: &'a str) -> Option<Cow<'a, str>> {
+    let last = *word.as_bytes().last()?;
+    // A byte above ASCII is a letter with a mark that the verb may lose
+    if last < 0x80 && !tables.host_ends[usize::from(last)] {
+        return None;
+    }
     let after_stem = |verb: &str, ending: &String| {
         let letters = &tables.conventions.enclitic_stem_letters;
         verb.strip_suffix(ending.as_str())

@@ -68,6 +68,20 @@ repos:
         types: [rust]
         pass_filenames: false
 
+      - id: clippy-ru
+        name: cargo clippy with Russian alone
+        language: system
+        entry: cargo clippy -p anyseg --no-default-features --features ru --all-targets -- -D warnings
+        types: [rust]
+        pass_filenames: false
+
+      - id: clippy-es
+        name: cargo clippy with Spanish alone
+        language: system
+        entry: cargo clippy -p anyseg --no-default-features --features es --all-targets -- -D warnings
+        types: [rust]
+        pass_filenames: false
+
       - id: pytest
         name: pytest
         stages: [pre-push]
@@ -89,5 +103,21 @@ repos:
         stages: [pre-push]
         language: system
         entry: cargo test -p anyseg --no-default-features
+        pass_filenames: false
+        always_run: true
+
+      - id: cargo-test-ru
+        name: cargo test with Russian alone
+        stages: [pre-push]
+        language: system
+        entry: cargo test -p anyseg --no-default-features --features ru
+        pass_filenames: false
+        always_run: true
+
+      - id: cargo-test-es
+        name: cargo test with Spanish alone
+        stages: [pre-push]
+        language: system
+        entry: cargo test -p anyseg --no-default-features --features es
         pass_filenames: false
         always_run: true

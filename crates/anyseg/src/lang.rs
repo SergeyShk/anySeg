@@ -5,12 +5,44 @@
     allow(dead_code, unused_imports)
 )]
 
-use std::collections::{HashMap, HashSet};
+use std::hash::{BuildHasherDefault, Hasher};
 use std::sync::OnceLock;
 
 use unicode_normalization::UnicodeNormalization;
 
 use crate::Language;
+
+const FX_SEED: u64 = 0x517c_c1b7_2722_0a95;
+
+/// FxHash, as the keys are short words and the tables never change: text is only looked up in them
+#[derive(Clone, Copy, Default)]
+pub(crate) struct Fx(u64);
+
+impl Hasher for Fx {
+    #[inline]
+    fn write(&mut self, bytes: &[u8]) {
+        let mut hash = self.0;
+        let (words, rest) = bytes.as_chunks::<8>();
+        for word in words {
+            hash = (hash.rotate_left(5) ^ u64::from_le_bytes(*word)).wrapping_mul(FX_SEED);
+        }
+        for &byte in rest {
+            hash = (hash.rotate_left(5) ^ u64::from(byte)).wrapping_mul(FX_SEED);
+        }
+        self.0 = hash;
+    }
+    #[inline]
+    fn write_u8(&mut self, byte: u8) {
+        self.0 = (self.0.rotate_left(5) ^ u64::from(byte)).wrapping_mul(FX_SEED);
+    }
+    #[inline]
+    fn finish(&self) -> u64 {
+        self.0
+    }
+}
+
+pub(crate) type HashSet<K> = std::collections::HashSet<K, BuildHasherDefault<Fx>>;
+pub(crate) type HashMap<K, V> = std::collections::HashMap<K, V, BuildHasherDefault<Fx>>;
 
 const COMMON_WEB_SUFFIXES: &str = include_str!("../data/common/web_suffixes.txt");
 const COMMON_EMOTICONS: &str = include_str!("../data/common/emoticons.txt");
@@ -103,6 +135,13 @@ pub(crate) struct Conventions {
     pub(crate) capital_words: Vec<String>,
     /// A word in capitals is no abbreviation of the lists unless a digit or another word in capitals follows
     pub(crate) capitals_need_context: bool,
+    /// «¿» and «¡» open a sentence
+    pub(crate) inverted_marks: bool,
+    /// The capitals in the list of final abbreviations are as written, and an abbreviation does not end a sentence
+    /// before the capital letter that makes one of them
+    pub(crate) written_final_abbreviations: bool,
+    /// Endings of grammatical forms, which make a rhyme with one more letter
+    pub(crate) weak_rhymes: Vec<String>,
 }
 
 impl Default for Conventions {
@@ -131,6 +170,9 @@ impl Default for Conventions {
             split_superscripts: false,
             capital_words: Vec::new(),
             capitals_need_context: false,
+            inverted_marks: false,
+            written_final_abbreviations: false,
+            weak_rhymes: Vec::new(),
         }
     }
 }
@@ -245,6 +287,20 @@ impl Conventions {
                 "capital_abbreviations" => {
                     conventions.capitals_need_context = flag("context", "any");
                 }
+                "inverted_marks" => conventions.inverted_marks = flag("yes", "no"),
+                "final_abbreviations" => {
+                    conventions.written_final_abbreviations = flag("written", "any_case");
+                }
+                "weak_rhymes" => {
+                    conventions.weak_rhymes = value.split_whitespace().map(str::to_owned).collect();
+                    if conventions
+                        .weak_rhymes
+                        .iter()
+                        .any(|end| end.chars().count() != 2)
+                    {
+                        wrong::<()>(line);
+                    }
+                }
                 "capital_after_word" => {
                     conventions.capital_after_word_whole = flag("whole", "words");
                 }
@@ -341,6 +397,12 @@ pub(crate) struct Tables {
     emoticon_starts: [bool; 256],
     /// The lengths of the emoticons in bytes, as bits
     emoticon_lengths: u64,
+    /// The ends of the tokens that may hold several words: for the last byte, a mask over the byte before it
+    pub(crate) multiword_ends: [u32; 256],
+    /// The ends of the enclitics, in the same way
+    pub(crate) enclitic_ends: [u32; 256],
+    /// The last bytes of the verbs that take enclitics
+    pub(crate) host_ends: [bool; 256],
     /// The tokens that hold several words
     pub(crate) multiword: HashMap<String, Multiword>,
     /// Tokens of `multiword` that stay whole, and the words after which they do
@@ -413,7 +475,7 @@ impl Tables {
                 .any(|character| conventions.enclitic_host_marks.contains(&character))
         };
         let endings: Vec<&str> = hosts().filter_map(|host| host.strip_prefix('-')).collect();
-        let mut multiword_exceptions: HashMap<String, Vec<String>> = HashMap::new();
+        let mut multiword_exceptions: HashMap<String, Vec<String>> = HashMap::default();
         for line in lines(files.multiword_exceptions) {
             if let Some((word, token)) = line.split_once(char::is_whitespace) {
                 multiword_exceptions
@@ -431,11 +493,40 @@ impl Tables {
                 (fold(&token, marks), Multiword { words, may_be_name })
             })
         };
+        let multiword: HashMap<String, Multiword> = table(files.multiword, false)
+            .chain(table(files.multiword_names, true))
+            .collect();
+        // Homoglyphs change a key after its letters are read, so that no end is known
+        let any_end = lines(files.homoglyphs).next().is_some();
+        let mut multiword_ends = [if any_end { u32::MAX } else { 0 }; 256];
+        let mut enclitic_ends = multiword_ends;
+        let note = |table: &mut [u32; 256], word: &str| {
+            if let [.., before, last] = word.as_bytes() {
+                table[usize::from(*last)] |= 1 << (before & 31);
+            } else if let [last] = word.as_bytes() {
+                // A letter alone may follow any letter
+                table[usize::from(*last)] = u32::MAX;
+            }
+        };
+        for word in multiword.keys() {
+            note(&mut multiword_ends, word);
+        }
+        for word in &enclitics {
+            note(&mut enclitic_ends, word);
+            note(&mut multiword_ends, word);
+        }
+        let mut host_ends = [any_end; 256];
+        for host in hosts().filter(|host| !host.starts_with('!')) {
+            if let Some(last) = host.as_bytes().last() {
+                host_ends[usize::from(*last)] = true;
+            }
+        }
         Tables {
+            host_ends,
             multiword_exceptions,
-            multiword: table(files.multiword, false)
-                .chain(table(files.multiword_names, true))
-                .collect(),
+            multiword,
+            multiword_ends,
+            enclitic_ends,
             enclitics,
             enclitic_endings: endings
                 .iter()
@@ -1030,8 +1121,56 @@ mod conventions {
     }
 
     #[test]
+    fn inverted_marks_are_a_convention() {
+        let text = "Hola. ¿Qué tal?";
+        assert_eq!(sentence_count(&language(""), text), 1);
+        assert_eq!(sentence_count(&language("inverted_marks = yes"), text), 2);
+    }
+
+    #[test]
+    fn capitals_in_a_list_change_nothing_by_themselves() {
+        let tables = |conventions| {
+            Tables::new(Files {
+                conventions,
+                abbreviations: "т\n",
+                final_abbreviations: "ЪЪЪ.\nт. д.\n",
+                ..Files::default()
+            })
+        };
+        let text = "Вес 5 т. Д. Иванов пришёл.";
+        assert_eq!(sentence_count(&tables(""), text), 2);
+        assert_eq!(
+            sentence_count(&tables("final_abbreviations = written"), text),
+            1
+        );
+    }
+
+    #[test]
+    fn weak_rhymes_are_a_convention() {
+        let text = "Vive en casas\nCome los panes\nMira las mantas\nDame las redes.\n";
+        assert_eq!(sentence_count(&language(""), text), 1);
+        assert_eq!(sentence_count(&language("weak_rhymes = as es"), text), 4);
+    }
+
+    #[test]
+    fn languages_state_what_has_no_neutral_default() {
+        for file in [
+            include_str!("../data/ru/conventions.txt"),
+            include_str!("../data/es/conventions.txt"),
+        ] {
+            for key in ["final_marks", "final_period", "degree_letters"] {
+                assert!(
+                    lines(file).any(|line| line.starts_with(key)),
+                    "no {key} in {file}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn capital_abbreviations_as_written() {
         let tables = Tables::new(Files {
+            conventions: "final_abbreviations = written\n",
             final_abbreviations: "a. C.\nd. c.\n",
             sentence_openers: "el\n",
             ..Files::default()
