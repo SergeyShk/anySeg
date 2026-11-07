@@ -293,6 +293,13 @@ impl Conventions {
                 }
                 "weak_rhymes" => {
                     conventions.weak_rhymes = value.split_whitespace().map(str::to_owned).collect();
+                    if conventions
+                        .weak_rhymes
+                        .iter()
+                        .any(|end| end.chars().count() != 2)
+                    {
+                        wrong::<()>(line);
+                    }
                 }
                 "capital_after_word" => {
                     conventions.capital_after_word_whole = flag("whole", "words");

@@ -143,8 +143,8 @@ def read_conllu(text: str) -> list[Document]:
         comment text or, without it, the forms of its tokens with the spaces of SpaceAfter and
         SpacesAfter; sentences of a paragraph are joined by a space (none after SpaceAfter=No),
         paragraphs by a blank line. Comments, multiword token lines and empty nodes are kept, so
-        that to_conllu writes the text back as it was, with LF line ends and heads as plain
-        numbers. A byte order mark at the start is skipped
+        that to_conllu writes the text back as it was, with LF line ends. A byte order mark at the
+        start is skipped
 
     Arguments:
         text (str): Text in CoNLL-U

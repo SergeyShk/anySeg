@@ -178,6 +178,16 @@ fn ending<'a>(line: &'a str, weak: &[String]) -> Option<(&'a str, &'a str)> {
         .then_some((word, &word[start..]))
 }
 
+/// The last two letters of a rhyme, which a grammatical form may share whatever comes before them
+fn last_two(end: &str) -> &str {
+    let start = end
+        .char_indices()
+        .rev()
+        .nth(1)
+        .map_or(0, |(start, _)| start);
+    &end[start..]
+}
+
 /// A line that does not end with punctuation: a heading, a line of a post
 fn ends_open(line: &str) -> bool {
     line.chars()
@@ -377,7 +387,10 @@ impl Splitter<'_> {
             && match rhymes.as_slice() {
                 [(first, _), (second, _)] => second - first == 2 && self.metre(),
                 [(_, letters), rest @ ..] => {
-                    rest.len() + 1 >= MIN_RHYMES && rest.iter().any(|(_, end)| end != letters)
+                    rest.len() + 1 >= MIN_RHYMES
+                        && rest
+                            .iter()
+                            .any(|(_, end)| last_two(end) != last_two(letters))
                 }
                 [] => false,
             }
@@ -584,8 +597,8 @@ impl Splitter<'_> {
         for position in (index.saturating_sub(3)..=index).rev() {
             let piece = self.piece(position);
             let abbreviation = is_abbreviation(piece) && lowercase(piece);
-            // A token with inner periods keys as its parts, «т.д.» as «т д», and with capitals only where the list has
-            // no capitals of its own, so that «A.M.» is no «a. m.»
+            // A token with inner periods keys as its parts, «т.д.» as «т д», and with capitals only where capitals in
+            // the list are not as written, so that «A.M.» is no «a. m.»
             let word = if abbreviation
                 || (is_abbreviation(piece)
                     && piece[..piece.len() - 1].contains('.')
@@ -644,10 +657,10 @@ impl Splitter<'_> {
     /// Whether the abbreviations up to this one are one that the language writes with capitals and that ends a
     /// sentence: «44 a. C.», «EE. UU.», unlike the initials «Н. Э.» next to «н. э.»
     fn ends_as_written(&self, index: usize) -> bool {
-        let written = &self.tables.final_abbreviations_written;
-        if written.is_empty() {
+        if !self.tables.conventions.written_final_abbreviations {
             return false;
         }
+        let written = &self.tables.final_abbreviations_written;
         let mut key = String::new();
         for position in (index.saturating_sub(3)..=index).rev() {
             let piece = self.piece(position);
@@ -1643,8 +1656,14 @@ mod spanish {
 
     #[test]
     fn rhymes_and_lists() {
-        let list = "Objetivos del proyecto\nMejorar los procesos\nReducir los costos\nAumentar las ventas\nRevisar las cuentas\nCapacitar a los empleados";
-        assert_eq!(sentences(list).len(), 6);
+        for list in [
+            "Objetivos del proyecto\nMejorar los procesos\nReducir los costos\nAumentar las ventas\nRevisar las cuentas\nCapacitar a los empleados",
+            "Mejorar los resultados\nReducir los costos\nRevisar los contratos\nCapacitar a los empleados\nAtender a los mercados\nFirmar los acuerdos",
+            "Contactar a los clientes\nEvaluar a los estudiantes\nReunir a los docentes\nRevisar los planes\nActualizar los manuales\nCerrar las reuniones",
+            "Los niños cantan\nLas niñas bailan\nLos padres saltan\nLas madres hablan\nLos perros cazan\nLos gatos trepan",
+        ] {
+            assert_eq!(sentences(list).len(), 6, "{list}");
+        }
         whole(
             "Cultivo una rosa blanca\nEn junio como enero\nPara el amigo sincero\nQue me da su mano franca.",
         );
