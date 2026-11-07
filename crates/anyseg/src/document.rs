@@ -3,6 +3,7 @@
 use std::error::Error;
 use std::fmt;
 use std::ops::Range;
+use std::sync::Arc;
 
 use crate::Span;
 use crate::lang::Tables;
@@ -295,8 +296,8 @@ pub struct Document {
     pub(crate) text: String,
     pub(crate) tokens: Vec<Span>,
     /// The first word of every token, and the number of words; both empty when every token is one word
-    pub(crate) token_words: Vec<usize>,
-    pub(crate) word_tokens: Vec<usize>,
+    pub(crate) token_words: Arc<[usize]>,
+    pub(crate) word_tokens: Arc<[usize]>,
     /// The forms that differ from the text of their token; empty when there are none
     pub(crate) forms: Values,
     /// The columns, none until one is set: a document of a short text stays small
@@ -380,8 +381,8 @@ impl Document {
         Document {
             text,
             tokens: fitted(tokens),
-            token_words: Vec::new(),
-            word_tokens: Vec::new(),
+            token_words: Arc::from([]),
+            word_tokens: Arc::from([]),
             forms: Values::default(),
             columns: None,
             heads: Vec::new(),
@@ -513,8 +514,8 @@ impl Document {
             }
         }
         token_words.push(word_tokens.len());
-        self.token_words = token_words;
-        self.word_tokens = word_tokens;
+        self.token_words = token_words.into();
+        self.word_tokens = word_tokens.into();
         self.forms = forms.finished();
     }
 
@@ -563,8 +564,8 @@ impl Document {
         Ok(Document {
             text,
             tokens: fitted(tokens),
-            token_words: Vec::new(),
-            word_tokens: Vec::new(),
+            token_words: Arc::from([]),
+            word_tokens: Arc::from([]),
             forms: Values::default(),
             columns: None,
             heads: Vec::new(),
@@ -633,6 +634,13 @@ impl Document {
         } else {
             self.word_tokens[word]
         }
+    }
+
+    /// The first word of every token with the number of words, and the token of every word, shared with the document;
+    /// both are empty when every token is one word
+    #[doc(hidden)]
+    pub fn word_maps(&self) -> (Arc<[usize]>, Arc<[usize]>) {
+        (Arc::clone(&self.token_words), Arc::clone(&self.word_tokens))
     }
 
     /// The form of a word: the text of its token unless it is a word of a multiword token.

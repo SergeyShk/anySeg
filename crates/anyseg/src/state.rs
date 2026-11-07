@@ -321,8 +321,8 @@ impl Document {
         Ok(Document {
             text,
             tokens,
-            token_words,
-            word_tokens,
+            token_words: token_words.into(),
+            word_tokens: word_tokens.into(),
             forms,
             columns,
             heads,

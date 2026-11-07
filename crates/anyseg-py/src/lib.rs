@@ -4,7 +4,9 @@ use std::collections::VecDeque;
 use std::hash::{Hash, Hasher};
 use std::ops::Range;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError, RwLock, RwLockReadGuard, TryLockError};
+use std::sync::{
+    Arc, Mutex, MutexGuard, OnceLock, PoisonError, RwLock, RwLockReadGuard, TryLockError,
+};
 
 use anyseg::{CheckedColumn, Column};
 use pyo3::exceptions::{
@@ -409,7 +411,8 @@ impl Segmenter {
         self.inner.language().code()
     }
 
-    /// Abbreviations added to the language, sorted: lowercase, without the period and stress marks
+    /// Abbreviations added to the language, sorted: lowercase, without the period and the marks that
+    /// the language leaves out of its lists
     #[getter]
     fn abbreviations<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
         PyTuple::new(py, self.inner.abbreviations())
@@ -427,13 +430,11 @@ impl Segmenter {
     ///     Whitespace, control characters and the invisible separators (zero width space, word
     ///     joiner, byte order mark, and a soft hyphen and zero width (non-)joiner outside a word)
     ///     separate tokens and are in none. Words keep their combining marks and soft hyphens;
-    ///     hyphenated words, numbers with decimal commas and points, dates, times and digit groups,
-    ///     URLs, e-mail addresses, file names, mentions, hashtags, emoticons and runs of emoji are
-    ///     one token each, as are runs of final marks ("?!", "..."). Abbreviations and initials
-    ///     keep their period, except at the end of a sentence. Particles after a hyphen
-    ///     ("Вася-то"), ranges ("2-3"), approximate numbers ("два-три") and compounds whose first
-    ///     part inflects ("Ростова-на-Дону", "Формулы-1", "учеными-энтузиастами") split at the
-    ///     hyphen
+    ///     numbers with decimal marks, dates and times, URLs, e-mail addresses, file names,
+    ///     mentions, hashtags, emoticons and runs of emoji are one token each. Abbreviations and
+    ///     initials keep their period, except at the end of a sentence. The lists and conventions
+    ///     of the language decide which words are abbreviations and how hyphens, ranges, digit
+    ///     groups, final marks and other marks inside a word split
     ///
     /// Arguments:
     ///     text (str): Text
@@ -459,14 +460,13 @@ impl Segmenter {
     ///     A sentence runs from the start of its first token to the end of its last. A paragraph,
     ///     the part of the text between blank lines, starts a sentence; inside it a sentence ends
     ///     at final marks (".", "?!", "...") with the closing quotes and brackets after them, when
-    ///     a capital letter, a digit, or a dash or an opening quote before a capital letter follows.
-    ///     An abbreviation ends a sentence before a capital letter when the language lists it
-    ///     ("и т. д.") or it follows a number ("в 1914 г."); initials do not, but a single Latin
-    ///     letter before a Cyrillic word ("через x. Тогда") and a unit after a quantity ("5 А.")
-    ///     do. A line break starts a sentence before a list item or a line of dialogue,
-    ///     at a line without words and after a line without final punctuation before a capital
-    ///     letter, except in verse and in text wrapped at the width of the page (a line of the
-    ///     paragraph goes on with a lowercase letter)
+    ///     the start of a sentence follows, such as a capital letter or a digit, maybe after a dash
+    ///     or an opening quote. An abbreviation ends a sentence before a capital letter when the
+    ///     language lists it or it follows a number, and an initial as a rule does not; the lists
+    ///     and conventions of the language decide the rest. A line break starts a sentence before a
+    ///     list item or a line of dialogue, at a line without words and after a line without final
+    ///     punctuation before a capital letter, except in verse and in text wrapped at the width of
+    ///     the page (a line of the paragraph goes on with a lowercase letter)
     ///
     /// Arguments:
     ///     text (str): Text
@@ -822,30 +822,22 @@ struct Structure {
     sentence_tokens: Vec<usize>,
     /// The first sentence of every paragraph, and the number of sentences
     paragraph_sentences: Vec<usize>,
-    /// The first word of every token and the number of words, and the token of every word; both empty when every
-    /// token is one word
-    token_words: Vec<usize>,
-    word_tokens: Vec<usize>,
+    /// The first word of every token and the number of words, and the token of every word, shared with the document;
+    /// both empty when every token is one word
+    token_words: Arc<[usize]>,
+    word_tokens: Arc<[usize]>,
     breaks: Vec<Option<anyseg::LineBreak>>,
     /// Some word has a form other than the text of its token: found when a form is first read
     forms: OnceLock<bool>,
+    /// The text of the core has U+FFFD, as a lone surrogate reads there: found when a form is first read
+    replaced: OnceLock<bool>,
 }
 
 impl Structure {
     fn new(inner: &anyseg::Document) -> Self {
-        let (tokens, words) = (inner.tokens().len(), inner.word_count());
+        let tokens = inner.tokens().len();
         let sentences = inner.sentence_count();
-        let (token_words, word_tokens) = if words == tokens {
-            (Vec::new(), Vec::new())
-        } else {
-            (
-                (0..tokens)
-                    .map(|token| inner.token_words(token).start)
-                    .chain([words])
-                    .collect(),
-                (0..words).map(|word| inner.word_token(word)).collect(),
-            )
-        };
+        let (token_words, word_tokens) = inner.word_maps();
         Structure {
             sentence_tokens: (0..sentences)
                 .map(|sentence| inner.sentence(sentence).tokens.start)
@@ -859,6 +851,7 @@ impl Structure {
             word_tokens,
             breaks: inner.lines().iter().map(|line| line.break_before).collect(),
             forms: OnceLock::new(),
+            replaced: OnceLock::new(),
         }
     }
 
@@ -992,6 +985,27 @@ impl Document {
 
     fn read(&self) -> RwLockReadGuard<'_, anyseg::Document> {
         self.inner.read().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// The form of a word; the text of its token is a piece of the string itself, with its lone surrogates
+    fn form<'py>(&self, py: Python<'py>, word: usize) -> PyResult<Bound<'py, PyString>> {
+        let token = self.structure.word_token(word);
+        if self.has_forms() {
+            let replaced = self.has_replaced();
+            let inner = self.read();
+            let form = inner.form(word);
+            if !replaced || !std::ptr::eq(form, inner.tokens()[token].slice(inner.text())) {
+                return Ok(PyString::new(py, form));
+            }
+        }
+        self.piece(py, self.tokens[token])
+    }
+
+    fn has_replaced(&self) -> bool {
+        *self
+            .structure
+            .replaced
+            .get_or_init(|| self.read().text().contains('\u{FFFD}'))
     }
 
     /// Some word has a form other than the text of its token
@@ -1170,23 +1184,25 @@ impl Document {
     /// Raises:
     ///     ValueError: If there is no such column
     fn column<'py>(&self, py: Python<'py>, name: &str) -> PyResult<Bound<'py, PyList>> {
-        // The form of a token is a piece of the string itself, with its lone surrogates
-        if name == "form" && !self.has_forms() {
-            let structure = &self.structure;
-            let forms = (0..structure.word_count())
-                .map(|word| self.piece(py, self.tokens[structure.word_token(word)]))
-                .collect::<PyResult<Vec<_>>>()?;
+        if name == "form" {
+            let forms = if self.has_forms() && !self.has_replaced() {
+                let inner = self.read();
+                (0..inner.word_count())
+                    .map(|word| PyString::new(py, inner.form(word)))
+                    .collect::<Vec<_>>()
+            } else {
+                (0..self.structure.word_count())
+                    .map(|word| self.form(py, word))
+                    .collect::<PyResult<Vec<_>>>()?
+            };
             return PyList::new(py, forms);
         }
         // Strings and integers only under the lock: a list may start a collection, whose finalizers may
         // release the GIL to a thread that waits for the lock
-        let values = {
+        let values: Vec<Bound<'py, PyAny>> = {
             let inner = self.read();
             let words = 0..inner.word_count();
             match name {
-                "form" => words
-                    .map(|word| PyString::new(py, inner.form(word)).into_any())
-                    .collect::<Vec<_>>(),
                 "head" => words
                     .map(|word| inner.head(word).into_bound_py_any(py))
                     .collect::<PyResult<_>>()?,
@@ -1331,10 +1347,13 @@ impl Document {
             })
             .transpose()?;
         let words = words.as_ref().map(multiword_tokens).transpose()?;
+        let py = text.py();
         let parts = with_str(&text, |string, _| {
-            parts_of_tokens(string, &starts, &ends, sentence_starts.as_deref(), words)
+            detached(py, string.len() > DETACH, || {
+                parts_of_tokens(string, &starts, &ends, sentence_starts.as_deref(), words)
+            })
         })?;
-        untracked(text.py(), Document::new(parts, &text)?)
+        untracked(py, Document::new(parts, &text)?)
     }
 
     /// Document in CoNLL-U
@@ -1755,7 +1774,8 @@ impl Token {
 ///
 /// Description:
 ///     Empty columns are None. The form of a word is the text of its token, except for the words
-///     of a multiword token. Words compare equal when they are the same word of the same document
+///     of a multiword token and for a form read from CoNLL-U that differs from the text. Words
+///     compare equal when they are the same word of the same document
 #[pyclass(frozen, eq, hash, module = "anyseg")]
 struct Word {
     doc: Py<Document>,
@@ -1791,11 +1811,7 @@ impl Word {
 
     #[getter]
     fn form<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyString>> {
-        let doc = self.doc.get();
-        if doc.has_forms() {
-            return Ok(PyString::new(py, doc.read().form(self.index)));
-        }
-        doc.piece(py, doc.tokens[doc.structure.word_token(self.index)])
+        self.doc.get().form(py, self.index)
     }
 
     #[getter]

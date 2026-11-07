@@ -546,6 +546,20 @@ def test_parts_are_not_picklable(doc, protocol):
             pickle.dumps(value, protocol)
 
 
+def test_lone_surrogate_next_to_a_multiword_token():
+    text = f"del {chr(0xD800)}x"
+    document = Segmenter("es").segment(text)
+    forms = ["de", "el", chr(0xD800), "x"]
+    assert [word.form for word in document.words] == forms
+    assert document.column("form") == forms
+    # U+FFFD in the text stays as it is next to a lone surrogate
+    document = Segmenter("es").segment(f"del {chr(0xD800)}x \ufffd y")
+    forms = ["de", "el", chr(0xD800), "x", "\ufffd", "y"]
+    assert [word.form for word in document.words] == forms
+    assert document.column("form") == forms
+    assert pickle.loads(pickle.dumps(document)).column("form") == forms
+
+
 def test_lone_surrogate():
     # The document keeps its text and its parts show it; CoNLL-U, in UTF-8, has U+FFFD
     high, low = chr(0xD83D), chr(0xDE00)
