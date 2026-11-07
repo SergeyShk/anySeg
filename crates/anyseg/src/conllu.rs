@@ -462,8 +462,8 @@ fn document(sentences: &[Block<'_>]) -> Result<Document, ConlluError> {
     Ok(Document {
         text,
         tokens: tokens.as_slice().to_vec(),
-        token_words: token_words.as_slice().to_vec(),
-        word_tokens: word_tokens.as_slice().to_vec(),
+        token_words: token_words.as_slice().into(),
+        word_tokens: word_tokens.as_slice().into(),
         forms: forms.finished(),
         columns: {
             let columns = columns.map(Values::finished);

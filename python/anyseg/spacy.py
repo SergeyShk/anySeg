@@ -38,7 +38,7 @@ import numpy
 from spacy.attrs import IDX, IS_SPACE, LENGTH, SENT_START
 from spacy.language import Language
 from spacy.pipeline.senter import senter_score
-from spacy.tokens import Doc, Token
+from spacy.tokens import Doc, Span, Token
 from spacy.training import Example
 from spacy.util import registry
 from spacy.vocab import Vocab
@@ -56,6 +56,9 @@ SEPARATORS = "".join(
 
 # What spaCy cannot keep: its strings are in UTF-8
 SURROGATES = re.compile(r"[\ud800-\udfff]")
+
+# What a column of a word cannot hold, as in a lemma of tokens merged over a line break
+LINE_BREAKS = re.compile(r"\s*[\t\r\n]\s*")
 
 # The columns of a word kept in the extension of its multiword token, besides its form
 WORD_COLUMNS = ("lemma", "upos", "xpos", "feats", "head", "deprel", "deps", "misc")
@@ -111,6 +114,8 @@ def set_words(token: Token, value: Any) -> None:
 
 # Forced: the module may be imported again, and the values are kept in the documents anyway
 Token.set_extension("anyseg_words", getter=get_words, setter=set_words, force=True)
+# Doc.to_json writes such keys as those of spans, and Doc.from_json sets them on spans
+Span.set_extension("anyseg_words", default=None, force=True)
 
 
 @registry.tokenizers("anyseg.Tokenizer.v1")
@@ -427,8 +432,8 @@ def to_doc(document: Document, vocab: Vocab) -> Doc:
         Doc: spaCy document
 
     Raises:
-        ValueError: If a token takes a part of speech unknown to spaCy, or the heads of a
-            sentence do not form a tree with one root
+        ValueError: If a token takes a part of speech unknown to spaCy, features that are not
+            pairs of a name and a value, or the heads of a sentence do not form a tree with one root
     """
     tokens = document.tokens
     vocab.lex_attr_getters[IS_SPACE] = is_gap  # type: ignore[attr-defined]
@@ -439,11 +444,20 @@ def to_doc(document: Document, vocab: Vocab) -> Doc:
     heads = document.column("head")
     parse = dependencies(document, len(words), indices) if heads and None not in heads else None
     multiword = len(document.words) != len(tokens)
-    main = parse[2] if parse else [token.words[0].index for token in tokens] if multiword else []
+    main = parse[2] if parse else None
 
     def column(name: Literal["lemma", "upos", "xpos", "feats"]) -> list[str | None]:
+        nonlocal main
         values = document.column(name)
-        return [values[word] for word in main] if multiword else values
+        if name == "feats":
+            check_features(values)
+        if not multiword:
+            return values
+        if not any(values):
+            return [None] * len(tokens)
+        if main is None:
+            main = [token.words[0].index for token in tokens]
+        return [values[word] for word in main]
 
     doc = Doc(
         vocab,
@@ -457,17 +471,33 @@ def to_doc(document: Document, vocab: Vocab) -> Doc:
         heads=parse[0] if parse else None,
         deps=parse[1] if parse else None,
     )
-    keep_words(doc, document)
+    keep_words(doc, document, parse[2] if parse else None)
     return doc
 
 
-def keep_words(doc: Doc, document: Document) -> None:
+def check_features(values: list[str | None]) -> None:
+    """
+    Checks that features are pairs of a name and a value, which spaCy needs to read them
+
+    Arguments:
+        values (list[str | None]): Features of every word
+
+    Raises:
+        ValueError: If some are not
+    """
+    for word, value in enumerate(values):
+        if value and any("=" not in pair for pair in value.split("|")):
+            raise ValueError(f"features of word {word} are not name=value pairs: {value!r}")
+
+
+def keep_words(doc: Doc, document: Document, main: list[int] | None = None) -> None:
     """
     Words of the multiword tokens of a document in the extension of the tokens of a spaCy document
 
     Arguments:
         doc (Doc): spaCy document of the same text
         document (Document): Document
+        main (list[int] | None): Index of the word of every token that gave it its values, if any
     """
     data: dict[Any, Any] = doc.user_data
     for token in document.multiword_tokens:
@@ -481,6 +511,7 @@ def keep_words(doc: Doc, document: Document) -> None:
                     if (value := getattr(word, column)) is not None
                 },
                 **({"sentence_words": count} if word.head is not None else {}),
+                **({"main": True} if main and word.index == main[token.index] else {}),
             }
             for word in token.words
         ]
@@ -706,7 +737,7 @@ def from_doc(doc: Doc) -> Document:
     )
     columns: dict[str, list[Any]] = {}
     for column, attribute, value in (
-        ("lemma", "LEMMA", lambda token: token.lemma_),
+        ("lemma", "LEMMA", lambda token: LINE_BREAKS.sub(" ", token.lemma_)),
         ("upos", "POS", lambda token: token.pos_),
         ("xpos", "TAG", lambda token: token.tag_),
         ("feats", "MORPH", lambda token: features(str(token.morph))),
@@ -780,8 +811,9 @@ def words_columns(
     """
     count = len(document.tokens)
     result: dict[str, list[Any]] = {}
+    present = {name for words in multiword.values() for word in words for name in word}
     for column in WORD_COLUMNS:
-        if column in ("head", "deprel"):
+        if column in ("head", "deprel") or (column not in columns and column not in present):
             continue
         values = columns.get(column, [None] * count)
         out: list[Any] = []
@@ -791,7 +823,11 @@ def words_columns(
                 out.append(value)
                 continue
             own = [word.get(column) for word in given]
-            if all(word is None for word in own):
+            main = main_word(given)
+            # The token gave its value to the word it came from, as a pipeline may have changed it
+            if main is not None and value is not None:
+                own[main] = value
+            elif all(word is None for word in own):
                 own[0] = value
             out.extend(own)
         result[column] = out
@@ -844,6 +880,19 @@ def word_relations(
     return word_heads, word_deprels
 
 
+def main_word(words: list[dict[str, Any]]) -> int | None:
+    """
+    Position of the word of a multiword token that gave the token its values, if it is marked
+
+    Arguments:
+        words (list[dict[str, Any]]): Words of the token
+
+    Returns:
+        int | None: Position among the words, None without a mark
+    """
+    return next((offset for offset, word in enumerate(words) if word.get("main")), None)
+
+
 def given_relations(
     span: range,
     ids: dict[int, int],
@@ -887,14 +936,19 @@ def given_relations(
         ]
         if not found:
             return None
-        # Words may share a head token: the relation of the token tells which one gave its values
-        standing[token] = next(
-            (
-                offset
-                for offset in found
-                if (given[offset].get("deprel") or "dep") == deprels[token]
-            ),
-            found[0],
+        main = main_word(given)
+        # Without a mark, words may share a head token: the relation of the token tells which one gave its values
+        standing[token] = (
+            main
+            if main in found
+            else next(
+                (
+                    offset
+                    for offset in found
+                    if (given[offset].get("deprel") or "dep") == deprels[token]
+                ),
+                found[0],
+            )
         )
     word_heads: list[int | None] = []
     word_deprels: list[str | None] = []
