@@ -58,7 +58,7 @@ SEPARATORS = "".join(
 SURROGATES = re.compile(r"[\ud800-\udfff]")
 
 # What a column of a word cannot hold, as in a lemma of tokens merged over a line break
-LINE_BREAKS = re.compile(r"\s*[\t\r\n]\s*")
+LINE_BREAKS = re.compile(r"[\t\r\n]")
 
 # The columns of a word kept in the extension of its multiword token, besides its form
 WORD_COLUMNS = ("lemma", "upos", "xpos", "feats", "head", "deprel", "deps", "misc")
@@ -421,8 +421,10 @@ def to_doc(document: Document, vocab: Vocab) -> Doc:
         the relation root becomes ROOT, a word without a relation gets dep
         (a root - ROOT), and a whitespace token depends on the token before it with dep. A
         whitespace token has its text for a lemma and SPACE for a part of speech. The words of a
-        multiword token go to token._.anyseg_words with their columns, and the token takes the
-        values of its word closest to the root, or of its first word without heads
+        multiword token go to token._.anyseg_words with their columns, and main marks the one that
+        gave the token its values: its word closest to the root, or its first word without heads.
+        The vocabulary takes the rule of anySeg for is_space, so that a pickled document keeps it:
+        a tokenizer of spaCy on that vocabulary then marks invisible separators as whitespace too
 
     Arguments:
         document (Document): Document
@@ -449,8 +451,6 @@ def to_doc(document: Document, vocab: Vocab) -> Doc:
     def column(name: Literal["lemma", "upos", "xpos", "feats"]) -> list[str | None]:
         nonlocal main
         values = document.column(name)
-        if name == "feats":
-            check_features(values)
         if not multiword:
             return values
         if not any(values):
@@ -459,35 +459,43 @@ def to_doc(document: Document, vocab: Vocab) -> Doc:
             main = [token.words[0].index for token in tokens]
         return [values[word] for word in main]
 
-    doc = Doc(
-        vocab,
-        words=words,
-        spaces=spaces,
-        sent_starts=sentence_starts,
-        lemmas=filled(column("lemma"), indices, list(words)),
-        pos=filled(column("upos"), indices, ["SPACE"] * len(words)),
-        tags=filled(column("xpos"), indices, [""] * len(words)),
-        morphs=filled(column("feats"), indices, [""] * len(words)),
-        heads=parse[0] if parse else None,
-        deps=parse[1] if parse else None,
-    )
-    keep_words(doc, document, parse[2] if parse else None)
+    feats = column("feats")
+    try:
+        doc = Doc(
+            vocab,
+            words=words,
+            spaces=spaces,
+            sent_starts=sentence_starts,
+            lemmas=filled(column("lemma"), indices, list(words)),
+            pos=filled(column("upos"), indices, ["SPACE"] * len(words)),
+            tags=filled(column("xpos"), indices, [""] * len(words)),
+            morphs=filled(feats, indices, [""] * len(words)),
+            heads=parse[0] if parse else None,
+            deps=parse[1] if parse else None,
+        )
+    except ValueError as error:
+        check_features(feats, error)
+        raise
+    keep_words(doc, document, main)
     return doc
 
 
-def check_features(values: list[str | None]) -> None:
+def check_features(values: list[str | None], error: ValueError) -> None:
     """
-    Checks that features are pairs of a name and a value, which spaCy needs to read them
+    Says which features spaCy could not read, if they are not pairs of a name and a value
 
     Arguments:
-        values (list[str | None]): Features of every word
+        values (list[str | None]): Features of every token
+        error (ValueError): What spaCy raised
 
     Raises:
-        ValueError: If some are not
+        ValueError: If some features are not such pairs
     """
-    for word, value in enumerate(values):
-        if value and any("=" not in pair for pair in value.split("|")):
-            raise ValueError(f"features of word {word} are not name=value pairs: {value!r}")
+    for token, value in enumerate(values):
+        if value and value != "_" and any(pair.count("=") != 1 for pair in value.split("|")):
+            raise ValueError(
+                f"features of token {token} are not name=value pairs: {value!r}"
+            ) from error
 
 
 def keep_words(doc: Doc, document: Document, main: list[int] | None = None) -> None:
@@ -678,13 +686,18 @@ def from_doc(doc: Doc) -> Document:
         head. A sentence has one root: the root of the parse or, if the sentence lacks it, the
         first word whose head is in another sentence; the other such words depend on the root
         with the relation dep.
+        A line break or a tab in a lemma, which merged tokens may have, becomes a space.
         A token with token._.anyseg_words is a multiword token. Its words keep the columns they
-        have there; for a column none of them has, the first word takes the value of the token.
+        have there, except the word marked main, which takes the value of the token, as a pipeline
+        may have changed it; so an edit of that word in the extension gives way to the token.
+        Without a mark, the first word takes the value of the token for a column none of them has.
         Heads there are kept if the parse of the sentence still agrees with them: every word has a
         head and the number of words of its sentence in sentence_words, the head of the token is
-        the head of one of its words, which then stands for the token, and the words form a tree.
-        Otherwise the first word takes the head and the relation of the token, and the other words
-        depend on it with the relation dep
+        the head of one of its words, which then stands for the token, the marked one if it can,
+        and the words form a tree. Otherwise the first word takes the head and the relation of the
+        token, and the other words depend on it with the relation dep. A parse knows only tokens,
+        so a word of one token that depends on another word of a multiword token than the one that
+        stands for it moves to that one
 
     Arguments:
         doc (Doc): spaCy document
@@ -737,13 +750,16 @@ def from_doc(doc: Doc) -> Document:
     )
     columns: dict[str, list[Any]] = {}
     for column, attribute, value in (
-        ("lemma", "LEMMA", lambda token: LINE_BREAKS.sub(" ", token.lemma_)),
+        ("lemma", "LEMMA", lambda token: token.lemma_),
         ("upos", "POS", lambda token: token.pos_),
         ("xpos", "TAG", lambda token: token.tag_),
         ("feats", "MORPH", lambda token: features(str(token.morph))),
     ):
         if doc.has_annotation(attribute):
             columns[column] = [value(doc[index]) or None for index in kept]
+    lemmas = columns.get("lemma")
+    if lemmas and LINE_BREAKS.search("".join(filter(None, lemmas))):
+        columns["lemma"] = [lemma and (one_line(lemma) or None) for lemma in lemmas]
     if doc.has_annotation("DEP"):
         columns["head"], columns["deprel"] = relations(doc, document, kept, positions)
     if multiword:
@@ -751,6 +767,19 @@ def from_doc(doc: Doc) -> Document:
     if columns:
         document.set_columns(**columns)
     return document
+
+
+def one_line(value: str) -> str:
+    """
+    A value of a column with a space in place of its line breaks and tabs and the spaces around them
+
+    Arguments:
+        value (str): Value
+
+    Returns:
+        str: Value on one line
+    """
+    return " ".join(filter(None, (part.strip() for part in LINE_BREAKS.split(value))))
 
 
 def given_words(doc: Doc) -> dict[tuple[int, int], Any]:

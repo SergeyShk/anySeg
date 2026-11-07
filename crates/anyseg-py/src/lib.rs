@@ -829,6 +829,8 @@ struct Structure {
     breaks: Vec<Option<anyseg::LineBreak>>,
     /// Some word has a form other than the text of its token: found when a form is first read
     forms: OnceLock<bool>,
+    /// The text of the core has U+FFFD, as a lone surrogate reads there: found when a form is first read
+    replaced: OnceLock<bool>,
 }
 
 impl Structure {
@@ -849,6 +851,7 @@ impl Structure {
             word_tokens,
             breaks: inner.lines().iter().map(|line| line.break_before).collect(),
             forms: OnceLock::new(),
+            replaced: OnceLock::new(),
         }
     }
 
@@ -988,13 +991,21 @@ impl Document {
     fn form<'py>(&self, py: Python<'py>, word: usize) -> PyResult<Bound<'py, PyString>> {
         let token = self.structure.word_token(word);
         if self.has_forms() {
+            let replaced = self.has_replaced();
             let inner = self.read();
             let form = inner.form(word);
-            if !std::ptr::eq(form, inner.tokens()[token].slice(inner.text())) {
+            if !replaced || !std::ptr::eq(form, inner.tokens()[token].slice(inner.text())) {
                 return Ok(PyString::new(py, form));
             }
         }
         self.piece(py, self.tokens[token])
+    }
+
+    fn has_replaced(&self) -> bool {
+        *self
+            .structure
+            .replaced
+            .get_or_init(|| self.read().text().contains('\u{FFFD}'))
     }
 
     /// Some word has a form other than the text of its token
@@ -1174,9 +1185,16 @@ impl Document {
     ///     ValueError: If there is no such column
     fn column<'py>(&self, py: Python<'py>, name: &str) -> PyResult<Bound<'py, PyList>> {
         if name == "form" {
-            let forms = (0..self.structure.word_count())
-                .map(|word| self.form(py, word))
-                .collect::<PyResult<Vec<_>>>()?;
+            let forms = if self.has_forms() && !self.has_replaced() {
+                let inner = self.read();
+                (0..inner.word_count())
+                    .map(|word| PyString::new(py, inner.form(word)))
+                    .collect::<Vec<_>>()
+            } else {
+                (0..self.structure.word_count())
+                    .map(|word| self.form(py, word))
+                    .collect::<PyResult<Vec<_>>>()?
+            };
             return PyList::new(py, forms);
         }
         // Strings and integers only under the lock: a list may start a collection, whose finalizers may

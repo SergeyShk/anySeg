@@ -535,6 +535,15 @@ def test_columns_of_words_without_heads():
     doc = to_doc(document, Vocab())
     assert [token.lemma_ for token in doc] == ["venir", "de", "mar"]
     assert from_doc(doc).column("lemma") == ["venir", "de", "el", "mar"]
+    doc[1].lemma_ = "del"
+    assert from_doc(doc).column("lemma") == ["venir", "del", "el", "mar"]
+
+
+def test_edit_of_the_marked_word_gives_way_to_its_token():
+    doc = to_doc(read_conllu(MULTIWORD)[0], Vocab())
+    for word in doc[1]._.anyseg_words:
+        word["lemma"] = word["lemma"].upper()
+    assert from_doc(doc).column("lemma")[1:3] == ["de", "EL"]
 
 
 def test_words_through_json():
@@ -545,16 +554,39 @@ def test_words_through_json():
 
 
 def test_features_that_spacy_cannot_read():
+    for feats, token, value in ((["Foo", "Case=Nom"], 0, "Foo"), ([None, "a=b=c"], 1, "a=b=c")):
+        document = Segmenter("es").segment("a b")
+        document.set_columns(feats=feats)
+        with pytest.raises(
+            ValueError, match=f"features of token {token} are not name=value pairs: '{value}'"
+        ):
+            to_doc(document, Vocab())
+
+
+def test_part_of_speech_that_spacy_cannot_read():
     document = Segmenter("es").segment("a b")
-    document.set_columns(feats=["Foo", "Case=Nom"])
-    with pytest.raises(ValueError, match="features of word 0 are not name=value pairs: 'Foo'"):
+    document.set_columns(upos=["BAD", None], feats=["Case=Nom", None])
+    with pytest.raises(ValueError, match="BAD"):
         to_doc(document, Vocab())
+
+
+def test_features_that_spacy_can_read():
+    # The empty value of CoNLL-U, and a word that gives its token nothing
+    for feats, expected in (
+        (["_", None, None], [None, None, None]),
+        ([None, None, "Foo"], [None, None, "Foo"]),
+    ):
+        document = Segmenter("es").segment("x al")
+        document.set_columns(feats=feats)
+        assert from_doc(to_doc(document, Vocab())).column("feats") == expected
 
 
 @pytest.mark.parametrize("mark", ["\n", "\t", " \r\n "])
 def test_lemma_of_merged_tokens(mark):
     doc = Doc(Vocab(), words=[f"Nueva{mark}York", "vino"], lemmas=[f"Nueva{mark}York", "venir"])
     assert from_doc(doc).column("lemma") == ["Nueva York", "venir"]
+    doc = Doc(Vocab(), words=["a", "b"], lemmas=[f"{mark}a", mark])
+    assert from_doc(doc).column("lemma") == ["a", None]
 
 
 def test_parse_changed_after_to_doc():
