@@ -1140,7 +1140,7 @@ mod conventions {
 
     #[test]
     fn weak_rhymes_are_a_convention() {
-        let text = "Vive en casas\nCome los panes\nMira las masas\nDame los planes.\n";
+        let text = "Vive en casas\nCome los panes\nMira las mantas\nDame las redes.\n";
         assert_eq!(sentence_count(&language(""), text), 1);
         assert_eq!(sentence_count(&language("weak_rhymes = as es"), text), 4);
     }
