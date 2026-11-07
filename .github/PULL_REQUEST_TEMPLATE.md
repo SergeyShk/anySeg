@@ -8,4 +8,4 @@
 
 ## Checks
 
-<!-- How it was checked: tests, `make lint`, `make test-cov`, `make docs-build` if the documentation changed. A change of the segmentation gives the F1 of tokens and sentences on the Universal Dependencies treebanks of the language before and after, and how they were measured -->
+<!-- How it was checked: tests, `make lint`, `make test-cov`, `make docs-build` if the documentation changed. A change of the segmentation gives the F1 of tokens, words and sentences on the Universal Dependencies treebanks of the language before and after, and how they were measured -->

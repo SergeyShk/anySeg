@@ -415,16 +415,11 @@ def to_doc(document: Document, vocab: Vocab) -> Doc:
 
     Description:
         The text of the spaCy document is the text of the document, with whitespace between the
-        tokens as the tokenizer makes it and U+FFFD for a lone surrogate. Sentences come from the document, and lemmas, parts of
-        speech, tags and features from its columns where set. Heads and relations are set when
-        every word has a head, and the heads of every sentence must form a tree with one root:
-        the relation root becomes ROOT, a word without a relation gets dep
-        (a root - ROOT), and a whitespace token depends on the token before it with dep. A
-        whitespace token has its text for a lemma and SPACE for a part of speech. The words of a
-        multiword token go to token._.anyseg_words with their columns, and main marks the one that
-        gave the token its values: its word closest to the root, or its first word without heads.
-        The vocabulary takes the rule of anySeg for is_space, so that a pickled document keeps it:
-        a tokenizer of spaCy on that vocabulary then marks invisible separators as whitespace too
+        tokens as the tokenizer makes it and U+FFFD for a lone surrogate. Sentences come from the
+        document, lemmas, parts of speech, tags and features from its columns where set, and heads
+        and relations when every word has a head. The words of a multiword token go to
+        token._.anyseg_words with their columns, and main marks the one that gave the token its
+        values. The vocabulary takes the rule of anySeg for is_space
 
     Arguments:
         document (Document): Document
@@ -677,28 +672,13 @@ def from_doc(doc: Doc) -> Document:
 
     Description:
         Tokens lose the whitespace and invisible separators at their edges, and tokens of nothing
-        else are dropped. A sentence of the spaCy document starts at its first token left, and a
-        document without sentences is a sentence per paragraph; every paragraph starts a sentence.
-        Lemmas, parts of speech, tags, features, heads and relations become the columns lemma,
-        upos, xpos, feats, head and deprel, empty values None, the features in the order of UD; a
-        token without a head has neither.
-        The relation ROOT becomes root, and a word whose head is a dropped token depends on its
-        head. A sentence has one root: the root of the parse or, if the sentence lacks it, the
-        first word whose head is in another sentence; the other such words depend on the root
-        with the relation dep.
-        A line break or a tab inside a lemma, which merged tokens may have, becomes a space, with
-        the spaces around it, and at its edge goes away.
-        A token with token._.anyseg_words is a multiword token. Its words keep the columns they
-        have there, except the word marked main, which takes the value of the token, as a pipeline
-        may have changed it; so an edit of that word in the extension gives way to the token.
-        Without a mark, the first word takes the value of the token for a column none of them has.
-        Heads there are kept if the parse of the sentence still agrees with them: every word has a
-        head and the number of words of its sentence in sentence_words, the head of the token is
-        the head of one of its words, which then stands for the token, the marked one if it can,
-        and the words form a tree. Otherwise the first word takes the head and the relation of the
-        token, and the other words depend on it with the relation dep. A parse knows only tokens,
-        so a word of one token that depends on another word of a multiword token than the one that
-        stands for it moves to that one
+        else are dropped. A document without sentences is a sentence per paragraph, and every
+        paragraph starts a sentence. Lemmas, parts of speech, tags, features, heads and relations
+        become columns, the features in the order of UD.
+        A token with token._.anyseg_words is a multiword token: its words keep their columns, but
+        the word marked main takes the value of the token. Their heads stay while the parse agrees
+        with them; otherwise the first word takes the head and the relation of the token, and the
+        other words depend on it with the relation dep
 
     Arguments:
         doc (Doc): spaCy document

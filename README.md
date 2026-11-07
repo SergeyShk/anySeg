@@ -28,7 +28,7 @@
 
 **anySeg** segments text into tokens, words and sentences with their positions in the source text: a Rust core and a Python package without dependencies. The text is never changed - every token and sentence is a span of the original string - and the tokens follow the conventions of [Universal Dependencies](https://universaldependencies.org/), so the results can be compared with the treebanks and with the tools trained on them. One package serves all languages: the rules are shared, and a language brings its lists. Russian and Spanish are here, English follows.
 
-From Python, tokens and sentences come out at 3.2-4.3 M tokens per second, six times faster than razdel and more than ten times faster than spaCy; the Rust crate gives 9.8-13.7 M. On the test files of the Russian treebanks of UD, token F1 is 99.1-99.8, above every other tool on Taiga, GSD and PUD, and the sentence boundaries are above razdel on all four sets. On the Spanish ones, word F1 is 99.75-99.92, above every other tool on GSD and PUD, and no other rule-based tool of the comparison builds the words of multiword tokens.
+From Python, tokens and sentences come out at 3.2-4.4 M tokens per second, six times faster than razdel and more than ten times faster than spaCy; the Rust crate gives 13.7 M. On the test files of the Russian treebanks of UD, token F1 is 99.1-99.8, above every other tool on Taiga, GSD and PUD, and the sentence boundaries are above razdel on all four sets. On the Spanish ones, word F1 is 99.77-99.92, above every other tool on GSD and PUD, and no other rule-based tool of the comparison builds the words of multiword tokens.
 
 * **Tokens** ([Russian](https://sergeyshk.github.io/anySeg/russian/#tokens), [Spanish](https://sergeyshk.github.io/anySeg/spanish/#tokens)) - words with their marks and soft hyphens, hyphenated words, numbers, dates and times, URLs, e-mail addresses, mentions, hashtags, emoticons and emoji, abbreviations and initials with their period
 * **[Multiword tokens](https://sergeyshk.github.io/anySeg/spanish/#multiword)** - the words that Spanish writes together: «del» is «de» + «el», «dárselo» is «dar» + «se» + «lo»
@@ -59,7 +59,7 @@ uv add anyseg
 
 The tokenizer and the sentence starts for [spaCy](https://sergeyshk.github.io/anySeg/spacy/) come with the extra `spacy`: `pip install "anyseg[spacy]"`.
 
-Wheels are built for Linux (Alpine included), macOS and Windows, the free-threaded Python 3.14t and 3.15t included; installing them does not require Rust. On other platforms pip builds the package from source, which requires [Rust](https://www.rust-lang.org/tools/install) 1.88 or newer. The segmenter is also the Rust crate [`anyseg`](https://crates.io/crates/anyseg). See the [Installation](https://sergeyshk.github.io/anySeg/installation/) page.
+Wheels are built for Linux (Alpine included), macOS and Windows, the free-threaded Python 3.14t and 3.15t included, but not 3.13t, which is not supported; installing them does not require Rust. On other platforms pip builds the package from source, which requires [Rust](https://www.rust-lang.org/tools/install) 1.88 or newer. The segmenter is also the Rust crate [`anyseg`](https://crates.io/crates/anyseg). See the [Installation](https://sergeyshk.github.io/anySeg/installation/) page.
 
 ## Quick start
 
@@ -100,7 +100,7 @@ On the test files of the treebanks of Universal Dependencies 2.18, F1 (* marks n
 
 | Tool | Tokens, SynTagRus | Tokens, Taiga | Sentence ends, SynTagRus | Sentence ends, Taiga | Tokens/s from Python |
 | :-- | --: | --: | --: | --: | --: |
-| **anySeg 0.3** | 99.61 | **99.10** | **99.61** | **95.94** | **3.24 M** |
+| **anySeg 0.3** | 99.61 | **99.10** | **99.61** | **95.94** | **3.18 M** |
 | razdel 0.5.0 | 98.73 | 95.74 | 99.41 | 85.58 | 489 k |
 | NLTK 3.10.4 | 98.93 | 96.57 | 97.61 | 82.59 | 195 k |
 | spaCy 3.8.16 | 98.38 | 96.85 | 89.60 | 76.18 | 225 k |
@@ -111,14 +111,14 @@ Spanish:
 
 | Tool | Tokens, AnCora | Words, AnCora | Words, GSD | Sentence ends, AnCora | Sentence ends, GSD | Tokens/s from Python |
 | :-- | --: | --: | --: | --: | --: | --: |
-| **anySeg 0.3** | 99.93 | 99.92 | **99.86** | 99.51 | 96.74 | **4.34 M** |
+| **anySeg 0.3** | 99.93 | 99.92 | **99.86** | 99.54 | 96.74 | **4.36 M** |
 | NLTK 3.10.4 | 99.80 | 96.50 | 96.41 | 98.58 | 96.51 | 266 k |
 | spaCy 3.8.16 | 99.90 | 96.60 | 96.47 | 89.01 | 92.31 | 371 k |
 | Stanza 1.15.0 * | **99.99** | **99.95** | 99.75 | **99.59** | 97.37 | 13 k |
 | UDPipe 1.4 * | 99.92 | 97.13 | 96.90 | 99.42 | 96.02 | 17 k |
 | SaT 12-layer * | - | - | - | 99.36 | **99.65** | 0.3 k |
 
-From Rust, the crate gives 13.7 M tokens per second with sentences on Russian and 9.8 M with words and sentences on Spanish. All tools and sets, and how it is measured: [Comparison](https://sergeyshk.github.io/anySeg/comparison/).
+From Rust, the crate gives 13.7 M tokens per second with sentences, and with words on Spanish. All tools and sets, and how it is measured: [Comparison](https://sergeyshk.github.io/anySeg/comparison/).
 
 ## Development
 

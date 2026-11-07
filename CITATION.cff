@@ -6,8 +6,8 @@ authors:
   - family-names: Shkarin
     given-names: Sergey
     email: kouki.sergey@gmail.com
-version: 0.2.0
-date-released: 2026-10-31
+version: 0.3.0
+date-released: 2026-11-06
 repository-code: "https://github.com/SergeyShk/anySeg"
 url: "https://sergeyshk.github.io/anySeg/"
 license: MIT
@@ -18,5 +18,6 @@ keywords:
   - sentence segmentation
   - universal dependencies
   - russian
+  - spanish
   - rust
-abstract: "anySeg segments text into tokens and sentences with their positions in the source text. The core is written in Rust, the package has a Python API and no dependencies. The text is never changed: every token and sentence is a span of the original string, and tokens follow the conventions of Universal Dependencies."
+abstract: "anySeg segments text into tokens, words and sentences with their positions in the source text. The core is written in Rust, the package has a Python API and no dependencies. The text is never changed: every token and sentence is a span of the original string, and tokens follow the conventions of Universal Dependencies."

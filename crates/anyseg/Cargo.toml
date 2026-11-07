@@ -9,7 +9,7 @@ authors.workspace = true
 repository.workspace = true
 homepage = "https://sergeyshk.github.io/anySeg/"
 readme = "README.md"
-keywords = ["tokenizer", "sentence-splitter", "segmentation", "nlp", "russian"]
+keywords = ["tokenizer", "sentence-splitter", "nlp", "russian", "spanish"]
 categories = ["text-processing", "command-line-utilities"]
 
 [features]

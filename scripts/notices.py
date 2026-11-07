@@ -16,6 +16,11 @@ HEADER = [
     "Licenses of the Rust crates linked into the Python module of anySeg. Every crate offers a choice",
     "of licenses; the MIT license is the one used here, with the Unicode license of the Unicode data.",
     "",
+    "The wheels for musllinux also carry libgcc_s, the runtime library of GCC, in anyseg.libs: GPL-3.0",
+    "or later with the GCC Runtime Library Exception 3.1. Sources: https://gcc.gnu.org/git/gcc.git",
+    "License: https://www.gnu.org/licenses/gpl-3.0.html",
+    "Exception: https://www.gnu.org/licenses/gcc-exception-3.1.html",
+    "",
 ]
 
 

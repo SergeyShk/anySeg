@@ -1,6 +1,6 @@
 # anyseg
 
-Fast segmentation of text into tokens and sentences with their positions in the source text. The text is never changed: every token and sentence is a span of byte offsets into the original string, and tokens follow the conventions of [Universal Dependencies](https://universaldependencies.org/). Every language is a Cargo feature: `ru` (Russian, on by default).
+Fast segmentation of text into tokens and sentences with their positions in the source text. The text is never changed: every token and sentence is a span of byte offsets into the original string, and tokens follow the conventions of [Universal Dependencies](https://universaldependencies.org/). Every language is a Cargo feature, on by default: `ru` (Russian) and `es` (Spanish).
 
 ```rust
 use anyseg::Segmenter;

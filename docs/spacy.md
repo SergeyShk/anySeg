@@ -31,7 +31,7 @@ The tokenizer and the component register with spaCy when the package is installe
 
 ## Tokenizer { #tokenizer }
 
-`anyseg.Tokenizer.v1` is the tokenizer of the section `[nlp.tokenizer]` of a configuration. The tokens of a `Doc` are those of the text, and the words of a multiword token are in its extension `token._.anyseg_words`: a list of dictionaries with their forms, `[{"form": "de"}, {"form": "el"}]`, and `None` for a token of one word or one that retokenizing changed. The extension lives in the user data of a `Doc`, so a `DocBin` keeps it with `store_user_data=True` and gives a tuple in place of the list, and `Span.as_doc` keeps it with `copy_user_data=True`; both drop it by default. `Doc.from_docs` keeps it by the positions in the text, so a `Doc` cut from a longer one should not hold keys of the part cut away. `Doc.to_json(underscore=["anyseg_words"])` needs a multiword token in the `Doc`, and `Doc.from_json` fails on a key of a token that was retokenized or cut away. The text of a `Doc` is the text given, except that a lone surrogate, which spaCy cannot keep, is U+FFFD. The whitespace is kept as spaCy keeps it: one space after a token is its `whitespace_`, and the rest of the text between tokens - line breaks, more spaces, invisible separators - is a token of its own with `is_space`. `nlp.tokenizer.pipe(texts, batch_size=1000)` gives the documents of many texts, segmented in batches without the GIL as [`Segmenter.pipe`](segmenter.md#pipe) does.
+`anyseg.Tokenizer.v1` is the tokenizer of the section `[nlp.tokenizer]` of a configuration. The text of a `Doc` is the text given, except that a lone surrogate, which spaCy cannot keep, is U+FFFD. One space after a token is its `whitespace_`, and the rest of the text between tokens - line breaks, more spaces, invisible separators - is a token of its own with `is_space`. `nlp.tokenizer.pipe(texts, batch_size=1000)` gives the documents of many texts, segmented in batches without the GIL as [`Segmenter.pipe`](segmenter.md#pipe) does.
 
 | Parameter | Type | Default | Description |
 | :-------- | :--- | :------ | :---------- |
@@ -45,6 +45,27 @@ The tokenizer and the component register with spaCy when the package is installe
     custom = {"@tokenizers": "anyseg.Tokenizer.v1", "tokens": ["C++"]}
     nlp = spacy.blank("ru", config={"nlp": {"tokenizer": custom}})
     [(token.text, token.whitespace_) for token in nlp("Язык C++\n\nКот  спит")]
+    ```
+
+=== "Result"
+
+    ```
+    [('Язык', ' '), ('C++', ''), ('\n\n', ''), ('Кот', ' '), (' ', ''), ('спит', '')]
+    ```
+
+The settings are in the configuration, so a saved pipeline loads with the tokenizer, and a pickled `Doc` of such a pipeline needs anySeg to load. A trained pipeline takes it when it is loaded:
+
+``` python
+nlp = spacy.load("ru_core_news_sm", config={"nlp": {"tokenizer": tokenizer}})
+```
+
+### Multiword tokens { #words }
+
+The tokens of a `Doc` are those of the text, and the words of a multiword token are in its extension `token._.anyseg_words`: a list of dictionaries with their forms, and `None` for a token of one word or one that retokenizing changed.
+
+=== "Code"
+
+    ``` python
     spanish = spacy.blank("es", config={"nlp": {"tokenizer": tokenizer}})
     doc = spanish("Vengo del mar")
     [token.text for token in doc], doc[1]._.anyseg_words
@@ -53,15 +74,14 @@ The tokenizer and the component register with spaCy when the package is installe
 === "Result"
 
     ```
-    [('Язык', ' '), ('C++', ''), ('\n\n', ''), ('Кот', ' '), (' ', ''), ('спит', '')]
     (['Vengo', 'del', 'mar'], [{'form': 'de'}, {'form': 'el'}])
     ```
 
-The settings are in the configuration, so a saved pipeline loads with the tokenizer, and a pickled `Doc` of such a pipeline needs anySeg to load. A trained pipeline takes it when it is loaded:
+The extension lives in the user data of a `Doc`:
 
-``` python
-nlp = spacy.load("ru_core_news_sm", config={"nlp": {"tokenizer": tokenizer}})
-```
+*   a `DocBin` keeps it with `store_user_data=True`, as a tuple in place of the list, and `Span.as_doc` with `copy_user_data=True`;
+*   `Doc.from_docs` keeps it by the positions in the text, so a `Doc` cut from a longer one should not hold keys of the part cut away;
+*   `Doc.to_json(underscore=["anyseg_words"])` needs a multiword token in the `Doc`, and `Doc.from_json` fails on a key of a token that was retokenized or cut away.
 
 ## Sentences { #sentencizer }
 
@@ -108,11 +128,11 @@ With both, `es_core_news_sm` 3.8.0 does so on the test parts of the Spanish tree
 
 | Test set | Sentences, spaCy | Sentences, anySeg | LAS, spaCy | LAS, anySeg |
 | :------- | ---------------: | ----------------: | ---------: | ----------: |
-| AnCora | 97.70 | **98.58** | 80.43 | **82.05** |
+| AnCora | 97.70 | **98.66** | 80.43 | **82.06** |
 | GSD | 88.14 | **90.97** | 69.35 | **71.09** |
-| PUD | 97.34 | **98.65** | 73.35 | **74.56** |
+| PUD | 97.34 | **98.80** | 73.35 | **74.57** |
 
-The tokenizer gives 2.3 M tokens per second, nearly ten times as many as the tokenizer of spaCy; with the component, 1.4 M against 0.24 M with the `sentencizer` of spaCy (SynTagRus test, one thread, Apple M3 Pro). On AnCora test it gives 2.2 M against 0.43 M, and 1.5 M against 0.40 M.
+The tokenizer gives 2.3 M tokens per second, nearly ten times as many as the tokenizer of spaCy; with the component, 1.4 M against 0.24 M with the `sentencizer` of spaCy (SynTagRus test, one thread, Apple M3 Pro). On AnCora test it gives 2.3 M against 0.42 M, and 1.6 M against 0.39 M.
 
 ## Documents { #documents }
 
@@ -127,7 +147,12 @@ The tokenizer gives 2.3 M tokens per second, nearly ten times as many as the tok
 to_doc(document, vocab)
 ```
 
-The `Doc` of a document: its text, its tokens with the whitespace between them as the tokenizer makes it, and its sentences. The columns `lemma`, `upos`, `xpos` and `feats` become `lemma_`, `pos_`, `tag_` and `morph` where set. Heads and relations are set when every word has a head, and the heads of every sentence must form a tree with one root: the relation `root` becomes `ROOT`, a word without a relation gets `dep` (a root - `ROOT`), and a whitespace token depends on the token before it with `dep`. A whitespace token has its text for a lemma and `SPACE` for a part of speech, and the vocabulary takes the rule of anySeg for `is_space`, so that a pickled document keeps it: a tokenizer of spaCy on that vocabulary then marks invisible separators as whitespace too. The words of a multiword token go to `token._.anyseg_words` with their columns, `head` being the ID of a word in its sentence, `sentence_words` the number of words in it and `main` marking the word that gave the token its values: its word closest to the root, or its first word without heads.
+The `Doc` of a document: its text, its tokens with the whitespace between them as the tokenizer makes it, and its sentences.
+
+*   The columns `lemma`, `upos`, `xpos` and `feats` become `lemma_`, `pos_`, `tag_` and `morph` where set. A whitespace token has its text for a lemma and `SPACE` for a part of speech.
+*   Heads and relations are set when every word has a head, and the heads of every sentence must form a tree with one root. The relation `root` becomes `ROOT`, a word without a relation gets `dep` (a root - `ROOT`), and a whitespace token depends on the token before it with `dep`.
+*   The words of a multiword token go to `token._.anyseg_words` with their columns: `head` is the ID of a word in its sentence, `sentence_words` the number of words in it, and `main` marks the word that gave the token its values, its word closest to the root or its first word without heads.
+*   The vocabulary takes the rule of anySeg for `is_space`, so that a pickled document keeps it; a tokenizer of spaCy on that vocabulary then marks invisible separators as whitespace too.
 
 | Parameter | Type | Default | Description |
 | :-------- | :--- | :------ | :---------- |
@@ -169,7 +194,13 @@ Exceptions:
 from_doc(doc)
 ```
 
-The [document](document.md) of a `Doc`, one word per token except those with `token._.anyseg_words`, whose words keep the columns they have there; the word marked `main` takes the value of the token, as a pipeline may have changed it, so an edit of that word in the extension gives way to the token; without a mark the first word takes the value for a column none of them has. Their heads stay if every word has `head` and `sentence_words` and the parse and the number of words of the sentence still agree with them; otherwise the first word takes the head and the relation of the token, and the other words depend on it with `dep`. A parse knows only tokens, so a word of one token that depends on a word of a multiword token other than the one that stands for it moves to that one. A line break or a tab inside a lemma, which merged tokens may have, becomes a space, with the spaces around it, and at its edge goes away. Tokens lose the whitespace and the invisible separators at their edges, and tokens of nothing else are dropped. A sentence of the `Doc` starts at its first token left, a `Doc` without sentences is a sentence per paragraph, and every paragraph starts a sentence. `lemma_`, `pos_`, `tag_`, `morph`, the heads and `dep_` become the columns `lemma`, `upos`, `xpos`, `feats`, `head` and `deprel`, empty values `None`, the features in the order of UD; a token without a head has neither. The relation `ROOT` becomes `root`, and a word whose head is a dropped token depends on the head of that token. A sentence has one root: the root of the parse or, if the sentence lacks it, the first word whose head is in another sentence; the other such words depend on the root with the relation `dep`.
+The [document](document.md) of a `Doc`, one word per token except those with `token._.anyseg_words`.
+
+*   Tokens lose the whitespace and the invisible separators at their edges, and tokens of nothing else are dropped. A sentence of the `Doc` starts at its first token left, a `Doc` without sentences is a sentence per paragraph, and every paragraph starts a sentence.
+*   `lemma_`, `pos_`, `tag_`, `morph`, the heads and `dep_` become the columns `lemma`, `upos`, `xpos`, `feats`, `head` and `deprel`, empty values `None`, the features in the order of UD; a token without a head has neither. In a lemma, a line break or a tab becomes a space inside, with the spaces around it, and goes away at an edge.
+*   The relation `ROOT` becomes `root`, and a word whose head is a dropped token depends on the head of that token. A sentence has one root: the root of the parse or, if the sentence lacks it, the first word whose head is in another sentence; the other such words depend on the root with `dep`.
+*   The words of a multiword token keep the columns they have in the extension, but the word marked `main` takes the value of the token, which a pipeline may have changed, also over an edit of that word in the extension. Without a mark, the first word takes the value for a column none of them has.
+*   Their heads stay if every word has `head` and `sentence_words` and the parse and the number of words of the sentence still agree with them; otherwise the first word takes the head and the relation of the token, and the other words depend on it with `dep`. As a parse knows only tokens, a word of one token that depends on a word of a multiword token other than the one that stands for it moves to that one.
 
 | Parameter | Type | Default | Description |
 | :-------- | :--- | :------ | :---------- |
