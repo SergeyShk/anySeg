@@ -11,6 +11,9 @@ const BULLETS: &str = "-‐‒–—―−•·*▪◦‣●■►▸→✓✔";
 /// A list item number has at most this many digits; a longer one is a year or an amount
 const MAX_ITEM_DIGITS: usize = 3;
 
+/// How far the first item of a series is read for its final mark, which a text may lack
+const MAX_ITEM_TOKENS: usize = 256;
+
 /// A block is verse with at least this many rhyming lines, or one pair in a stanza of as many lines
 const MIN_RHYMES: usize = 4;
 
@@ -889,7 +892,9 @@ impl Splitter<'_> {
                     && self.piece(index - 1) == ":"
                     && self
                         .item(index)
-                        .is_some_and(|value| self.next_item(next) == Some(value + 1))))
+                        .is_some_and(|value| {
+                            self.next_item(next, MAX_ITEM_TOKENS) == Some(value + 1)
+                        })))
             || (letter.is_uppercase()
                 && previous
                     .is_some_and(|piece| is_quantity(piece, self.tables.conventions.digit_groups))
@@ -971,7 +976,7 @@ impl Splitter<'_> {
                 && self
                     .previous_item()
                     .is_some_and(|before| before + 1 == value))
-                || self.next_item(number + 2) == Some(value + 1))
+                || self.next_item(number + 2, usize::MAX) == Some(value + 1))
     }
 
     /// The number of the list item in the sentence before this one, at its start or after a colon
@@ -1014,8 +1019,10 @@ impl Splitter<'_> {
     }
 
     /// The number of a list item after the first final mark from a token on, past the closing quotes and brackets
-    fn next_item(&self, from: usize) -> Option<usize> {
-        let mark = (from..self.tokens.len()).find(|&index| is_final(self.piece(index)))?;
+    fn next_item(&self, from: usize, limit: usize) -> Option<usize> {
+        let mark = (from..self.tokens.len())
+            .take(limit)
+            .find(|&index| is_final(self.piece(index)))?;
         let next = (mark + 1..self.tokens.len()).find(|&index| !is_closing(self.piece(index)))?;
         self.item(next)
     }
@@ -1983,6 +1990,7 @@ mod spanish {
             &["Se me cayó el cel.", "Luego fui a comprar otro."],
             &["Hola, doc.", "Necesito ayuda."],
             &["Cel. 55 1234 5678.", "Luego vino."],
+            &["Cel. (55) 1234 5678."],
             &["Pérez y cols. (2010) encontraron que no."],
             &["La Cía. Telefónica Nacional de España vino."],
             &["Pérez y Cía. Vende coches."],
