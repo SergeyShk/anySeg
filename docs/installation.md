@@ -14,7 +14,7 @@ pip install "anyseg[spacy]"
 
 ## Prebuilt wheels
 
-PyPI hosts wheels for Linux (x86_64 and aarch64; manylinux and musllinux for Alpine), macOS (Intel and Apple Silicon) and Windows (x64 and arm64). One wheel serves every Python version starting with 3.11, and the free-threaded Python 3.14t and 3.15t have wheels of their own, while 3.13t is not supported; Rust is not needed to install them.
+PyPI hosts wheels for Linux (x86_64 and aarch64; manylinux and musllinux for Alpine), macOS (Intel and Apple Silicon) and Windows (x64 and arm64). One wheel serves every Python version starting with 3.11, and the free-threaded Python 3.14t and 3.15t have wheels of their own; Rust is not needed to install them. The free-threaded 3.13t is not supported.
 
 Pre-release versions `X.Y.Z.devN` are published only on TestPyPI:
 

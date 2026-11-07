@@ -59,7 +59,7 @@ uv add anyseg
 
 The tokenizer and the sentence starts for [spaCy](https://sergeyshk.github.io/anySeg/spacy/) come with the extra `spacy`: `pip install "anyseg[spacy]"`.
 
-Wheels are built for Linux (Alpine included), macOS and Windows, the free-threaded Python 3.14t and 3.15t included, but not 3.13t, which is not supported; installing them does not require Rust. On other platforms pip builds the package from source, which requires [Rust](https://www.rust-lang.org/tools/install) 1.88 or newer. The segmenter is also the Rust crate [`anyseg`](https://crates.io/crates/anyseg). See the [Installation](https://sergeyshk.github.io/anySeg/installation/) page.
+Wheels are built for Linux (Alpine included), macOS and Windows, the free-threaded Python 3.14t and 3.15t included (3.13t is not supported); installing them does not require Rust. On other platforms pip builds the package from source, which requires [Rust](https://www.rust-lang.org/tools/install) 1.88 or newer. The segmenter is also the Rust crate [`anyseg`](https://crates.io/crates/anyseg). See the [Installation](https://sergeyshk.github.io/anySeg/installation/) page.
 
 ## Quick start
 

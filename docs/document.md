@@ -36,7 +36,7 @@ A segmented text: its tokens, its words with the columns of [CoNLL-U](https://un
 | `paragraphs` | `Paragraphs` | [Paragraphs](#paragraph) in order |
 | `lines` | `Lines` | [Lines](#line) of the paragraphs in order |
 
-The parts are views of the document, made when they are read; iterating over a collection makes them one at a time. `Tokens`, `Words` and the other collections are sequences (`collections.abc.Sequence`): they have a length, indices from the end and slices, and a slice with step 1 is a collection of the same kind. Two tokens, words, sentences, paragraphs or lines are equal when they are the same part of the same document; the collections compare by identity. The parts of a document cannot be pickled.
+The parts are views of the document, made when they are read; iterating over a collection makes them one at a time. `Tokens`, `Words` and the other collections are sequences (`collections.abc.Sequence`): they have a length, indices from the end and slices, and a slice with step 1 is a collection of the same kind. Two tokens, words, sentences, paragraphs or lines are equal when they are the same part of the same document; the collections compare by identity.
 
 The collections of tokens, sentences, paragraphs and lines have `starts` and `ends`: the positions of their parts as lists of integers, made at once on every access. They are much faster than reading the parts one by one, and `Document.from_tokens(doc.text, doc.tokens.starts, doc.tokens.ends)` takes back the tokens of a document of the segmenter.
 

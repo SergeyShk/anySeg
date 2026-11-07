@@ -195,7 +195,7 @@ F1 of the CoNLL 2018 script: a sentence counts when both of its ends match, so t
 
 ### Speed and memory
 
-From Python, as for Russian, on the raw text of AnCora test. `segment`, which gives the words too, comes to 11.6 M tokens per second.
+From Python, as for Russian, on the raw text of AnCora test. `segment`, which gives the words too, comes to 5.6 M tokens per second with the same spans read and to 3.9 M with the forms of the words.
 
 | Tool | Gives | Load, s | Tokens/s | Memory, MB |
 | :-- | :-- | --: | --: | --: |

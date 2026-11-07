@@ -1,4 +1,4 @@
-"""The licenses of the Rust crates linked into the Python module: THIRD-PARTY-NOTICES.txt
+"""The licenses of what the wheels carry besides anySeg: THIRD-PARTY-NOTICES.txt
 
 Run: `python scripts/notices.py [path]` from the repository after a change of `Cargo.lock`; without
 a path the file of the repository is written. The crates are the normal dependencies of

@@ -30,7 +30,7 @@ A common abbreviation keeps its period: «Sr.», «Dra.», «pág.», «p. ej.»
 Some forms keep the period only in context:
 
 *   a form that is also a common word or a name, before a digit: «No. 45», «arts. 5 y 6», «Mar. 7», but «No. Se fue», «Electronic Arts. Luego»;
-*   a word in capitals, before a digit or another word in capitals: «ART. 5», «EL SR. GARCÍA», but «Es del PP. Luego». The commonest titles, «EE. UU.», «Ma.», «Cd.» and «Vid.» keep it anywhere: «DR. Juan Pérez».
+*   a word in capitals, before a digit or another word in capitals: «ART. 5», «EL SR. GARCÍA», but «Es del PP. Luego». «EE. UU.», «Ma.», «Cd.», «Vid.» and the commonest titles keep it anywhere: «DR. Juan Pérez».
 
 === "Code"
 
@@ -59,7 +59,7 @@ A token can hold several words, as the UD guidelines ask for the words that Span
 *   an infinitive or a gerund with pronouns is the verb, without the accent the pronouns brought, and the pronouns: «darlo», «dárselo», «viéndolo». Words that only look so stay whole: «parte», «muerte», «Reverte»;
 *   frequent imperatives with pronouns and verbs with «os» are in tables: «dámelo», «cállate», «notifíquese», «deciros». Other such forms stay one word: «tranquilícese», «cantaros».
 
-A form with a first capital letter is a name and stays whole after a word, a number or a comma, «El Al», and in quotes or brackets inside a sentence before another capital letter, «(Del Bosque)». A string of the [list of tokens](segmenter.md#lists) stays one word.
+A form with a first capital letter is a name and stays whole after a word, a number or a comma, «El Al», and in quotes or brackets inside a sentence before another capital letter, «Vino (Del Bosque)». A string of the [list of tokens](segmenter.md#lists) stays one word.
 
 === "Code"
 
@@ -87,7 +87,7 @@ A form with a first capital letter is a name and stays whole after a word, a num
 
 ### Hyphens and marks inside a token { #hyphens }
 
-A hyphenated word and a range are one token: «franco-alemán», «1990-1995», «XIX-XX», «2,5-3,5»; so are digits and Roman numbers joined by an en dash: «1990–1995», «XIX–XX». A slash and a plus stay inside a token between letters or digits: «km/h», «I+D», «15/01/2011», and are tokens of their own with a space beside them. A superscript digit is always a token of its own: «km²».
+A hyphenated word and a range are one token: «franco-alemán», «1990-1995», «XIX-XX», «2,5-3,5»; so is a range with an en dash, between digits or between Roman numbers: «1990–1995», «XIX–XX». A slash and a plus stay inside a token between letters or digits: «km/h», «I+D», «15/01/2011». With a space beside them, these marks are tokens of their own. A superscript digit is always a token of its own: «km²».
 
 === "Code"
 
@@ -127,7 +127,7 @@ One token each are decimal numbers with a comma, groups of three digits with poi
 
 ### The web
 
-URLs, e-mail addresses, domains and file names, mentions and hashtags are one token each, without the punctuation that ends a sentence. A domain of a Spanish-speaking country is one too: «lanacion.com.ar». A top-level domain that is a Spanish word starts a sentence after a missing space when it has a first capital letter: «casa.De pronto», but «Amazon.Com».
+URLs, e-mail addresses, domains, «lanacion.com.ar» among them, file names, mentions and hashtags are one token each, without the punctuation that ends a sentence. A top-level domain that is a Spanish word starts a sentence after a missing space when it has a first capital letter: «casa.De pronto», but «Amazon.Com».
 
 === "Code"
 
@@ -185,11 +185,11 @@ A paragraph always starts a sentence. Inside it, a sentence ends at final marks 
 
 A dash starts a line of dialogue before a capital letter, a digit or an inverted mark; before a lowercase letter it brings the words of the author, which stay in the line.
 
-A sentence goes on after the dash that numbers an article:
+A sentence goes on after these dashes:
 
-*   a hyphen after a period, with or without a space: «Artículo 1.- Objeto», «Artículo 1.-Objeto»;
+*   a hyphen right after a period, with or without a space after it: «Artículo 1.- Objeto», «Artículo 1.-Objeto»;
 *   a longer dash after a number, a word in capitals or a sentence of one word: «Artículo 1.— Objeto», «PRIMERO.—Se aprueba», «Primero.— Se aprueba»;
-*   the dash of a dateline: «MADRID, 12 ene. (EFE).- El Gobierno».
+*   the longer dash of a dateline: «MADRID, 12 ene. (EFE).— El Gobierno».
 
 After other text, a longer dash with a space after it closes its sentence: «La viuda.-- El niño».
 
@@ -212,11 +212,11 @@ After other text, a longer dash with a space after it closes its sentence: «La 
 
 ### Abbreviations { #sentence-abbreviations }
 
-An abbreviation ends a sentence before a capital letter, but not before a bracket, in these cases:
+An abbreviation ends a sentence before a capital letter, but not before a round bracket, in these cases:
 
 *   the language lists it as one that usually stands at the end: «etc.», «a. C.», «EE. UU.», «Ud.», «Ltda.», «et al.», «y ss.»;
 *   it follows a number, as a unit does, in lowercase, «Mide 5 cm.», or in capitals with periods, «10:30 A.M.», unless it belongs to an address, a title or an edition: «Calle 15 esq. Centro», «3.ª ed. Madrid»;
-*   a single capital letter or capitals with periods inside stand inside a sentence before a word that seldom follows an initial: «Felipe V. El rey», «Empresa S.A. En 2001». Such words as «El», «La» and «Su» cost a name now and then: «M. El Baradei»;
+*   a single capital letter or capitals with periods inside stand inside a sentence before a word that seldom follows an initial: «Felipe V. El rey», «Empresa S.A. En 2001». Such words as «El», «La» and «Su» cost a name now and then: «Vino M. El Baradei»;
 *   a capital letter follows a quantity, as a unit: «Son 5 A. Pesa», but not a year, a date or a time: «Vino en 1990 A. Pérez», «A las 12.30 A. Pérez».
 
 Other abbreviations and initials do not end a sentence: «el Sr. Pérez», «J. L. Borges», «A.M. Turing».
