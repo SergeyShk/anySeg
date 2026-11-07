@@ -966,9 +966,9 @@ impl Scanner<'_> {
     }
 
     /// The end of a degree sign that is an ordinal ending, maybe after a period; before a letter of a scale it is a
-    /// degree: «1.°», «20°C»
+    /// degree: «1.°», «20°C». After a `letter` a digit may follow it: «N°27444»
     #[cold]
-    fn degree_end(&self, end: usize) -> Option<usize> {
+    fn degree_end(&self, end: usize, letter: bool) -> Option<usize> {
         if !self.tables.conventions.ordinal_degree {
             return None;
         }
@@ -978,9 +978,10 @@ impl Scanner<'_> {
         };
         let after = degree + '°'.len_utf8();
         (self.get(degree) == Some('°')
-            && !self
-                .get(after)
-                .is_some_and(|c| is_word(c) || self.tables.conventions.degree_letters.contains(c)))
+            && !self.get(after).is_some_and(|c| {
+                (is_word(c) && !(letter && c.is_ascii_digit()))
+                    || self.tables.conventions.degree_letters.contains(c)
+            }))
         .then_some(after)
     }
 
@@ -990,7 +991,7 @@ impl Scanner<'_> {
         if !self.text.as_bytes()[start].is_ascii_alphabetic() {
             return None;
         }
-        self.degree_end(end)
+        self.degree_end(end, true)
     }
 
     /// The end of an ordinal number whose digits end at `end`, with its period and ending: «3.º»
@@ -999,7 +1000,7 @@ impl Scanner<'_> {
         if endings.is_empty() {
             return None;
         }
-        if let Some(stop) = self.degree_end(end) {
+        if let Some(stop) = self.degree_end(end, false) {
             return Some(stop);
         }
         if self.get(end) != Some('.') {
@@ -1979,6 +1980,9 @@ mod spanish {
             ("1.° 1° N.° N° n°", vec!["1.°", "1°", "N.°", "N°", "n°"]),
             ("20°C", vec!["20", "°C"]),
             ("45°", vec!["45°"]),
+            ("Ley N°27444", vec!["Ley", "N°", "27444"]),
+            ("Ley N.°27444", vec!["Ley", "N.°", "27444"]),
+            ("40°20'", vec!["40", "°", "20", "'"]),
             (
                 "ejemplo.com.mx lanacion.com.ar a.cl",
                 vec!["ejemplo.com.mx", "lanacion.com.ar", "a.cl"],

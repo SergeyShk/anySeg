@@ -8,6 +8,7 @@ p. m.
 EE. UU.
 et al.
 y ss.
+y ff.
 y sig.
 y sigs.
 y sgte.
@@ -26,8 +27,6 @@ Vds.
 Inc.
 Ltd.
 Ltda.
-Cía.
-Cia.
 Cía. Ltda.
 Corp.
 Ph. D.

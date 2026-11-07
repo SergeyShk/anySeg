@@ -157,7 +157,6 @@ fasc
 fol
 lib
 cód
-doc
 exp
 tít
 pról
@@ -195,6 +194,7 @@ izqda
 dcha
 dcho
 col
+cols
 urb
 pza
 prov
@@ -225,7 +225,6 @@ pcia
 edif
 ctro
 hosp
-cel
 # Units and quantities
 hab
 km
