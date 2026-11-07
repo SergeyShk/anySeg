@@ -28,6 +28,18 @@ command = subprocess.run(
     check=True,
 )
 assert command.stdout == f"{text}\n", command
+spanish = "¿Vienes del mar? Dámelo."
+assert [span.text for span in sentenize(spanish, lang="es")] == ["¿Vienes del mar?", "Dámelo."]
+words = [word.form for word in Segmenter("es").segment(spanish).words]
+assert words == ["¿", "Vienes", "de", "el", "mar", "?", "Da", "me", "lo", "."], words
+command = subprocess.run(
+    [sys.executable, "-m", "anyseg", "-l", "es", "-f", "conllu"],
+    input="Vengo del mar\n",
+    capture_output=True,
+    encoding="utf-8",
+    check=True,
+)
+assert "2-3\tdel\t" in command.stdout, command
 assert "site-packages" in anyseg.__file__, anyseg.__file__
 # Importing the module must not turn the GIL back on in free-threaded Python
 if sysconfig.get_config_var("Py_GIL_DISABLED"):

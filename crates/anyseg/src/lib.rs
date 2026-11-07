@@ -234,7 +234,8 @@ impl Segmenter {
         self.language
     }
 
-    /// The abbreviations added to the language, in order: lowercase, without the period and stress marks
+    /// The abbreviations added to the language, in order: lowercase, without the period and the marks that the language
+    /// leaves out of its lists
     pub fn abbreviations(&self) -> impl ExactSizeIterator<Item = &str> {
         self.exceptions.abbreviations.iter().map(String::as_str)
     }
@@ -307,6 +308,19 @@ impl Segmenter {
             document.expand_tokens(tables, &self.exceptions);
         }
         document
+    }
+
+    /// The document without the words of its tokens
+    #[cfg(feature = "cli")]
+    pub(crate) fn segment_tokens(&self, text: String) -> Document {
+        let split = self.split(&text, true);
+        Document::segmented(
+            text,
+            split.tokens,
+            split.starts,
+            split.paragraphs,
+            split.lines.unwrap_or_default(),
+        )
     }
 
     fn split(&self, text: &str, lines: bool) -> Split {

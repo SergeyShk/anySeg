@@ -282,7 +282,9 @@ impl Scanner<'_> {
                 if self.tables.conventions.signed_numbers
                     && self.get(next).is_some_and(|c| c.is_ascii_digit())
                     && self.text[..index].chars().next_back().is_none_or(|c| {
-                        c.is_whitespace() || is_opening(c.encode_utf8(&mut [0; 4]))
+                        is_separator(c)
+                            || is_opening(c.encode_utf8(&mut [0; 4]))
+                            || (self.tables.conventions.inverted_marks && matches!(c, '¿' | '¡'))
                     }) =>
             {
                 let first = self.out.len();
@@ -617,14 +619,16 @@ impl Scanner<'_> {
         let rest = &self.text[start..self.end];
         let mut chars = rest.char_indices().peekable();
         while let Some((offset, character)) = chars.next() {
-            if SUPERSCRIPTS && is_superscript(character) {
+            if SUPERSCRIPTS && !character.is_ascii() && is_superscript(character) {
                 return start + offset;
             }
             if is_word(character) || is_mark(character) {
                 continue;
             }
             let inner = is_joiner(character)
-                && chars.peek().is_some_and(|&(_, c)| is_word(c) || is_mark(c));
+                && chars.peek().is_some_and(|&(_, c)| {
+                    (is_word(c) || is_mark(c)) && !(SUPERSCRIPTS && is_superscript(c))
+                });
             if !inner {
                 return start + offset;
             }
@@ -1133,7 +1137,11 @@ impl Scanner<'_> {
                 let end = if self.tables.conventions.mixed_final_marks {
                     run_of(".!?…")
                 } else {
-                    run_of(&character.to_string())
+                    let mut end = start;
+                    while self.get(end) == Some(character) {
+                        end += character.len_utf8();
+                    }
+                    end
                 };
                 self.push(start, end)
             }
@@ -1912,6 +1920,8 @@ mod spanish {
         assert_eq!(tokens("a.-5"), ["a.", "-", "5"]);
         assert_eq!(tokens("“-5”"), ["“", "-5", "”"]);
         assert_eq!(tokens("¿-5?"), ["¿", "-5", "?"]);
+        assert_eq!(tokens("\u{feff}-5 grados"), ["-5", "grados"]);
+        assert_eq!(tokens("a\u{200b}-5"), ["a", "-5"]);
     }
 
     #[test]
@@ -1941,6 +1951,8 @@ mod spanish {
         assert_eq!(tokens("x+²"), ["x", "+", "²"]);
         assert_eq!(tokens("a_²"), ["a", "_", "²"]);
         assert_eq!(tokens("a'²"), ["a", "'", "²"]);
+        assert_eq!(tokens("km\u{ad}²"), ["km", "²"]);
+        assert_eq!(tokens("x\u{200c}²"), ["x", "²"]);
     }
 
     #[test]

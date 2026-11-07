@@ -40,7 +40,7 @@ fn is_closing(piece: &str) -> bool {
 pub(crate) fn is_opening(piece: &str) -> bool {
     matches!(
         piece,
-        "«" | "„" | "“" | "\"" | "'" | "``" | "(" | "[" | "{" | "‘" | "‹" | "¿" | "¡"
+        "«" | "„" | "“" | "\"" | "'" | "``" | "(" | "[" | "{" | "‘" | "‹"
     ) || is_entity(piece)
 }
 
@@ -163,15 +163,13 @@ fn begins_upper(line: &str) -> bool {
         .is_some_and(char::is_uppercase)
 }
 
-/// The last word of a line and its last two letters, unless it starts with a capital letter, as a name does
-fn ending(line: &str) -> Option<(&str, [char; 2])> {
+/// The last word of a line and its last letters, unless it starts with a capital letter, as a name does
+fn ending(line: &str, letters: usize) -> Option<(&str, &str)> {
     let line = line.trim_end_matches(|c| !is_alpha(c));
     let word = line.rsplit(|c| !is_alpha(c)).next()?;
-    let mut letters = word.chars().rev();
-    let last = letters.next()?;
-    let before = letters.next()?;
+    let (start, _) = word.char_indices().rev().nth(letters - 1)?;
     word.starts_with(char::is_lowercase)
-        .then_some((word, [before, last]))
+        .then_some((word, &word[start..]))
 }
 
 /// A line that does not end with punctuation: a heading, a line of a post
@@ -353,12 +351,13 @@ impl Splitter<'_> {
         if count < MIN_RHYMES {
             return false;
         }
-        let ends: Vec<Option<(&str, [char; 2])>> = self
+        let letters = self.tables.conventions.rhyme_letters;
+        let ends: Vec<Option<(&str, &str)>> = self
             .lines
             .iter()
-            .map(|line| ending(line.slice(self.text)))
+            .map(|line| ending(line.slice(self.text), letters))
             .collect();
-        let rhymes: Vec<(usize, [char; 2])> = (0..count)
+        let rhymes: Vec<(usize, &str)> = (0..count)
             .filter_map(|index| {
                 let (word, letters) = ends[index]?;
                 (index.saturating_sub(RHYME_WINDOW)..count.min(index + RHYME_WINDOW + 1))
@@ -443,7 +442,7 @@ impl Splitter<'_> {
             let next = self.piece(index + 1);
             return (
                 index,
-                words && (starts_upper(next) || is_mention(next) || matches!(next, "¿" | "¡")),
+                words && (starts_upper(next) || is_mention(next) || self.is_inverted(next)),
             );
         }
         if !candidate || self.omission(index) || self.leading_dot(index) {
@@ -496,6 +495,10 @@ impl Splitter<'_> {
         (last, boundary)
     }
 
+    fn is_inverted(&self, piece: &str) -> bool {
+        self.tables.conventions.inverted_marks && matches!(piece, "¿" | "¡")
+    }
+
     /// Whether the tokens from `index` start a sentence: a capital letter, maybe after an opening quote or bracket,
     /// and after final marks also a digit, a mention, an inverted mark or a dash before a capital letter
     fn starts(&self, index: usize, marks: bool) -> bool {
@@ -515,11 +518,10 @@ impl Splitter<'_> {
                 .map(|span| span.slice(self.text))
         };
         let mut opening = 0;
-        while next(opening).is_some_and(|after| is_opening(after) && !matches!(after, "¿" | "¡"))
-        {
+        while next(opening).is_some_and(is_opening) {
             opening += 1;
         }
-        if matches!(next(opening), Some("¿" | "¡")) {
+        if next(opening).is_some_and(|after| self.is_inverted(after)) {
             // An inverted mark opens a sentence whatever comes after it, unless an ellipsis or a mark glued to it goes on
             return (marks && !self.attached(index) && !is_ellipsis(self.piece(index - 1)))
                 || next(opening + 1).is_some_and(opens);
@@ -551,7 +553,7 @@ impl Splitter<'_> {
                 offset += 1;
             }
             return match next(offset) {
-                Some("¿" | "¡") => true,
+                Some(after) if self.is_inverted(after) => true,
                 Some(after) if is_opening(after) => next(offset + 1).is_some_and(starts_upper),
                 Some(after) => {
                     starts_upper(after)
@@ -581,7 +583,7 @@ impl Splitter<'_> {
             let word = if abbreviation
                 || (is_abbreviation(piece)
                     && piece[..piece.len() - 1].contains('.')
-                    && self.tables.final_abbreviations_written.is_empty())
+                    && !self.tables.conventions.written_final_abbreviations)
             {
                 piece[..piece.len() - 1]
                     .split('.')
@@ -663,8 +665,8 @@ impl Splitter<'_> {
     /// first does not end one after a number: «44 a. C.»
     fn final_abbreviation_goes_on(&self, index: usize) -> bool {
         let tables = self.tables;
-        // Without capitals in the list the abbreviation after this one is an initial: «5 т. Д. Иванов»
-        if tables.final_abbreviations_written.is_empty() {
+        // Otherwise the abbreviation after this one is an initial: «5 т. Д. Иванов»
+        if !tables.conventions.written_final_abbreviations {
             return false;
         }
         let part = |position: usize| tables.key(self.piece(position).trim_end_matches('.'));
@@ -719,7 +721,7 @@ impl Splitter<'_> {
             && self.piece(index).starts_with(['…', '.'])
             && self.piece(index) != "."
             && self.attached(index)
-            && is_opening(self.piece(index - 1))
+            && (is_opening(self.piece(index - 1)) || self.is_inverted(self.piece(index - 1)))
             && (index == 1 || !self.attached(index - 1))
     }
 
@@ -1631,6 +1633,15 @@ mod spanish {
         whole("General J. Las Heras llegó.");
         whole("El matemático A.M. Turing murió.");
         whole("Vino D.C. Smith ayer.");
+    }
+
+    #[test]
+    fn rhymes_take_three_letters() {
+        let list = "Objetivos del proyecto\nMejorar los procesos\nReducir los costos\nAumentar las ventas\nRevisar las cuentas\nCapacitar a los empleados";
+        assert_eq!(sentences(list).len(), 6);
+        whole(
+            "Cultivo una rosa blanca\nEn junio como enero\nPara el amigo sincero\nQue me da su mano franca.",
+        );
     }
 
     #[test]

@@ -675,6 +675,14 @@ impl Writer<'_> {
         Ok((!bytes.is_empty()).then_some(true))
     }
 
+    fn segment(&self, text: String) -> Document {
+        if self.format == Format::Conllu {
+            self.segmenter.segment_string(text)
+        } else {
+            self.segmenter.segment_tokens(text)
+        }
+    }
+
     /// The text up to its last blank line, whose paragraphs are complete
     fn write_ready(&mut self) -> io::Result<()> {
         if self.ready == 0 {
@@ -683,7 +691,7 @@ impl Writer<'_> {
         let rest = self.text.split_off(self.ready);
         let ready = std::mem::replace(&mut self.text, rest);
         self.ready = 0;
-        let doc = self.segmenter.segment_string(ready);
+        let doc = self.segment(ready);
         self.write_sentences(&doc, doc.sentence_count())?;
         self.continued = false;
         Ok(())
@@ -693,9 +701,8 @@ impl Writer<'_> {
     /// with: it stays at the start of the text, and the next piece continues its paragraph. One sentence longer than
     /// PARAGRAPH is written whole, and the separators after it stay: with the next line they may end the paragraph
     fn write_long(&mut self) -> io::Result<()> {
-        let doc = self
-            .segmenter
-            .segment_string(std::mem::take(&mut self.text));
+        let text = std::mem::take(&mut self.text);
+        let doc = self.segment(text);
         let count = doc.sentence_count();
         let (written, keep) = match count {
             0 => (0, doc.text().len()),
@@ -1244,5 +1251,39 @@ mod tests {
             &mut stderr,
         );
         assert_eq!((code, stderr.len()), (0, 0));
+    }
+}
+
+#[cfg(all(test, feature = "es"))]
+mod spanish {
+    use super::*;
+
+    fn output(args: &[&str], input: &str) -> String {
+        let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
+        let code = execute(
+            args.iter().map(OsString::from).collect(),
+            "1.2.3",
+            false,
+            false,
+            &mut input.as_bytes(),
+            &mut stdout,
+            &mut stderr,
+        );
+        assert_eq!(code, 0, "{}", String::from_utf8_lossy(&stderr));
+        String::from_utf8(stdout).unwrap()
+    }
+
+    #[test]
+    fn multiword_tokens() {
+        let text = "¿Vienes del mar?";
+        assert_eq!(output(&["-l", "es"], text), "¿\nVienes\ndel\nmar\n?\n\n");
+        assert_eq!(
+            output(&["-l", "es", "-f", "sentences"], "Se fue. ¿Vienes del mar?"),
+            "Se fue.\n¿Vienes del mar?\n"
+        );
+        let conllu = output(&["-l", "es", "-f", "conllu"], text);
+        assert!(conllu.contains("3-4\tdel\t"), "{conllu}");
+        assert!(conllu.contains("3\tde\t"), "{conllu}");
+        assert!(conllu.contains("4\tel\t"), "{conllu}");
     }
 }

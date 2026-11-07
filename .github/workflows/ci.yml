@@ -50,6 +50,8 @@ jobs:
         run: |
           cargo clippy --workspace --all-targets --locked -- -D warnings
           cargo clippy -p anyseg --no-default-features --all-targets --locked -- -D warnings
+          cargo clippy -p anyseg --no-default-features --features ru --all-targets --locked -- -D warnings
+          cargo clippy -p anyseg --no-default-features --features es --all-targets --locked -- -D warnings
 
   test:
     name: test (${{ matrix.python-version }}${{ matrix.os != 'ubuntu-latest' && format(', {0}', matrix.os) || '' }})
@@ -89,9 +91,12 @@ jobs:
       - name: Run tests
         run: uv run --no-sync pytest --cov anyseg ${{ endsWith(matrix.python-version, 't') && '--cov-fail-under=0' || '' }}
       - name: Run Rust tests
+        shell: bash
         run: |
           cargo test -p anyseg --all-features --locked
           cargo test -p anyseg --no-default-features --locked
+          cargo test -p anyseg --no-default-features --features ru --locked
+          cargo test -p anyseg --no-default-features --features es --locked
 
   msrv:
     runs-on: ubuntu-latest
