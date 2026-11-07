@@ -30,8 +30,8 @@ capital_abbreviations = context
 inverted_marks = yes
 # The capitals in the list of final abbreviations are as written: «a. C.» ends a sentence, and «A.M. Turing» does not
 final_abbreviations = written
-# Three letters make a rhyme: two are the same in many words of one grammatical form, as «-os» and «-as» of a list
-rhyme_letters = 3
+# Endings of grammatical forms, which many words share: they make a rhyme with one more letter, «ventas» and «cuentas»
+weak_rhymes = os as es an en
 # The period of an abbreviation at the end of a sentence is a token of its own
 final_period = token
 # Letters that make one token with a degree sign

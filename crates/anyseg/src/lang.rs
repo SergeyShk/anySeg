@@ -140,8 +140,8 @@ pub(crate) struct Conventions {
     /// The capitals in the list of final abbreviations are as written, and an abbreviation does not end a sentence
     /// before the capital letter that makes one of them
     pub(crate) written_final_abbreviations: bool,
-    /// How many letters at the end of a line make a rhyme
-    pub(crate) rhyme_letters: usize,
+    /// Endings of grammatical forms, which make a rhyme with one more letter
+    pub(crate) weak_rhymes: Vec<String>,
 }
 
 impl Default for Conventions {
@@ -172,7 +172,7 @@ impl Default for Conventions {
             capitals_need_context: false,
             inverted_marks: false,
             written_final_abbreviations: false,
-            rhyme_letters: 2,
+            weak_rhymes: Vec::new(),
         }
     }
 }
@@ -291,8 +291,8 @@ impl Conventions {
                 "final_abbreviations" => {
                     conventions.written_final_abbreviations = flag("written", "any_case");
                 }
-                "rhyme_letters" => {
-                    conventions.rhyme_letters = value.parse().unwrap_or_else(|_| wrong(line));
+                "weak_rhymes" => {
+                    conventions.weak_rhymes = value.split_whitespace().map(str::to_owned).collect();
                 }
                 "capital_after_word" => {
                     conventions.capital_after_word_whole = flag("whole", "words");
@@ -1139,16 +1139,10 @@ mod conventions {
     }
 
     #[test]
-    fn letters_of_a_rhyme_are_a_convention() {
-        let text = "Vive en casa\nCome el pan\nMira la masa\nVienen y van.\n";
-        let tables = |conventions| {
-            Tables::new(Files {
-                conventions,
-                ..Files::default()
-            })
-        };
-        assert_eq!(sentence_count(&tables(""), text), 1);
-        assert_eq!(sentence_count(&tables("rhyme_letters = 5"), text), 4);
+    fn weak_rhymes_are_a_convention() {
+        let text = "Vive en casas\nCome los panes\nMira las masas\nDame los planes.\n";
+        assert_eq!(sentence_count(&language(""), text), 1);
+        assert_eq!(sentence_count(&language("weak_rhymes = as es"), text), 4);
     }
 
     #[test]

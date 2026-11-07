@@ -163,11 +163,17 @@ fn begins_upper(line: &str) -> bool {
         .is_some_and(char::is_uppercase)
 }
 
-/// The last word of a line and its last letters, unless it starts with a capital letter, as a name does
-fn ending(line: &str, letters: usize) -> Option<(&str, &str)> {
+/// The last word of a line and its last two letters, or three after an ending of a grammatical form, unless it starts
+/// with a capital letter, as a name does
+fn ending<'a>(line: &'a str, weak: &[String]) -> Option<(&'a str, &'a str)> {
     let line = line.trim_end_matches(|c| !is_alpha(c));
     let word = line.rsplit(|c| !is_alpha(c)).next()?;
-    let (start, _) = word.char_indices().rev().nth(letters - 1)?;
+    let mut starts = word.char_indices().rev().map(|(start, _)| start);
+    let two = starts.nth(1)?;
+    let start = match starts.next() {
+        Some(three) if weak.iter().any(|ending| ending == &word[two..]) => three,
+        _ => two,
+    };
     word.starts_with(char::is_lowercase)
         .then_some((word, &word[start..]))
 }
@@ -351,11 +357,11 @@ impl Splitter<'_> {
         if count < MIN_RHYMES {
             return false;
         }
-        let letters = self.tables.conventions.rhyme_letters;
+        let weak = &self.tables.conventions.weak_rhymes;
         let ends: Vec<Option<(&str, &str)>> = self
             .lines
             .iter()
-            .map(|line| ending(line.slice(self.text), letters))
+            .map(|line| ending(line.slice(self.text), weak))
             .collect();
         let rhymes: Vec<(usize, &str)> = (0..count)
             .filter_map(|index| {
@@ -1636,11 +1642,14 @@ mod spanish {
     }
 
     #[test]
-    fn rhymes_take_three_letters() {
+    fn rhymes_and_lists() {
         let list = "Objetivos del proyecto\nMejorar los procesos\nReducir los costos\nAumentar las ventas\nRevisar las cuentas\nCapacitar a los empleados";
         assert_eq!(sentences(list).len(), 6);
         whole(
             "Cultivo una rosa blanca\nEn junio como enero\nPara el amigo sincero\nQue me da su mano franca.",
+        );
+        whole(
+            "Amor que vino del mar\nY se fue con la marea\nQuiso mi pecho cantar\nLa pena que me rodea.",
         );
     }
 
