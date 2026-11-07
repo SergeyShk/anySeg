@@ -11,6 +11,8 @@ final_marks = same
 dotted = whole
 # «1.012,72» is one token
 digit_groups = point
+# «1,500,000.50», as in Mexico and Central America, is one token
+comma_groups = yes
 phone_digits = none
 script = latin
 # A dash glued to a final mark with a space after it closes its line, a hyphen numbers an article: «La viuda.-- El niño»,
@@ -18,12 +20,22 @@ script = latin
 dashes = closing
 # Marks that stay inside a token between letters or digits: «km/h», «15/01/2011», «I+D», «O`Neal», «sub'23», «d´Ebre»
 inner_marks = / + ` ' ’ ´
+# A number glued to a period goes on with the sentence: «j.ejemplo.2020», «1:23.97»
+glued_numbers = go_on
+# A line with the number of a section and a capital letter can be a heading: «1.2 Métodos»
+section_headings = yes
+# A Roman number with a period marks a list item inside a line, in a series: «EXPONEN: I. Que tal. II. Que cual.»
+roman_items = yes
+# Faces with letters: «:v», «:c»
+emoticon_mouths = vVc
 # A sign before a digit is in the number after a space: «-5 grados»
 signed_numbers = yes
 # What follows the period of an ordinal number in one token: «3.º», «2.ª», «1.er»
 ordinal_endings = º ª er os as
+# A degree sign as well, typed for the ordinal one: «1.°», «1°», «N.°», but «20°C»
+ordinal_degree = yes
 # Top-level domains that are words: with a first capital letter they start a sentence after a missing space: «casa.De»
-capital_words = de es me su
+capital_words = de es me su co pe ve uy pa do ni cu bo ar
 # A word in capitals is no abbreviation of the lists unless a digit or another word in capitals follows: «PP.», «ART. 5»
 capital_abbreviations = context
 # «¿» and «¡» open a sentence, before a lowercase letter too

@@ -8,7 +8,29 @@ p. m.
 EE. UU.
 et al.
 y ss.
+y ff.
 y sig.
 y sigs.
 y sgte.
 y sgtes.
+UU.
+E. E. U. U.
+E. U.
+E. U. A.
+Bs. As.
+# Pronouns, which no name follows
+Ud.
+Uds.
+Vd.
+Vds.
+# Companies, which end a name
+Inc.
+Ltd.
+Ltda.
+Cía. Ltda.
+Corp.
+Ph. D.
+# Units with a first capital letter
+Km.
+Kms.
+Kg.

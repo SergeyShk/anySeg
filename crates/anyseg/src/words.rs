@@ -5,6 +5,7 @@ use std::borrow::Cow;
 use unicode_normalization::UnicodeNormalization;
 
 use crate::lang::Tables;
+use crate::sentences::is_opening;
 
 /// Whether a language has tokens of several words
 pub(crate) fn has_multiword(tables: &Tables) -> bool {
@@ -24,7 +25,8 @@ pub(crate) fn expand<'a>(
     tables: &Tables,
     token: &str,
     previous: Option<&'a str>,
-    earlier: impl FnOnce() -> Option<&'a str>,
+    earlier: impl Fn() -> Option<&'a str>,
+    next: impl FnOnce() -> Option<&'a str>,
 ) -> Option<Vec<String>> {
     let upper = token.starts_with(char::is_uppercase);
     if !upper && !token.starts_with(char::is_lowercase) {
@@ -36,6 +38,16 @@ pub(crate) fn expand<'a>(
         && previous
             .is_some_and(|previous| previous == "," || previous.contains(char::is_alphanumeric));
     if !capitals && after_word {
+        return None;
+    }
+    // So is one in quotes or brackets inside a sentence before another capital letter: «Vino "Al Gore"», «(Del Bosque)»
+    if !capitals
+        && upper
+        && tables.conventions.capital_after_word_whole
+        && previous.is_some_and(is_opening)
+        && earlier().is_some_and(|word| word == "," || word.contains(char::is_alphanumeric))
+        && next().is_some_and(|word| word.starts_with(char::is_uppercase))
+    {
         return None;
     }
     let key = key(tables, token);
@@ -324,6 +336,34 @@ mod tests {
         assert_eq!(multiword("Pérez et. al. 2010"), []);
         assert_eq!(multiword("Pérez et. al 2010"), []);
         assert_eq!(expanded("Pérez al mar"), [["a", "el"]]);
+    }
+
+    #[test]
+    fn found_by_the_qa() {
+        for text in [
+            "Reverte escribió.",
+            "REVERTE ESCRIBIÓ",
+            "Searle dijo.",
+            "Malaparte dijo.",
+            "El paquiderme y el adarme.",
+            "Vino \"Al Gore\" ayer.",
+            "Vino (Del Bosque) ayer.",
+            "El diario \"Al Ahram\".",
+            "Vino \"Dale Carnegie\" ayer.",
+        ] {
+            assert_eq!(multiword(text), [], "{text}");
+        }
+        assert_eq!(expanded("Dijo \"Al llegar, vio\""), [["A", "el"]]);
+        assert_eq!(expanded("«Al Gore ganó»"), [["A", "el"]]);
+        for (text, words) in [
+            ("Cállate", vec!["Calla", "te"]),
+            ("cuídate", vec!["cuida", "te"]),
+            ("Notifíquese", vec!["Notifique", "se"]),
+            ("sentémonos", vec!["sentemos", "nos"]),
+            ("deciros", vec!["decir", "os"]),
+        ] {
+            assert_eq!(expanded(text), [words], "{text}");
+        }
     }
 
     #[test]

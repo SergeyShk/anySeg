@@ -525,7 +525,10 @@ impl Scanner<'_> {
         if matches!(self.get(index), Some('-' | '\'')) {
             index += 1;
         }
-        let mouth = self.get(index).filter(|c| ")(DPpOo*|/3][".contains(*c))?;
+        let mouth = self
+            .get(index)
+            .filter(|c| ")(DPpOo*|/3][".contains(*c))
+            .or_else(|| self.letter_mouth(start, index))?;
         // After a number or a word a digit is a score or an equation, and so is a letter after «=»: «2:3»,
         // «n=3», «F=P/S»
         let after_word = self.text[..start].chars().next_back().is_some_and(is_word);
@@ -542,6 +545,15 @@ impl Scanner<'_> {
         }
         let letter = is_word(mouth);
         (!(letter && self.get(index).is_some_and(is_word))).then_some(index)
+    }
+
+    /// A letter of the language as a mouth at `index`, which makes no face after a word: «:v», but «hora:v»
+    #[cold]
+    fn letter_mouth(&self, start: usize, index: usize) -> Option<char> {
+        self.get(index).filter(|c| {
+            self.tables.conventions.emoticon_mouths.contains(*c)
+                && !self.text[..start].chars().next_back().is_some_and(is_word)
+        })
     }
 
     /// The end of an HTML entity at `start`: «&quot;», «&#39;», «&#x27;»
@@ -660,6 +672,15 @@ impl Scanner<'_> {
             {
                 Joint::Hyphen
             }
+            // And of Roman numbers: «XIX–XX»
+            '\u{2013}'
+                if !self.tables.conventions.roman_ranges
+                    && !self.tables.conventions.digit_ranges
+                    && is_roman(piece)
+                    && is_roman(&self.text[next..self.run(next)]) =>
+            {
+                Joint::Hyphen
+            }
             mark if is_word(after) && self.tables.conventions.inner_marks.contains(&mark) => {
                 Joint::Inner
             }
@@ -668,7 +689,12 @@ impl Scanner<'_> {
                 || (piece.starts_with(is_alpha)
                     && piece.ends_with(|c: char| c.is_ascii_digit())))
                 && after.is_ascii_digit()
-                && (only(Joint::Point) || (groups == DigitGroups::Comma && only(Joint::Comma))) =>
+                && (only(Joint::Point)
+                    || (groups == DigitGroups::Comma && only(Joint::Comma))
+                    || (self.tables.conventions.comma_groups
+                        && only(Joint::Comma)
+                        && digits
+                        && piece.len() == 3)) =>
             {
                 Joint::Point
             }
@@ -677,7 +703,13 @@ impl Scanner<'_> {
                 && after.is_ascii_digit()
                 && match groups {
                     DigitGroups::Space => only(Joint::Thousands),
-                    DigitGroups::Point => only(Joint::Point) && (kinds == 0 || piece.len() == 3),
+                    DigitGroups::Point => {
+                        (only(Joint::Point) && (kinds == 0 || piece.len() == 3))
+                            || (self.tables.conventions.comma_groups
+                                && kinds == Joint::Comma.bit()
+                                && piece.len() == 3
+                                && self.digits_end(next) - next == 3)
+                    }
                     DigitGroups::Comma => only(Joint::Comma) && self.digits_end(next) - next == 3,
                 } =>
             {
@@ -851,10 +883,16 @@ impl Scanner<'_> {
                     '.' | ',' | ':' | ' ' | '\u{a0}' | '\u{202f}' | '\u{2009}'
                 ))
                 || (character == '.' && self.text[..end].ends_with(|c: char| c.is_ascii_digit()))
-                || (digits && character == '\u{2013}')
+                || (character == '\u{2013}' && (digits || self.roman(start, end)))
                 || self.tables.conventions.inner_marks.contains(&character)
         });
         if digits && let Some(stop) = self.ordinal_end(end) {
+            return self.push(start, stop);
+        }
+        if end - start == 1
+            && self.tables.conventions.ordinal_degree
+            && let Some(stop) = self.letter_with_degree(start, end)
+        {
             return self.push(start, stop);
         }
         if !joins {
@@ -922,10 +960,50 @@ impl Scanner<'_> {
         self.push(first, end)
     }
 
+    #[cold]
+    fn roman(&self, start: usize, end: usize) -> bool {
+        is_roman(&self.text[start..end])
+    }
+
+    /// The end of a degree sign that is an ordinal ending, maybe after a period; before a letter of a scale it is a
+    /// degree: «1.°», «20°C». After a `letter` a digit may follow it: «N°27444»
+    #[cold]
+    fn degree_end(&self, end: usize, letter: bool) -> Option<usize> {
+        if !self.tables.conventions.ordinal_degree {
+            return None;
+        }
+        let degree = match self.get(end) {
+            Some('.') => end + 1,
+            _ => end,
+        };
+        let after = degree + '°'.len_utf8();
+        (self.get(degree) == Some('°')
+            && !self.get(after).is_some_and(|c| {
+                (is_word(c) && !(letter && c.is_ascii_digit()))
+                    || self.tables.conventions.degree_letters.contains(c)
+            }))
+        .then_some(after)
+    }
+
+    /// The end of one letter with a degree sign: «N°», «n.°»
+    #[cold]
+    fn letter_with_degree(&self, start: usize, end: usize) -> Option<usize> {
+        if !self.text.as_bytes()[start].is_ascii_alphabetic() {
+            return None;
+        }
+        self.degree_end(end, true)
+    }
+
     /// The end of an ordinal number whose digits end at `end`, with its period and ending: «3.º»
     fn ordinal_end(&self, end: usize) -> Option<usize> {
         let endings = &self.tables.conventions.ordinal_endings;
-        if endings.is_empty() || self.get(end) != Some('.') {
+        if endings.is_empty() {
+            return None;
+        }
+        if let Some(stop) = self.degree_end(end, false) {
+            return Some(stop);
+        }
+        if self.get(end) != Some('.') {
             return None;
         }
         let stop = self.run(end + 1);
@@ -1091,6 +1169,17 @@ impl Scanner<'_> {
         }
         if self.tables.digit_abbreviations.contains(&word_key) {
             return self.digit_after(end + 1);
+        }
+        // A token that stays whole after a word takes a period there: «et al.», «et. al.»
+        if !self.tables.multiword_exceptions.is_empty()
+            && let Some(words) = self.tables.multiword_exceptions.get(&word_key)
+        {
+            let mut before = self.out.iter().rev().map(|span| span.slice(self.text));
+            let word = match before.next() {
+                Some(".") => before.next(),
+                other => other,
+            };
+            return word.is_some_and(|word| words.contains(&self.tables.key(word)));
         }
         self.tables.abbreviations.contains(&word_key)
             && !(self.tables.conventions.capitals_need_context
@@ -1879,6 +1968,38 @@ mod spanish {
     }
 
     #[test]
+    fn found_by_the_qa() {
+        for (text, parts) in [
+            ("$1,500.50", vec!["$", "1,500.50"]),
+            ("1,500,000", vec!["1,500,000"]),
+            ("12,345,678.90", vec!["12,345,678.90"]),
+            ("1,298.3", vec!["1,298.3"]),
+            ("3,5.2", vec!["3,5", ".", "2"]),
+            ("1,2,3", vec!["1,2", ",", "3"]),
+            ("XIX–XX", vec!["XIX–XX"]),
+            ("1.° 1° N.° N° n°", vec!["1.°", "1°", "N.°", "N°", "n°"]),
+            ("20°C", vec!["20", "°C"]),
+            ("45°", vec!["45°"]),
+            ("Ley N°27444", vec!["Ley", "N°", "27444"]),
+            ("Ley N.°27444", vec!["Ley", "N.°", "27444"]),
+            ("40°20'", vec!["40", "°", "20", "'"]),
+            (
+                "ejemplo.com.mx lanacion.com.ar a.cl",
+                vec!["ejemplo.com.mx", "lanacion.com.ar", "a.cl"],
+            ),
+            ("Jaja :v y :c", vec!["Jaja", ":v", "y", ":c"]),
+            ("hora:v", vec!["hora", ":", "v"]),
+            ("Bs. As., Argentina", vec!["Bs.", "As.", ",", "Argentina"]),
+            (
+                "ob. cit., Ph. D. en",
+                vec!["ob.", "cit.", ",", "Ph.", "D.", "en"],
+            ),
+        ] {
+            assert_eq!(tokens(text), parts, "{text}");
+        }
+    }
+
+    #[test]
     fn inner_marks() {
         for token in [
             "km/h",
@@ -2017,7 +2138,7 @@ mod spanish {
         assert_eq!(tokens("DR. Juan Pérez"), ["DR.", "Juan", "Pérez"]);
         assert_eq!(tokens("La Col. Roma"), ["La", "Col.", "Roma"]);
         assert_eq!(tokens("Vid. García"), ["Vid.", "García"]);
-        assert_eq!(tokens("Comí col. Luego"), ["Comí", "col", ".", "Luego"]);
+        assert_eq!(tokens("Comí col. Luego"), ["Comí", "col.", "Luego"]);
         assert_eq!(tokens("Una vid. Luego"), ["Una", "vid", ".", "Luego"]);
     }
 }

@@ -406,7 +406,9 @@ impl Document {
                     (token >= sentence[0] + back)
                         .then(|| self.tokens[token - back].slice(&self.text))
                 };
-                if let Some(forms) = words::expand(tables, piece, before(1), || before(2))
+                let after =
+                    || (token + 1 < sentence[1]).then(|| self.tokens[token + 1].slice(&self.text));
+                if let Some(forms) = words::expand(tables, piece, before(1), || before(2), after)
                     && !exceptions.tokens.contains(piece)
                 {
                     multiword.push((token, forms));

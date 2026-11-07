@@ -26,6 +26,7 @@ av
 avda
 ctra
 blvd
+col
 urb
 esq
 prov
@@ -46,3 +47,16 @@ sta
 sto
 ltda
 mons
+fracc
+secc
+párr
+inc
+mz
+edif
+calz
+prol
+pje
+psje
+plza
+alc
+fasc

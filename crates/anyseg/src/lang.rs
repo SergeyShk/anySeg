@@ -108,6 +108,8 @@ pub(crate) struct Conventions {
     /// A number with a percent sign and an ending after a hyphen is one word: «20%-ный»
     pub(crate) percent_endings: bool,
     pub(crate) digit_groups: DigitGroups,
+    /// Commas between groups of three digits and a point before the decimals are a number too: «1,500,000.50»
+    pub(crate) comma_groups: bool,
     /// The numbers of digits that make groups separated by spaces a phone number
     pub(crate) phone_digits: Option<(usize, usize)>,
     pub(crate) script: Script,
@@ -125,6 +127,16 @@ pub(crate) struct Conventions {
     pub(crate) closing_dashes: bool,
     /// Marks that stay inside a token between letters or digits
     pub(crate) inner_marks: Vec<char>,
+    /// A number glued to the period before it goes on with the sentence
+    pub(crate) glued_numbers_go_on: bool,
+    /// A line that starts with the number of a section without a period after it can be a heading: «1.2 Métodos»
+    pub(crate) section_headings: bool,
+    /// A Roman number with a period can mark a list item inside a line, as a number does
+    pub(crate) roman_items: bool,
+    /// Letters that a language uses as a mouth of an emoticon too: «:v»
+    pub(crate) emoticon_mouths: String,
+    /// A degree sign is an ordinal ending too, with an optional period before it: «1.°», «1°», «N°»
+    pub(crate) ordinal_degree: bool,
     /// A sign before a digit after a space is in the number
     pub(crate) signed_numbers: bool,
     /// What follows the period of an ordinal number in one token
@@ -156,6 +168,7 @@ impl Default for Conventions {
             final_period_token: true,
             percent_endings: false,
             digit_groups: DigitGroups::default(),
+            comma_groups: false,
             phone_digits: None,
             script: Script::default(),
             fold_marks: Vec::new(),
@@ -165,6 +178,11 @@ impl Default for Conventions {
             capital_after_word_whole: false,
             closing_dashes: false,
             inner_marks: Vec::new(),
+            glued_numbers_go_on: false,
+            section_headings: false,
+            roman_items: false,
+            emoticon_mouths: String::new(),
+            ordinal_degree: false,
             signed_numbers: false,
             ordinal_endings: Vec::new(),
             split_superscripts: false,
@@ -229,6 +247,7 @@ impl Conventions {
                         _ => wrong(line),
                     }
                 }
+                "comma_groups" => conventions.comma_groups = flag("yes", "no"),
                 "phone_digits" => {
                     conventions.phone_digits = (value != "none").then(|| {
                         value
@@ -274,6 +293,11 @@ impl Conventions {
                         .filter_map(|mark| mark.chars().next())
                         .collect();
                 }
+                "glued_numbers" => conventions.glued_numbers_go_on = flag("go_on", "start"),
+                "section_headings" => conventions.section_headings = flag("yes", "no"),
+                "roman_items" => conventions.roman_items = flag("yes", "no"),
+                "emoticon_mouths" => conventions.emoticon_mouths = value.to_owned(),
+                "ordinal_degree" => conventions.ordinal_degree = flag("yes", "no"),
                 "signed_numbers" => conventions.signed_numbers = flag("yes", "no"),
                 "ordinal_endings" => {
                     conventions.ordinal_endings =
@@ -687,6 +711,8 @@ pub(crate) fn tables(language: Language) -> &'static Tables {
                     enclitics: include_str!("../data/es/enclitics.txt"),
                     enclitic_hosts: include_str!("../data/es/enclitic_hosts.txt"),
                     enclitic_exceptions: include_str!("../data/es/enclitic_exceptions.txt"),
+                    web_suffixes: include_str!("../data/es/web_suffixes.txt"),
+                    emoticons: include_str!("../data/es/emoticons.txt"),
                     ..Files::default()
                 })
             })
@@ -1176,7 +1202,8 @@ mod conventions {
             ..Files::default()
         });
         assert_eq!(sentence_count(&tables, "En 44 a. C. Luego"), 2);
-        assert_eq!(sentence_count(&tables, "En 44 A. C. Luego"), 1);
+        assert_eq!(sentence_count(&tables, "En 44 A. C. Luego"), 2);
+        assert_eq!(sentence_count(&tables, "En A. C. Luego"), 1);
         assert_eq!(sentence_count(&tables, "En 44 d. c. Luego"), 2);
         assert_eq!(sentence_count(&tables, "Es Carlos V. El rey"), 2);
         assert_eq!(sentence_count(&tables, "Es Carlos V. Rey"), 1);
@@ -1193,15 +1220,15 @@ mod conventions {
             ..Files::default()
         });
         assert_eq!(
-            expand(&tables, "мыться", None, || None),
+            expand(&tables, "мыться", None, || None, || None),
             words(&["мыть", "ся"])
         );
         assert_eq!(
-            expand(&tables, "I'm", Some("word"), || None),
+            expand(&tables, "I'm", Some("word"), || None, || None),
             words(&["I", "'m"])
         );
         assert_eq!(
-            expand(&tables, "Мыться", Some("word"), || None),
+            expand(&tables, "Мыться", Some("word"), || None, || None),
             words(&["Мыть", "ся"])
         );
         let tables = Tables::new(Files {
@@ -1212,19 +1239,19 @@ mod conventions {
             multiword: "i'm i 'm\n",
             ..Files::default()
         });
-        assert_eq!(expand(&tables, "I'm", Some("word"), || None), None);
-        assert_eq!(expand(&tables, "I'm", Some(","), || None), None);
+        assert_eq!(expand(&tables, "I'm", Some("word"), || None, || None), None);
+        assert_eq!(expand(&tables, "I'm", Some(","), || None, || None), None);
         assert_eq!(
-            expand(&tables, "I'm", Some("«"), || None),
+            expand(&tables, "I'm", Some("«"), || None, || None),
             words(&["I", "'m"])
         );
-        assert_eq!(expand(&tables, "i'm", Some("ET"), || None), None);
+        assert_eq!(expand(&tables, "i'm", Some("ET"), || None, || None), None);
         assert_eq!(
-            expand(&tables, "мыться", None, || None),
+            expand(&tables, "мыться", None, || None, || None),
             words(&["мыть", "ся"])
         );
-        assert_eq!(expand(&tables, "мыкаться", None, || None), None);
-        assert_eq!(expand(&tables, "мчаться", None, || None), None);
+        assert_eq!(expand(&tables, "мыкаться", None, || None, || None), None);
+        assert_eq!(expand(&tables, "мчаться", None, || None, || None), None);
     }
 
     #[test]
