@@ -57,8 +57,6 @@ F1 of the positions of the sentence ends.
 | SaT 3-layer, wtpsplit 2.2.2 * | 99.28 | 94.93 | 99.00 | 99.80 |
 | SaT 12-layer, wtpsplit 2.2.2 * | **99.68** | 95.86 | **99.67** | 99.85 |
 
-In the train and dev files of SynTagRus, a number with a period at the start of a sentence, before a capital letter, is a sentence of its own in 24 of 24 cases for a Roman numeral and in 23 of 49 for an Arabic one. In the test file all 26 such numbers are Arabic and start a longer sentence (`1. Поглощать пищу в верхней одежде.`). The UD guidelines keep the number of a list item in its sentence; anySeg does so for a series of Arabic numbers and makes other numbers a sentence of their own.
-
 ### Sentences
 
 F1 of the CoNLL 2018 script: a sentence counts when both of its ends match, so the tokens matter too. Only the tools that give tokens.
@@ -83,7 +81,7 @@ From Python: the time to load the tool, tokens per second, and the memory the lo
 
 | Tool | Gives | Load, s | Tokens/s | Memory, MB |
 | :-- | :-- | --: | --: | --: |
-| **anySeg 0.3** | tokens, sentences | 0.00 | **3.24 M** | 0.7 |
+| **anySeg 0.3** | tokens, sentences | 0.00 | **3.18 M** | 0.7 |
 | razdel 0.5.0 | tokens, sentences | 0.00 | 489 k | 0.1 |
 | rusenttokenize 0.0.5 | sentences | 0.00 | 317 k | 0.2 |
 | NLTK 3.10.4 | tokens, sentences | 0.85 | 195 k | 121 |
@@ -106,7 +104,7 @@ From Rust: tokens per second and the peak memory of a process that reads the tex
 
 | Crate | Gives | Tokens/s | Peak memory, MB |
 | :-- | :-- | --: | --: |
-| **anyseg 0.3** | tokens, sentences | 13.7 M | 34 |
+| **anyseg 0.3** | tokens, sentences | 13.7 M | 35 |
 | unicode-segmentation 1.13.3 | tokens, sentences | 7.7 M | 28 |
 | icu_segmenter 2.4.0 | tokens, sentences | **17.6 M** | 114 |
 | sentencex 0.1.32 | sentences | 965 k | 21 |
@@ -121,7 +119,7 @@ F1 of the CoNLL 2018 script.
 
 | Tool | AnCora | GSD | PUD |
 | :-- | --: | --: | --: |
-| **anySeg 0.3** | 99.93 | **99.95** | **99.76** |
+| **anySeg 0.3** | 99.93 | **99.95** | **99.78** |
 | NLTK 3.10.4, `word_tokenize` | 99.80 | 99.78 | 99.62 |
 | spaCy 3.8.16, `es` | 99.90 | 99.85 | 99.63 |
 | syntok 1.4.4 | 99.50 | 99.62 | 99.63 |
@@ -140,7 +138,7 @@ F1 of the CoNLL 2018 script on the words of the treebank, where «del» is «de�
 
 | Tool | AnCora | GSD | PUD |
 | :-- | --: | --: | --: |
-| **anySeg 0.3** | 99.92 | **99.86** | **99.75** |
+| **anySeg 0.3** | 99.92 | **99.86** | **99.77** |
 | NLTK 3.10.4, `word_tokenize` | 96.50 | 96.41 | 96.62 |
 | spaCy 3.8.16, `es` | 96.60 | 96.47 | 96.60 |
 | syntok 1.4.4 | 96.21 | 96.25 | 96.62 |
@@ -157,7 +155,7 @@ F1 of the positions of the sentence ends.
 
 | Tool | AnCora | GSD | PUD |
 | :-- | --: | --: | --: |
-| **anySeg 0.3** | 99.51 | 96.74 | 99.55 |
+| **anySeg 0.3** | 99.54 | 96.74 | 99.60 |
 | NLTK 3.10.4, Punkt | 98.58 | 96.51 | 99.10 |
 | spaCy 3.8.16, `es` with `sentencizer` | 89.01 | 92.31 | 98.29 |
 | spaCy, `es_core_news_sm` with `senter` * | 94.36 | 95.77 | 75.31 |
@@ -183,7 +181,7 @@ F1 of the CoNLL 2018 script: a sentence counts when both of its ends match, so t
 
 | Tool | AnCora | GSD | PUD |
 | :-- | --: | --: | --: |
-| **anySeg 0.3** | 98.58 | 90.97 | **98.65** |
+| **anySeg 0.3** | 98.66 | 90.97 | **98.80** |
 | NLTK 3.10.4 | 96.15 | 90.04 | 97.59 |
 | spaCy 3.8.16, `es` | 80.41 | 81.77 | 95.98 |
 | syntok 1.4.4 | 96.65 | 91.41 | 95.60 |
@@ -197,11 +195,11 @@ F1 of the CoNLL 2018 script: a sentence counts when both of its ends match, so t
 
 ### Speed and memory
 
-From Python, as for Russian, on the raw text of AnCora test. `segment`, which gives the words too, comes to 8.11 M tokens per second.
+From Python, as for Russian, on the raw text of AnCora test. `segment`, which gives the words too, comes to 5.6 M tokens per second with the same spans read and to 3.9 M with the forms of the words.
 
 | Tool | Gives | Load, s | Tokens/s | Memory, MB |
 | :-- | :-- | --: | --: | --: |
-| **anySeg 0.3** | tokens, sentences | 0.00 | 4.34 M | 0.8 |
+| **anySeg 0.3** | tokens, sentences | 0.00 | 4.36 M | 0.9 |
 | NLTK 3.10.4 | tokens, sentences | 1.34 | 266 k | 121 |
 | spaCy 3.8.16, `es` with `sentencizer` | tokens, sentences | 1.41 | 371 k | 195 |
 | spaCy, `es_core_news_sm` with `senter` * | tokens, sentences | 1.22 | 42 k | 263 |
@@ -224,7 +222,7 @@ From Rust, as for Russian; anyseg builds the words of the multiword tokens as it
 
 | Crate | Gives | Tokens/s | Peak memory, MB |
 | :-- | :-- | --: | --: |
-| **anyseg 0.3** | tokens, words, sentences | 9.8 M | 13 |
+| **anyseg 0.3** | tokens, words, sentences | 13.7 M | 13 |
 | unicode-segmentation 1.13.3 | tokens, sentences | 6.9 M | 8 |
 | icu_segmenter 2.4.0 | tokens, sentences | 20.8 M | 14 |
 | sentencex 0.1.32 | sentences | **41.3 M** | 7 |

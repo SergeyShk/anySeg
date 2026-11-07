@@ -1,4 +1,4 @@
-"""The licenses of the Rust crates linked into the Python module: THIRD-PARTY-NOTICES.txt
+"""The licenses of what the wheels carry besides anySeg: THIRD-PARTY-NOTICES.txt
 
 Run: `python scripts/notices.py [path]` from the repository after a change of `Cargo.lock`; without
 a path the file of the repository is written. The crates are the normal dependencies of
@@ -15,6 +15,11 @@ ROOT = Path(__file__).parents[1]
 HEADER = [
     "Licenses of the Rust crates linked into the Python module of anySeg. Every crate offers a choice",
     "of licenses; the MIT license is the one used here, with the Unicode license of the Unicode data.",
+    "",
+    "The wheels for musllinux also carry libgcc_s, the runtime library of GCC, in anyseg.libs: GPL-3.0",
+    "or later with the GCC Runtime Library Exception 3.1. Sources: https://gcc.gnu.org/git/gcc.git",
+    "License: https://www.gnu.org/licenses/gpl-3.0.html",
+    "Exception: https://www.gnu.org/licenses/gcc-exception-3.1.html",
     "",
 ]
 
