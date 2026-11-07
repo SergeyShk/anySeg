@@ -56,6 +56,15 @@ subalternos
 universe
 videoarte
 yernos
+adarme
+paquiderme
+straperlo
+premodernos
+ultramodernos
+antimodernos
+multiverse
+metaverse
+traverse
 # Well-known names, which may start a sentence or a headline in capitals
 bonaparte
 buonaparte
@@ -70,3 +79,18 @@ montecarlo
 olarte
 ugarte
 uriarte
+reverte
+alberte
+searle
+earle
+malaparte
+mirandola
+astarte
+choderlos
+juancarlos
+juancarlo
+valcarlos
+benicarlo
+bouterse
+solarte
+guanarteme

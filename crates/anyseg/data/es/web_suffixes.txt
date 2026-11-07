@@ -1,0 +1,22 @@
+# Top-level domains of the Spanish-speaking countries and regions; those that are words are also in capital_words of the conventions
+mx
+ar
+cl
+co
+pe
+ve
+ec
+uy
+py
+bo
+cr
+pa
+do
+gt
+hn
+ni
+sv
+cu
+pr
+cat
+eus

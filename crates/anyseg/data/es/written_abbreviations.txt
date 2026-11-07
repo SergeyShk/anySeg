@@ -1,5 +1,5 @@
 # Abbreviations as they are written, whatever comes after them: «EE. UU.», titles in capitals before a name in normal
-# case, «DR. Juan Pérez», and forms with a first capital letter of words that are no abbreviation in lowercase, «Col. Roma».
+# case, «DR. Juan Pérez», and forms with a first capital letter of words that are no abbreviation in lowercase, «Vid. García».
 EE
 UU
 SR
@@ -12,5 +12,31 @@ LIC
 ARQ
 PROF
 GRAL
-Col
 Vid
+DÑA
+CNEL
+MTRO
+MTRA
+MONS
+LCDO
+LCDA
+LICDA
+DRES
+SRAS
+TTE
+PBRO
+EXCMO
+EXCMA
+ILMO
+ILMA
+SGTO
+PROFR
+PROFRA
+# María, Ciudad, Plaza, San, Delegación: forms with a first capital letter of what is a word or nothing in lowercase
+Ma
+Cd
+Pl
+Sn
+Del
+Ph
+As

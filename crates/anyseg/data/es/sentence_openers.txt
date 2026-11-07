@@ -1,6 +1,7 @@
 # Words with a capital letter that seldom follow an initial: before them, a single capital letter with a period ends a
-# sentence, as in «Felipe V. El rey». Words that names mostly start with, as «De», «La», «Los», are not here; «El» and «Su»
-# are here at the price of «M. El Baradei» and «Y. Su», as they start sentences far more often than they follow initials.
+# sentence, as in «Felipe V. El rey». Words that names mostly start with, as «De», «Las», «Los», «Le», are not here; «El»,
+# «La» and «Su» are here at the price of «M. El Baradei», «M. La Torre» and «Y. Su», as they start sentences far more often
+# than they follow initials.
 el
 un
 una
@@ -32,3 +33,35 @@ durante
 desde
 según
 además
+lo
+no
+tras
+después
+también
+así
+cabe
+ese
+esa
+esos
+esas
+uno
+algunos
+algunas
+otro
+otra
+otros
+otras
+ya
+si
+cada
+todo
+toda
+todos
+todas
+mientras
+aunque
+entonces
+ahora
+hoy
+ayer
+la
