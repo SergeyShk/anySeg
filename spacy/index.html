@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://sergeyshk.github.io/anySeg/spacy/">
       
       
-        <link rel="prev" href="../russian/">
+        <link rel="prev" href="../spanish/">
       
       
       
@@ -533,6 +533,33 @@
       
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../spanish/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spanish
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
     
   
   
@@ -603,6 +630,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Tokenizer">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#words" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multiword tokens
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -698,6 +742,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Tokenizer">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#words" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multiword tokens
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -798,7 +859,7 @@
 </div>
 </div>
 <h2 id="tokenizer">Tokenizer<a class="headerlink" href="#tokenizer" title="Permanent link">&para;</a></h2>
-<p><code>anyseg.Tokenizer.v1</code> is the tokenizer of the section <code>[nlp.tokenizer]</code> of a configuration. The text of a <code>Doc</code> is the text given, and the whitespace is kept as spaCy keeps it: one space after a token is its <code>whitespace_</code>, and the rest of the text between tokens - line breaks, more spaces, invisible separators - is a token of its own. <code>nlp.tokenizer.pipe(texts, batch_size=1000)</code> gives the documents of many texts, segmented in batches without the GIL as <a href="../segmenter/#pipe"><code>Segmenter.pipe</code></a> does.</p>
+<p><code>anyseg.Tokenizer.v1</code> is the tokenizer of the section <code>[nlp.tokenizer]</code> of a configuration. The text of a <code>Doc</code> is the text given, except that a lone surrogate, which spaCy cannot keep, is U+FFFD. One space after a token is its <code>whitespace_</code>, and the rest of the text between tokens - line breaks, more spaces, invisible separators - is a token of its own with <code>is_space</code>. <code>nlp.tokenizer.pipe(texts, batch_size=1000)</code> gives the documents of many texts, segmented in batches without the GIL as <a href="../segmenter/#pipe"><code>Segmenter.pipe</code></a> does.</p>
 <table>
 <thead>
 <tr>
@@ -843,9 +904,31 @@
 </div>
 </div>
 </div>
-<p>The settings are in the configuration, so a saved pipeline loads with the tokenizer. A trained pipeline takes it when it is loaded:</p>
+<p>The settings are in the configuration, so a saved pipeline loads with the tokenizer, and a pickled <code>Doc</code> of such a pipeline needs anySeg to load. A trained pipeline takes it when it is loaded:</p>
 <div class="highlight"><pre><span></span><code><span class="n">nlp</span> <span class="o">=</span> <span class="n">spacy</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"ru_core_news_sm"</span><span class="p">,</span> <span class="n">config</span><span class="o">=</span><span class="p">{</span><span class="s2">"nlp"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"tokenizer"</span><span class="p">:</span> <span class="n">tokenizer</span><span class="p">}})</span>
 </code></pre></div>
+<h3 id="words">Multiword tokens<a class="headerlink" href="#words" title="Permanent link">&para;</a></h3>
+<p>The tokens of a <code>Doc</code> are those of the text, and the words of a multiword token are in its extension <code>token._.anyseg_words</code>: a list of dictionaries with their forms, and <code>None</code> for a token of one word or one that retokenizing changed.</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="3:2"><input checked="checked" id="__tabbed_3_1" name="__tabbed_3" type="radio" /><input id="__tabbed_3_2" name="__tabbed_3" type="radio" /><div class="tabbed-labels"><label for="__tabbed_3_1">Code</label><label for="__tabbed_3_2">Result</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><span class="n">spanish</span> <span class="o">=</span> <span class="n">spacy</span><span class="o">.</span><span class="n">blank</span><span class="p">(</span><span class="s2">"es"</span><span class="p">,</span> <span class="n">config</span><span class="o">=</span><span class="p">{</span><span class="s2">"nlp"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"tokenizer"</span><span class="p">:</span> <span class="n">tokenizer</span><span class="p">}})</span>
+<span class="n">doc</span> <span class="o">=</span> <span class="n">spanish</span><span class="p">(</span><span class="s2">"Vengo del mar"</span><span class="p">)</span>
+<span class="p">[</span><span class="n">token</span><span class="o">.</span><span class="n">text</span> <span class="k">for</span> <span class="n">token</span> <span class="ow">in</span> <span class="n">doc</span><span class="p">],</span> <span class="n">doc</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">_</span><span class="o">.</span><span class="n">anyseg_words</span>
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code>(['Vengo', 'del', 'mar'], [{'form': 'de'}, {'form': 'el'}])
+</code></pre></div>
+</div>
+</div>
+</div>
+<p>The extension lives in the user data of a <code>Doc</code>:</p>
+<ul>
+<li>a <code>DocBin</code> keeps it with <code>store_user_data=True</code>, as a tuple in place of the list, and <code>Span.as_doc</code> with <code>copy_user_data=True</code>;</li>
+<li><code>Doc.from_docs</code> keeps it by the positions in the text, so a <code>Doc</code> cut from a longer one should not hold keys of the part cut away;</li>
+<li><code>Doc.to_json(underscore=["anyseg_words"])</code> needs a multiword token in the <code>Doc</code>, and <code>Doc.from_json</code> fails on a key of a token that was retokenized or cut away.</li>
+</ul>
 <h2 id="sentencizer">Sentences<a class="headerlink" href="#sentencizer" title="Permanent link">&para;</a></h2>
 <p>The component <code>anyseg_sentencizer</code> sets the sentence starts (<code>is_sent_start</code>) of a document as anySeg splits its text; before the parser it fixes the sentences, and the parser keeps them. It works with any tokenizer: a sentence starts at the token where its first character is, and the whitespace after a sentence stays in it.</p>
 <div class="highlight"><pre><span></span><code><span class="n">nlp</span> <span class="o">=</span> <span class="n">spacy</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"ru_core_news_sm"</span><span class="p">,</span> <span class="n">config</span><span class="o">=</span><span class="p">{</span><span class="s2">"nlp"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"tokenizer"</span><span class="p">:</span> <span class="n">tokenizer</span><span class="p">}})</span>
@@ -893,7 +976,7 @@
 </tr>
 </tbody>
 </table>
-<div class="tabbed-set tabbed-alternate" data-tabs="3:2"><input checked="checked" id="__tabbed_3_1" name="__tabbed_3" type="radio" /><input id="__tabbed_3_2" name="__tabbed_3" type="radio" /><div class="tabbed-labels"><label for="__tabbed_3_1">Code</label><label for="__tabbed_3_2">Result</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="4:2"><input checked="checked" id="__tabbed_4_1" name="__tabbed_4" type="radio" /><input id="__tabbed_4_2" name="__tabbed_4" type="radio" /><div class="tabbed-labels"><label for="__tabbed_4_1">Code</label><label for="__tabbed_4_2">Result</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code><span class="n">nlp</span> <span class="o">=</span> <span class="n">spacy</span><span class="o">.</span><span class="n">blank</span><span class="p">(</span><span class="s2">"ru"</span><span class="p">)</span>
@@ -923,9 +1006,9 @@
 <tr>
 <td style="text-align: left;">SynTagRus</td>
 <td style="text-align: right;">95.39</td>
-<td style="text-align: right;"><strong>98.53</strong></td>
+<td style="text-align: right;"><strong>98.92</strong></td>
 <td style="text-align: right;">81.83</td>
-<td style="text-align: right;"><strong>82.96</strong></td>
+<td style="text-align: right;"><strong>82.95</strong></td>
 </tr>
 <tr>
 <td style="text-align: left;">Taiga</td>
@@ -950,14 +1033,55 @@
 </tr>
 </tbody>
 </table>
-<p>The tokenizer gives 2.7 M tokens per second, nearly ten times as many as the tokenizer of spaCy; with the component, 1.5 M against 0.26 M with the <code>sentencizer</code> of spaCy (SynTagRus test, one thread, Apple M3 Pro).</p>
+<p>With both, <code>es_core_news_sm</code> 3.8.0 does so on the test parts of the Spanish treebanks too. The parser reads the tokens of the text, and <a href="#from_doc"><code>from_doc</code></a> gives the words of the multiword tokens for the score:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Test set</th>
+<th style="text-align: right;">Sentences, spaCy</th>
+<th style="text-align: right;">Sentences, anySeg</th>
+<th style="text-align: right;">LAS, spaCy</th>
+<th style="text-align: right;">LAS, anySeg</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">AnCora</td>
+<td style="text-align: right;">97.70</td>
+<td style="text-align: right;"><strong>98.66</strong></td>
+<td style="text-align: right;">80.43</td>
+<td style="text-align: right;"><strong>82.06</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">GSD</td>
+<td style="text-align: right;">88.14</td>
+<td style="text-align: right;"><strong>90.97</strong></td>
+<td style="text-align: right;">69.35</td>
+<td style="text-align: right;"><strong>71.09</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">PUD</td>
+<td style="text-align: right;">97.34</td>
+<td style="text-align: right;"><strong>98.80</strong></td>
+<td style="text-align: right;">73.35</td>
+<td style="text-align: right;"><strong>74.57</strong></td>
+</tr>
+</tbody>
+</table>
+<p>The tokenizer gives 2.3 M tokens per second, nearly ten times as many as the tokenizer of spaCy; with the component, 1.4 M against 0.24 M with the <code>sentencizer</code> of spaCy (SynTagRus test, one thread, Apple M3 Pro). On AnCora test it gives 2.3 M against 0.42 M, and 1.6 M against 0.39 M.</p>
 <h2 id="documents">Documents<a class="headerlink" href="#documents" title="Permanent link">&para;</a></h2>
 <div class="metric-card">
 <h3 id="to_doc">spaCy document of a document<a class="headerlink" href="#to_doc" title="Permanent link">&para;</a></h3>
 <p class="metric-meta"><code>anyseg.spacy.to_doc</code> · <code>Doc</code></p>
 <div class="signature highlight"><pre><span></span><code><span class="n">to_doc</span><span class="p">(</span><span class="n">document</span><span class="p">,</span> <span class="n">vocab</span><span class="p">)</span>
 </code></pre></div>
-<p>The <code>Doc</code> of a document: its text, its tokens with the whitespace between them as the tokenizer makes it, and its sentences. The columns <code>lemma</code>, <code>upos</code>, <code>xpos</code> and <code>feats</code> become <code>lemma_</code>, <code>pos_</code>, <code>tag_</code> and <code>morph</code> where set. Heads and relations are set when every word has a head, and the heads of every sentence must form a tree with one root: the relation <code>root</code> becomes <code>ROOT</code>, a word without a relation gets <code>dep</code> (a root - <code>ROOT</code>), and a whitespace token depends on the token before it with <code>dep</code>. A whitespace token has its text for a lemma and <code>SPACE</code> for a part of speech.</p>
+<p>The <code>Doc</code> of a document: its text, its tokens with the whitespace between them as the tokenizer makes it, and its sentences.</p>
+<ul>
+<li>The columns <code>lemma</code>, <code>upos</code>, <code>xpos</code> and <code>feats</code> become <code>lemma_</code>, <code>pos_</code>, <code>tag_</code> and <code>morph</code> where set. A whitespace token has its text for a lemma and <code>SPACE</code> for a part of speech.</li>
+<li>Heads and relations are set when every word has a head, and the heads of every sentence must form a tree with one root. The relation <code>root</code> becomes <code>ROOT</code>, a word without a relation gets <code>dep</code> (a root - <code>ROOT</code>), and a whitespace token depends on the token before it with <code>dep</code>.</li>
+<li>The words of a multiword token go to <code>token._.anyseg_words</code> with their columns: <code>head</code> is the ID of a word in its sentence, <code>sentence_words</code> the number of words in it, and <code>main</code> marks the word that gave the token its values, its word closest to the root or its first word without heads.</li>
+<li>The vocabulary takes the rule of anySeg for <code>is_space</code>, so that a pickled document keeps it; a tokenizer of spaCy on that vocabulary then marks invisible separators as whitespace too.</li>
+</ul>
 <table>
 <thead>
 <tr>
@@ -984,9 +1108,9 @@
 </table>
 <p>Exceptions:</p>
 <ul>
-<li><code>ValueError</code> - the document has a multiword token or a part of speech that spaCy does not know, or the heads of a sentence do not form a tree with one root.</li>
+<li><code>ValueError</code> - a token takes a part of speech that spaCy does not know, features that are not <code>name=value</code> pairs, or the heads of a sentence do not form a tree with one root.</li>
 </ul>
-<div class="tabbed-set tabbed-alternate" data-tabs="4:2"><input checked="checked" id="__tabbed_4_1" name="__tabbed_4" type="radio" /><input id="__tabbed_4_2" name="__tabbed_4" type="radio" /><div class="tabbed-labels"><label for="__tabbed_4_1">Code</label><label for="__tabbed_4_2">Result</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="5:2"><input checked="checked" id="__tabbed_5_1" name="__tabbed_5" type="radio" /><input id="__tabbed_5_2" name="__tabbed_5" type="radio" /><div class="tabbed-labels"><label for="__tabbed_5_1">Code</label><label for="__tabbed_5_2">Result</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">anyseg</span><span class="w"> </span><span class="kn">import</span> <span class="n">Segmenter</span>
@@ -1010,7 +1134,14 @@
 <p class="metric-meta"><code>anyseg.spacy.from_doc</code> · <code>Document</code></p>
 <div class="signature highlight"><pre><span></span><code><span class="n">from_doc</span><span class="p">(</span><span class="n">doc</span><span class="p">)</span>
 </code></pre></div>
-<p>The <a href="../document/">document</a> of a <code>Doc</code>, one word per token. Tokens lose the whitespace and the invisible separators at their edges, and tokens of nothing else are dropped. A sentence of the <code>Doc</code> starts at its first token left, a <code>Doc</code> without sentences is a sentence per paragraph, and every paragraph starts a sentence. <code>lemma_</code>, <code>pos_</code>, <code>tag_</code>, <code>morph</code>, the heads and <code>dep_</code> become the columns <code>lemma</code>, <code>upos</code>, <code>xpos</code>, <code>feats</code>, <code>head</code> and <code>deprel</code>, empty values <code>None</code>, the features in the order of UD; a token without a head has neither. The relation <code>ROOT</code> becomes <code>root</code>, and a word whose head is a dropped token depends on the head of that token. A sentence has one root: the root of the parse or, if the sentence lacks it, the first word whose head is in another sentence; the other such words depend on the root with the relation <code>dep</code>.</p>
+<p>The <a href="../document/">document</a> of a <code>Doc</code>, one word per token except those with <code>token._.anyseg_words</code>.</p>
+<ul>
+<li>Tokens lose the whitespace and the invisible separators at their edges, and tokens of nothing else are dropped. A sentence of the <code>Doc</code> starts at its first token left, a <code>Doc</code> without sentences is a sentence per paragraph, and every paragraph starts a sentence.</li>
+<li><code>lemma_</code>, <code>pos_</code>, <code>tag_</code>, <code>morph</code>, the heads and <code>dep_</code> become the columns <code>lemma</code>, <code>upos</code>, <code>xpos</code>, <code>feats</code>, <code>head</code> and <code>deprel</code>, empty values <code>None</code>, the features in the order of UD; a token without a head has neither. In a lemma, a line break or a tab becomes a space inside, with the spaces around it, and goes away at an edge.</li>
+<li>The relation <code>ROOT</code> becomes <code>root</code>, and a word whose head is a dropped token depends on the head of that token. A sentence has one root: the root of the parse or, if the sentence lacks it, the first word whose head is in another sentence; the other such words depend on the root with <code>dep</code>.</li>
+<li>The words of a multiword token keep the columns they have in the extension, but the word marked <code>main</code> takes the value of the token, even over an edit of that word in the extension. Without a mark, the first word takes the value for a column none of them has.</li>
+<li>The heads of these words stay if every word has <code>head</code> and <code>sentence_words</code>, <code>sentence_words</code> is the number of words of the sentence, the head of the token is the head of one of its words, which then stands for the token, the marked one if it can, and the words form a tree; otherwise the first word takes the head and the relation of the token, and the other words depend on it with <code>dep</code>. A word of another token that depends on a word of a multiword token other than the one that stands for it moves to that one.</li>
+</ul>
 <table>
 <thead>
 <tr>
@@ -1031,9 +1162,10 @@
 </table>
 <p>Exceptions:</p>
 <ul>
-<li><code>ValueError</code> - a token runs over a blank line, or a value cannot be in its column, as for <a href="../document/#set_columns"><code>set_columns</code></a>.</li>
+<li><code>ValueError</code> - a token runs over a blank line, the extension is not a list of words with their forms or holds a form that cannot be in a document, or a value cannot be in its column, as for <a href="../document/#set_columns"><code>set_columns</code></a>;</li>
+<li><code>TypeError</code> - a value of the extension is of a wrong type, as for <code>set_columns</code>.</li>
 </ul>
-<div class="tabbed-set tabbed-alternate" data-tabs="5:2"><input checked="checked" id="__tabbed_5_1" name="__tabbed_5" type="radio" /><input id="__tabbed_5_2" name="__tabbed_5" type="radio" /><div class="tabbed-labels"><label for="__tabbed_5_1">Code</label><label for="__tabbed_5_2">Result</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="6:2"><input checked="checked" id="__tabbed_6_1" name="__tabbed_6" type="radio" /><input id="__tabbed_6_2" name="__tabbed_6" type="radio" /><div class="tabbed-labels"><label for="__tabbed_6_1">Code</label><label for="__tabbed_6_2">Result</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code><span class="n">document</span> <span class="o">=</span> <span class="n">from_doc</span><span class="p">(</span><span class="n">doc</span><span class="p">)</span>

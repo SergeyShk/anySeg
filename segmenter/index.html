@@ -701,6 +701,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../spanish/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spanish
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../spacy/" class="md-nav__link">
         
   
@@ -886,7 +913,7 @@
 <h1 id="segmenter">Segmenter<a class="headerlink" href="#segmenter" title="Permanent link">&para;</a></h1>
 <div class="signature highlight"><pre><span></span><code><span class="n">Segmenter</span><span class="p">(</span><span class="n">lang</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">abbreviations</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">tokens</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
 </code></pre></div>
-<p>Segmenter of texts in one language: it gives the tokens and the sentences of a text as spans of it, and the <a href="../document/">document</a> of a text. The text is never changed. A segmenter is immutable: create it once and use it throughout the program, from several threads at once, which segment long texts in parallel; it can be pickled and equals the segmenters of the same language and lists.</p>
+<p>Segmenter of texts in one language: it gives the tokens and the sentences of a text as spans of it, and the <a href="../document/">document</a> of a text. The text is never changed, and a lone surrogate, as in JSON cut in the middle of a character, counts as U+FFFD and stays in the spans. A segmenter is immutable: create it once and use it throughout the program, from several threads at once, which segment long texts in parallel; it can be pickled and equals the segmenters of the same language and lists.</p>
 <p>Exceptions:</p>
 <ul>
 <li><code>ValueError</code> - the language is not supported, an <a href="#lists">abbreviation</a> is not a word of letters, or a <a href="#lists">token</a> is empty, has whitespace or control characters or starts or ends with an invisible separator;</li>
@@ -922,7 +949,7 @@
 <td style="text-align: left;"><code>lang</code></td>
 <td style="text-align: left;"><code>str</code></td>
 <td style="text-align: left;">-</td>
-<td style="text-align: left;">ISO 639-1 code of the language: <code>"ru"</code></td>
+<td style="text-align: left;">ISO 639-1 code of the language: <code>"ru"</code>, <code>"es"</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>abbreviations</code></td>
@@ -942,8 +969,8 @@
 <h2 id="lists">Lists of your own<a class="headerlink" href="#lists" title="Permanent link">&para;</a></h2>
 <p>The rules of a language know the common abbreviations and the usual kinds of tokens; a text of a special field may need more.</p>
 <ul>
-<li><strong>Abbreviations</strong> are words that keep a period after them: <code>"сущ"</code> or <code>"сущ."</code>, in any case. Such a word with its period is one token and ends a sentence as the <a href="../russian/#sentence-abbreviations">abbreviations of the language</a> do. The segmenter keeps them lowercase, without the period and the stress marks.</li>
-<li><strong>Tokens</strong> are strings that are one token each, as written: <code>"C++"</code>, <code>"т.н."</code>. A string matches where a token would start and no letter or digit adjoins it; of several strings that match at one place, the longest wins.</li>
+<li><strong>Abbreviations</strong> are words that keep a period after them: <code>"сущ"</code> or <code>"сущ."</code>, in any case. Such a word with its period is one token and ends a sentence as the abbreviations of the language do: <a href="../russian/#sentence-abbreviations">Russian</a>, <a href="../spanish/#sentence-abbreviations">Spanish</a>. The segmenter keeps them lowercase, without the period and the marks that the language leaves out of its lists.</li>
+<li><strong>Tokens</strong> are strings that are one token each, as written: <code>"C++"</code>, <code>"т.н."</code>. A string matches where a token would start and no letter or digit adjoins it; of several strings that match at one place, the longest wins. Such a token is one word.</li>
 </ul>
 <div class="tabbed-set tabbed-alternate" data-tabs="2:2"><input checked="checked" id="__tabbed_2_1" name="__tabbed_2" type="radio" /><input id="__tabbed_2_2" name="__tabbed_2" type="radio" /><div class="tabbed-labels"><label for="__tabbed_2_1">Code</label><label for="__tabbed_2_2">Result</label></div>
 <div class="tabbed-content">
@@ -966,7 +993,7 @@ Segmenter('ru', abbreviations=('сущ',), tokens=('C++', 'т.н.'))
 <p class="metric-meta"><code>tokenize</code> · <code>list[Span]</code></p>
 <div class="signature highlight"><pre><span></span><code><span class="n">tokenize</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
 </code></pre></div>
-<p>The tokens of the text in order. Whitespace, control characters and the invisible separators - zero width space, word joiner, byte order mark, and a soft hyphen and zero width (non-)joiner outside a word - separate the tokens and are in none of them. How a language splits its text, see <a href="../russian/">Russian</a>.</p>
+<p>The tokens of the text in order. Whitespace, control characters and the invisible separators - zero width space, word joiner, byte order mark, and a soft hyphen and zero width (non-)joiner outside a word - separate the tokens and are in none of them. How a language splits its text, see <a href="../russian/">Russian</a> and <a href="../spanish/">Spanish</a>.</p>
 <table>
 <thead>
 <tr>
@@ -985,10 +1012,6 @@ Segmenter('ru', abbreviations=('сущ',), tokens=('C++', 'т.н.'))
 </tr>
 </tbody>
 </table>
-<p>Exceptions:</p>
-<ul>
-<li><code>UnicodeEncodeError</code> - the text contains a lone surrogate.</li>
-</ul>
 <div class="tabbed-set tabbed-alternate" data-tabs="3:2"><input checked="checked" id="__tabbed_3_1" name="__tabbed_3" type="radio" /><input id="__tabbed_3_2" name="__tabbed_3" type="radio" /><div class="tabbed-labels"><label for="__tabbed_3_1">Code</label><label for="__tabbed_3_2">Result</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
@@ -1007,7 +1030,7 @@ Segmenter('ru', abbreviations=('сущ',), tokens=('C++', 'т.н.'))
 <p class="metric-meta"><code>sentenize</code> · <code>list[Span]</code></p>
 <div class="signature highlight"><pre><span></span><code><span class="n">sentenize</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
 </code></pre></div>
-<p>The sentences of the text in order, each from the start of its first token to the end of its last one. A paragraph - the part of the text between blank lines - always starts a sentence; inside it, final marks, abbreviations, emoticons and line breaks end sentences by the rules of the <a href="../russian/#sentences">language</a>.</p>
+<p>The sentences of the text in order, each from the start of its first token to the end of its last one. A paragraph - the part of the text between blank lines - always starts a sentence; inside it, final marks, abbreviations, emoticons and line breaks end sentences by the rules of the language: <a href="../russian/#sentences">Russian</a>, <a href="../spanish/#sentences">Spanish</a>.</p>
 <table>
 <thead>
 <tr>
@@ -1026,10 +1049,6 @@ Segmenter('ru', abbreviations=('сущ',), tokens=('C++', 'т.н.'))
 </tr>
 </tbody>
 </table>
-<p>Exceptions:</p>
-<ul>
-<li><code>UnicodeEncodeError</code> - the text contains a lone surrogate.</li>
-</ul>
 <div class="tabbed-set tabbed-alternate" data-tabs="4:2"><input checked="checked" id="__tabbed_4_1" name="__tabbed_4" type="radio" /><input id="__tabbed_4_2" name="__tabbed_4" type="radio" /><div class="tabbed-labels"><label for="__tabbed_4_1">Code</label><label for="__tabbed_4_2">Result</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
@@ -1051,7 +1070,7 @@ Segmenter('ru', abbreviations=('сущ',), tokens=('C++', 'т.н.'))
 <p class="metric-meta"><code>segment</code> · <code>Document</code></p>
 <div class="signature highlight"><pre><span></span><code><span class="n">segment</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
 </code></pre></div>
-<p>The <a href="../document/">document</a> of the text: its tokens as <code>tokenize</code> gives them, one word per token, its sentences as <code>sentenize</code> gives them, its paragraphs and their lines. The document keeps the text and gives the parts as views of it.</p>
+<p>The <a href="../document/">document</a> of the text: its tokens as <code>tokenize</code> gives them, their words, its sentences as <code>sentenize</code> gives them, its paragraphs and their lines. A token holds several words where the language writes them together: <a href="../spanish/#multiword">Spanish</a> «del» is «de» and «el». The document keeps the text and gives the parts as views of it.</p>
 <table>
 <thead>
 <tr>
@@ -1070,19 +1089,17 @@ Segmenter('ru', abbreviations=('сущ',), tokens=('C++', 'т.н.'))
 </tr>
 </tbody>
 </table>
-<p>Exceptions:</p>
-<ul>
-<li><code>UnicodeEncodeError</code> - the text contains a lone surrogate.</li>
-</ul>
 <div class="tabbed-set tabbed-alternate" data-tabs="5:2"><input checked="checked" id="__tabbed_5_1" name="__tabbed_5" type="radio" /><input id="__tabbed_5_2" name="__tabbed_5" type="radio" /><div class="tabbed-labels"><label for="__tabbed_5_1">Code</label><label for="__tabbed_5_2">Result</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code><span class="n">doc</span> <span class="o">=</span> <span class="n">segmenter</span><span class="o">.</span><span class="n">segment</span><span class="p">(</span><span class="s2">"Ёж идёт домой.</span><span class="se">\n\n</span><span class="s2">Кот спит"</span><span class="p">)</span>
 <span class="p">[</span><span class="n">sentence</span><span class="o">.</span><span class="n">text</span> <span class="k">for</span> <span class="n">sentence</span> <span class="ow">in</span> <span class="n">doc</span><span class="o">.</span><span class="n">sentences</span><span class="p">],</span> <span class="nb">len</span><span class="p">(</span><span class="n">doc</span><span class="o">.</span><span class="n">tokens</span><span class="p">)</span>
+<span class="p">[</span><span class="n">word</span><span class="o">.</span><span class="n">form</span> <span class="k">for</span> <span class="n">word</span> <span class="ow">in</span> <span class="n">Segmenter</span><span class="p">(</span><span class="s2">"es"</span><span class="p">)</span><span class="o">.</span><span class="n">segment</span><span class="p">(</span><span class="s2">"Vengo del mar"</span><span class="p">)</span><span class="o">.</span><span class="n">words</span><span class="p">]</span>
 </code></pre></div>
 </div>
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code>(['Ёж идёт домой.', 'Кот спит'], 6)
+['Vengo', 'de', 'el', 'mar']
 </code></pre></div>
 </div>
 </div>
@@ -1093,7 +1110,7 @@ Segmenter('ru', abbreviations=('сущ',), tokens=('C++', 'т.н.'))
 <p class="metric-meta"><code>pipe</code> · <code>Iterator[Document]</code></p>
 <div class="signature highlight"><pre><span></span><code><span class="n">pipe</span><span class="p">(</span><span class="n">texts</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">threads</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="mi">1000</span><span class="p">)</span>
 </code></pre></div>
-<p>The documents of many texts, as <code>segment</code> gives them, in the order of the texts. The texts are taken from the iterable as the documents are asked for, <code>batch_size</code> at a time, and every batch is segmented without the GIL, on up to <code>threads</code> threads - at most one per core and per 4 KB of the batch: other Python threads run meanwhile, and several threads speed up a large collection of texts even with the GIL. A text that is not a string or holds a lone surrogate raises its error after the documents of the texts before it and ends the iteration, as does an error of the iterable; an interrupt such as <code>KeyboardInterrupt</code> comes at once. One iterator serves one thread at a time: a call while another runs raises <code>ValueError</code>.</p>
+<p>The documents of many texts, as <code>segment</code> gives them, in the order of the texts. The texts are taken from the iterable as the documents are asked for, <code>batch_size</code> at a time, and every batch is segmented without the GIL, on up to <code>threads</code> threads - at most one per core and per 4 KB of the batch: other Python threads run meanwhile, and several threads speed up a large collection of texts even with the GIL. A text that is not a string raises its error after the documents of the texts before it and ends the iteration, as does an error of the iterable; an interrupt such as <code>KeyboardInterrupt</code> comes at once. One iterator serves one thread at a time: a call while another runs raises <code>ValueError</code>.</p>
 <table>
 <thead>
 <tr>
@@ -1127,8 +1144,7 @@ Segmenter('ru', abbreviations=('сущ',), tokens=('C++', 'т.н.'))
 <p>Exceptions:</p>
 <ul>
 <li><code>ValueError</code> - <code>threads</code> or <code>batch_size</code> is less than 1;</li>
-<li><code>TypeError</code> - <code>texts</code> is a string or not iterable, or a text is not a string;</li>
-<li><code>UnicodeEncodeError</code> - a text contains a lone surrogate.</li>
+<li><code>TypeError</code> - <code>texts</code> is a string or not iterable, or a text is not a string.</li>
 </ul>
 <div class="tabbed-set tabbed-alternate" data-tabs="6:2"><input checked="checked" id="__tabbed_6_1" name="__tabbed_6" type="radio" /><input id="__tabbed_6_2" name="__tabbed_6" type="radio" /><div class="tabbed-labels"><label for="__tabbed_6_1">Code</label><label for="__tabbed_6_2">Result</label></div>
 <div class="tabbed-content">
@@ -1183,7 +1199,7 @@ Segmenter('ru', abbreviations=('сущ',), tokens=('C++', 'т.н.'))
 </div>
 </div>
 <h2 id="rust">Rust<a class="headerlink" href="#rust" title="Permanent link">&para;</a></h2>
-<p>The segmenter is the Rust crate <code>anyseg</code>, with every language behind a Cargo feature: <code>ru</code> (Russian, on by default). It has the same <code>Segmenter</code> with <code>tokenize</code>, <code>sentenize</code> and <code>segment</code>, and gives positions in bytes of the UTF-8 string.</p>
+<p>The segmenter is the Rust crate <code>anyseg</code>, with every language behind a Cargo feature, on by default: <code>ru</code> (Russian) and <code>es</code> (Spanish). It has the same <code>Segmenter</code> with <code>tokenize</code>, <code>sentenize</code> and <code>segment</code>, and gives positions in bytes of the UTF-8 string. <code>segment_string</code> takes a <code>String</code> without copying it, and <code>ConlluWriter</code> writes documents - the pieces of a long text - into one CoNLL-U, with the sentences numbered through them.</p>
 <div class="highlight"><pre><span></span><code><span class="k">use</span><span class="w"> </span><span class="n">anyseg</span><span class="p">::</span><span class="n">Segmenter</span><span class="p">;</span>
 
 <span class="kd">let</span><span class="w"> </span><span class="n">segmenter</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Segmenter</span><span class="p">::</span><span class="n">new</span><span class="p">(</span><span class="s">"ru"</span><span class="p">).</span><span class="n">unwrap</span><span class="p">();</span>

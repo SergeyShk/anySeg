@@ -2,38 +2,42 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://sergeyshk.github.io/anySeg/</loc>
-         <lastmod>2026-11-01</lastmod>
+         <lastmod>2026-11-07</lastmod>
     </url>
     <url>
          <loc>https://sergeyshk.github.io/anySeg/authors/</loc>
-         <lastmod>2026-11-01</lastmod>
+         <lastmod>2026-11-07</lastmod>
     </url>
     <url>
          <loc>https://sergeyshk.github.io/anySeg/cli/</loc>
-         <lastmod>2026-11-01</lastmod>
+         <lastmod>2026-11-07</lastmod>
     </url>
     <url>
          <loc>https://sergeyshk.github.io/anySeg/comparison/</loc>
-         <lastmod>2026-11-01</lastmod>
+         <lastmod>2026-11-07</lastmod>
     </url>
     <url>
          <loc>https://sergeyshk.github.io/anySeg/document/</loc>
-         <lastmod>2026-11-01</lastmod>
+         <lastmod>2026-11-07</lastmod>
     </url>
     <url>
          <loc>https://sergeyshk.github.io/anySeg/installation/</loc>
-         <lastmod>2026-11-01</lastmod>
+         <lastmod>2026-11-07</lastmod>
     </url>
     <url>
          <loc>https://sergeyshk.github.io/anySeg/russian/</loc>
-         <lastmod>2026-11-01</lastmod>
+         <lastmod>2026-11-07</lastmod>
     </url>
     <url>
          <loc>https://sergeyshk.github.io/anySeg/segmenter/</loc>
-         <lastmod>2026-11-01</lastmod>
+         <lastmod>2026-11-07</lastmod>
     </url>
     <url>
          <loc>https://sergeyshk.github.io/anySeg/spacy/</loc>
-         <lastmod>2026-11-01</lastmod>
+         <lastmod>2026-11-07</lastmod>
+    </url>
+    <url>
+         <loc>https://sergeyshk.github.io/anySeg/spanish/</loc>
+         <lastmod>2026-11-07</lastmod>
     </url>
 </urlset>

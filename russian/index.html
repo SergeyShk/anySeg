@@ -16,7 +16,7 @@
         <link rel="prev" href="../cli/">
       
       
-        <link rel="next" href="../spacy/">
+        <link rel="next" href="../spanish/">
       
       
         
@@ -729,6 +729,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../spanish/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spanish
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../spacy/" class="md-nav__link">
         
   
@@ -1104,15 +1131,17 @@
 </div>
 </div>
 <h3 id="numbered-items">Numbered items<a class="headerlink" href="#numbered-items" title="Permanent link">&para;</a></h3>
-<p>A number with a period at the start of a paragraph or a line marks a list item and stays in its sentence. Inside a paragraph, after the end of a sentence, such a number before a capital letter is a sentence of its own, as the treebanks most often mark it.</p>
+<p>A number with a period at the start of a paragraph or a line marks a list item and stays in its sentence, as the UD guidelines ask. So does a number of up to three digits inside a line before a capital letter: at the start of a sentence, when the sentence before or after it has the number next to it, and after a colon, when the sentence after it starts with the next number. Any other number with a period after the end of a sentence, before a capital letter, is a sentence of its own: a heading, a year, an answer.</p>
 <div class="tabbed-set tabbed-alternate" data-tabs="10:2"><input checked="checked" id="__tabbed_10_1" name="__tabbed_10" type="radio" /><input id="__tabbed_10_2" name="__tabbed_10" type="radio" /><div class="tabbed-labels"><label for="__tabbed_10_1">Code</label><label for="__tabbed_10_2">Result</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><span class="p">[</span><span class="n">span</span><span class="o">.</span><span class="n">text</span> <span class="k">for</span> <span class="n">span</span> <span class="ow">in</span> <span class="n">segmenter</span><span class="o">.</span><span class="n">sentenize</span><span class="p">(</span><span class="s2">"1. Введение. Текст. 2. Обзор"</span><span class="p">)]</span>
+<div class="highlight"><pre><span></span><code><span class="p">[</span><span class="n">span</span><span class="o">.</span><span class="n">text</span> <span class="k">for</span> <span class="n">span</span> <span class="ow">in</span> <span class="n">segmenter</span><span class="o">.</span><span class="n">sentenize</span><span class="p">(</span><span class="s2">"План. 1. Прийти. 2. Уйти."</span><span class="p">)]</span>
+<span class="p">[</span><span class="n">span</span><span class="o">.</span><span class="n">text</span> <span class="k">for</span> <span class="n">span</span> <span class="ow">in</span> <span class="n">segmenter</span><span class="o">.</span><span class="n">sentenize</span><span class="p">(</span><span class="s2">"1. Введение. Текст. 2. Обзор"</span><span class="p">)]</span>
 </code></pre></div>
 </div>
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code>['1. Введение.', 'Текст.', '2.', 'Обзор']
+<div class="highlight"><pre><span></span><code>['План.', '1. Прийти.', '2. Уйти.']
+['1. Введение.', 'Текст.', '2.', 'Обзор']
 </code></pre></div>
 </div>
 </div>
@@ -1122,7 +1151,7 @@
 <ul>
 <li>before a list item - a bullet, an emoji, «1)», «1.», «а)» - or a line of dialogue;</li>
 <li>at a line without words: «***», «-»;</li>
-<li>after a line without final punctuation before a line with a capital letter: a heading, a line of a post. In a paragraph where some line ends with a comma or a semicolon before a line with a capital letter, as in verse, or some line goes on with a lowercase letter, as in text wrapped at the width of the page, this rule is silent for all its lines.</li>
+<li>after a line without final punctuation before a line with a capital letter: a heading, a line of a post. This rule is silent in text wrapped at the width of the page, where some line goes on with a lowercase letter, and in verse, except after a line without lowercase letters in a paragraph that has them, which is a heading. A paragraph reads as verse when some line ends with a comma or a semicolon before a line with a capital letter, or when its lines rhyme. Verse without rhymes and such marks splits by lines, as a post does.</li>
 </ul>
 <div class="tabbed-set tabbed-alternate" data-tabs="11:2"><input checked="checked" id="__tabbed_11_1" name="__tabbed_11" type="radio" /><input id="__tabbed_11_2" name="__tabbed_11" type="radio" /><div class="tabbed-labels"><label for="__tabbed_11_1">Code</label><label for="__tabbed_11_2">Result</label></div>
 <div class="tabbed-content">
@@ -1131,12 +1160,15 @@
 <span class="p">[</span><span class="n">span</span><span class="o">.</span><span class="n">text</span> <span class="k">for</span> <span class="n">span</span> <span class="ow">in</span> <span class="n">segmenter</span><span class="o">.</span><span class="n">sentenize</span><span class="p">(</span><span class="s2">"Нужно взять:</span><span class="se">\n</span><span class="s2">- паспорт</span><span class="se">\n</span><span class="s2">- СНИЛС</span><span class="se">\n</span><span class="s2">1) полис</span><span class="se">\n</span><span class="s2">✅ фото"</span><span class="p">)]</span>
 <span class="n">verse</span> <span class="o">=</span> <span class="s2">"Скажи-ка, дядя, ведь не даром</span><span class="se">\n</span><span class="s2">Москва, спалённая пожаром,</span><span class="se">\n</span><span class="s2">Французу отдана?</span><span class="se">\n</span><span class="s2">Ведь были ж схватки боевые"</span>
 <span class="p">[</span><span class="n">span</span><span class="o">.</span><span class="n">text</span> <span class="k">for</span> <span class="n">span</span> <span class="ow">in</span> <span class="n">segmenter</span><span class="o">.</span><span class="n">sentenize</span><span class="p">(</span><span class="n">verse</span><span class="p">)]</span>
+<span class="n">rhymes</span> <span class="o">=</span> <span class="s2">"Над тихой речкой встал туман</span><span class="se">\n</span><span class="s2">И скрыл прибрежные кусты</span><span class="se">\n</span><span class="s2">Отец уехал в дальний стан</span><span class="se">\n</span><span class="s2">И сжёг за собою мосты."</span>
+<span class="p">[</span><span class="n">span</span><span class="o">.</span><span class="n">text</span> <span class="k">for</span> <span class="n">span</span> <span class="ow">in</span> <span class="n">segmenter</span><span class="o">.</span><span class="n">sentenize</span><span class="p">(</span><span class="n">rhymes</span><span class="p">)]</span>
 </code></pre></div>
 </div>
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code>['Глава 1', 'Введение', 'Это текст главы.', 'Он короткий.']
 ['Нужно взять:', '- паспорт', '- СНИЛС', '1) полис', '✅ фото']
 ['Скажи-ка, дядя, ведь не даром\nМосква, спалённая пожаром,\nФранцузу отдана?', 'Ведь были ж схватки боевые']
+['Над тихой речкой встал туман\nИ скрыл прибрежные кусты\nОтец уехал в дальний стан\nИ сжёг за собою мосты.']
 </code></pre></div>
 </div>
 </div>
