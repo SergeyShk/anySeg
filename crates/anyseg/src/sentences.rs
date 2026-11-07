@@ -183,7 +183,10 @@ fn begins_upper(line: &str, sections: bool) -> bool {
             .count();
         if !(line[..first].ends_with('[')
             || rest[digits..].starts_with(':')
-            || (sections && section > digits && rest[section..].starts_with(' ')))
+            || (sections
+                && section > digits
+                && !rest[..section].ends_with('.')
+                && rest[section..].starts_with(' ')))
         {
             return false;
         }
@@ -206,6 +209,16 @@ fn ending<'a>(line: &'a str, weak: &[String]) -> Option<(&'a str, &'a str)> {
     };
     word.starts_with(char::is_lowercase)
         .then_some((word, &word[start..]))
+}
+
+/// The last two letters of a rhyme, which a grammatical form may share whatever comes before them
+fn last_two(end: &str) -> &str {
+    let start = end
+        .char_indices()
+        .rev()
+        .nth(1)
+        .map_or(0, |(start, _)| start);
+    &end[start..]
 }
 
 /// A line that does not end with punctuation: a heading, a line of a post
@@ -366,8 +379,7 @@ impl Splitter<'_> {
         }
         for pair in self.lines.windows(2) {
             let (before, after) = (pair[0].slice(self.text), pair[1].slice(self.text));
-            self.verse |= before.ends_with([',', ';'])
-                && begins_upper(after, self.tables.conventions.section_headings);
+            self.verse |= before.ends_with([',', ';']) && begins_upper(after, false);
             self.typeset |= after.starts_with(char::is_lowercase);
         }
         if !self.verse && !self.typeset {
@@ -408,7 +420,10 @@ impl Splitter<'_> {
             && match rhymes.as_slice() {
                 [(first, _), (second, _)] => second - first == 2 && self.metre(),
                 [(_, letters), rest @ ..] => {
-                    rest.len() + 1 >= MIN_RHYMES && rest.iter().any(|(_, end)| end != letters)
+                    rest.len() + 1 >= MIN_RHYMES
+                        && rest
+                            .iter()
+                            .any(|(_, end)| last_two(end) != last_two(letters))
                 }
                 [] => false,
             }
@@ -557,6 +572,11 @@ impl Splitter<'_> {
         // The source of a dateline in brackets, with the dash of its article after it: «Madrid, 3 may. (EFE).- El»
         if self.tables.conventions.closing_dashes
             && last + 5 < count
+            && self.piece(last) == "."
+            && last >= 2
+            && self
+                .piece(last - 2)
+                .starts_with(|c: char| c.is_ascii_digit())
             && self.piece(last + 1) == "("
             && self.piece(last + 3) == ")"
             && self.piece(last + 4) == "."
@@ -678,8 +698,8 @@ impl Splitter<'_> {
         for position in (index.saturating_sub(3)..=index).rev() {
             let piece = self.piece(position);
             let abbreviation = is_abbreviation(piece) && lowercase(piece);
-            // A token with inner periods keys as its parts, «т.д.» as «т д», and with capitals only where the list has
-            // no capitals of its own, so that «A.M.» is no «a. m.»
+            // A token with inner periods keys as its parts, «т.д.» as «т д», and with capitals only where capitals in
+            // the list are not as written, so that «A.M.» is no «a. m.»
             let word = if abbreviation
                 || (is_abbreviation(piece)
                     && piece[..piece.len() - 1].contains('.')
@@ -738,10 +758,10 @@ impl Splitter<'_> {
     /// Whether the abbreviations up to this one are one that the language writes with capitals and that ends a
     /// sentence: «44 a. C.», «EE. UU.», unlike the initials «Н. Э.» next to «н. э.»
     fn ends_as_written(&self, index: usize) -> bool {
-        let written = &self.tables.final_abbreviations_written;
-        if written.is_empty() {
+        if !self.tables.conventions.written_final_abbreviations {
             return false;
         }
+        let written = &self.tables.final_abbreviations_written;
         let mut key = String::new();
         for position in (index.saturating_sub(3)..=index).rev() {
             let piece = self.piece(position);
@@ -860,7 +880,16 @@ impl Splitter<'_> {
         let initials =
             previous.is_some_and(|piece| is_abbreviation(piece) && piece.chars().count() == 2);
         (!initials && !script.contains(letter) && capital.is_some_and(|c| script.contains(c)))
-            || (!initials && index > self.sentence && letter.is_uppercase() && opener())
+            || (!initials
+                && index > self.sentence
+                && letter.is_uppercase()
+                && opener()
+                // The first item of a series after a colon stays with its text: «EXPONEN: I. La empresa»
+                && !(self.tables.conventions.roman_items
+                    && self.piece(index - 1) == ":"
+                    && self
+                        .item(index)
+                        .is_some_and(|value| self.next_item(next) == Some(value + 1))))
             || (letter.is_uppercase()
                 && previous
                     .is_some_and(|piece| is_quantity(piece, self.tables.conventions.digit_groups))
@@ -883,8 +912,14 @@ impl Splitter<'_> {
     fn numbers_article(&self, index: usize) -> bool {
         index > 0 && self.piece(index) == "." && {
             let before = self.piece(index - 1);
+            // Past the bracket of a dateline: «MADRID, 12 ene. (EFE).— El»
+            let word = if before == ")" && index >= 2 {
+                self.piece(index - 2)
+            } else {
+                before
+            };
             before.starts_with(|c: char| c.is_ascii_digit())
-                || !before.contains(char::is_lowercase)
+                || (word.contains(char::is_uppercase) && !word.contains(char::is_lowercase))
                 || (index - 1 == self.sentence && self.piece(index + 1) != "--")
         }
     }
@@ -964,7 +999,7 @@ impl Splitter<'_> {
                 Some(letters) => (letters, true),
                 None => (piece, false),
             };
-            if letters.len() <= 4
+            if letters.len() <= 5
                 && (whole && letters.len() == 1 || !whole && period())
                 && let Some(value) = roman_value(letters)
             {
@@ -1925,13 +1960,62 @@ mod spanish {
 
     #[test]
     fn rhymes_and_lists() {
-        let list = "Objetivos del proyecto\nMejorar los procesos\nReducir los costos\nAumentar las ventas\nRevisar las cuentas\nCapacitar a los empleados";
-        assert_eq!(sentences(list).len(), 6);
+        for list in [
+            "Objetivos del proyecto\nMejorar los procesos\nReducir los costos\nAumentar las ventas\nRevisar las cuentas\nCapacitar a los empleados",
+            "Mejorar los resultados\nReducir los costos\nRevisar los contratos\nCapacitar a los empleados\nAtender a los mercados\nFirmar los acuerdos",
+            "Contactar a los clientes\nEvaluar a los estudiantes\nReunir a los docentes\nRevisar los planes\nActualizar los manuales\nCerrar las reuniones",
+            "Los niños cantan\nLas niñas bailan\nLos padres saltan\nLas madres hablan\nLos perros cazan\nLos gatos trepan",
+        ] {
+            assert_eq!(sentences(list).len(), 6, "{list}");
+        }
         whole(
             "Cultivo una rosa blanca\nEn junio como enero\nPara el amigo sincero\nQue me da su mano franca.",
         );
         whole(
             "Amor que vino del mar\nY se fue con la marea\nQuiso mi pecho cantar\nLa pena que me rodea.",
+        );
+    }
+
+    #[test]
+    fn found_in_review() {
+        each(&[
+            &["El brote de SRAS.", "La OMS avisó."],
+            &["Se me cayó el cel.", "Luego fui a comprar otro."],
+            &["Hola, doc.", "Necesito ayuda."],
+            &["Cel. 55 1234 5678.", "Luego vino."],
+            &["Pérez y cols. (2010) encontraron que no."],
+            &["La Cía. Telefónica Nacional de España vino."],
+            &["Pérez y Cía. Vende coches."],
+            &["Véase pp. 5 y ff.", "Luego vino."],
+            &[
+                "Muchas gracias.",
+                "(Aplausos).- Tiene la palabra el diputado.",
+            ],
+            &["¡Viva!", "(Aplausos).- Gracias a todos."],
+            &["MADRID, 3 may. (EFE).- El Gobierno aprobó."],
+            &["MADRID, 12 ene. (EFE).— El Gobierno aprobó."],
+            &["EXPONEN: I. La empresa vende.", "II. El banco compra."],
+            &["Hechos: I. El demandante vino.", "II. La demandada no."],
+            &["Responda: A.", "El perro B.", "La gata."],
+            &["Categoría: V.", "El equipo ganó."],
+            &["Dijo «Hola».—", "Volvió."],
+            &["Fue ayer (sí).—", "Volvió."],
+            &["JUAN.— Hola."],
+            &["XVII. Uno.", "XVIII. Dos.", "XIX. Tres."],
+        ]);
+        assert_eq!(
+            sentences("Hola a todos,\n1. Primero esto\n2. Luego aquello\nGracias\nJuan"),
+            [
+                "Hola a todos,",
+                "1. Primero esto",
+                "2. Luego aquello",
+                "Gracias",
+                "Juan"
+            ]
+        );
+        assert_eq!(
+            sentences("Hola,\n1.2 Métodos\nTexto\nOtra línea"),
+            ["Hola,\n1.2 Métodos", "Texto", "Otra línea"]
         );
     }
 

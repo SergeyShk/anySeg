@@ -28,3 +28,5 @@ dec
 ap
 lín
 fra
+cel
+doc
