@@ -490,9 +490,6 @@ impl Document {
         if multiword.is_empty() {
             return;
         }
-        if multiword.is_empty() {
-            return;
-        }
         let mut forms = Values::default();
         let mut token_words = Vec::with_capacity(self.tokens.len() + 1);
         let extra: usize = multiword.iter().map(|(_, words)| words.len() - 1).sum();
