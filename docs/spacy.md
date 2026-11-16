@@ -85,7 +85,7 @@ The extension lives in the user data of a `Doc`:
 
 ## Sentences { #sentencizer }
 
-The component `anyseg_sentencizer` sets the sentence starts (`is_sent_start`) of a document as anySeg splits its text; before the parser it fixes the sentences, and the parser keeps them. It works with any tokenizer: a sentence starts at the token where its first character is, and the whitespace after a sentence stays in it.
+The component `anyseg_sentencizer` sets the sentence starts (`is_sent_start`) of a document as anySeg splits its text; before the parser it fixes the sentences, and the parser keeps them. It works with any tokenizer: a sentence starts at the token where its first character is, and the whitespace after a sentence stays in it; whitespace before the first one is a sentence of its own, which a parser does not take for the head of the first.
 
 ``` python
 nlp = spacy.load("ru_core_news_sm", config={"nlp": {"tokenizer": tokenizer}})
@@ -147,7 +147,7 @@ The tokenizer gives 2.3 M tokens per second, nearly ten times as many as the tok
 to_doc(document, vocab)
 ```
 
-The `Doc` of a document: its text, its tokens with the whitespace between them as the tokenizer makes it, and its sentences.
+The `Doc` of a document: its text, its tokens with the whitespace between them as the tokenizer makes it, and its sentences; whitespace before the first sentence is a sentence of its own, as the sentencizer makes it.
 
 *   The columns `lemma`, `upos`, `xpos` and `feats` become `lemma_`, `pos_`, `tag_` and `morph` where set. A whitespace token has its text for a lemma and `SPACE` for a part of speech.
 *   Heads and relations are set when every word has a head, and the heads of every sentence must form a tree with one root. The relation `root` becomes `ROOT`, a word without a relation gets `dep` (a root - `ROOT`), and a whitespace token depends on the token before it with `dep`.

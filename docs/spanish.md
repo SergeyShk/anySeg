@@ -287,7 +287,7 @@ A paragraph is the part of the text between blank lines (or the paragraph separa
 
 *   before a list item - a bullet, a number with a minus, an emoji, «1)», «1.», «a)» - or a line of dialogue;
 *   at a line without words: «***», «-»;
-*   after a line without final punctuation before a line with a capital letter, maybe after the number of a section: a heading, a line of a post, «1.2 Métodos». This rule is silent in text wrapped at the width of the page, where some line goes on with a lowercase letter, and in verse, except after a line without lowercase letters in a paragraph that has them, which is a heading. A paragraph reads as verse when some line ends with a comma or a semicolon before a line with a capital letter, or when its lines rhyme. Verse without rhymes and such marks splits by lines, as a post does.
+*   after a line without final punctuation before a line with a capital letter, maybe after the number of a section: a heading, a line of a post, «1.2 Métodos». A line that ends with a word no heading ends with goes on: a preposition, an article, a conjunction, a possessive, a title before a name or a verb of saying before the speaker («en el cuarto de / Augusto», «dijo don / Rufo», «—Sí —preguntó / Benjamín»). This rule is silent in text wrapped at the width of the page, where some line goes on with a lowercase letter, and in verse, except after a line without lowercase letters in a paragraph that has them, which is a heading. A paragraph reads as verse when some line ends with a comma or a semicolon before a line with a capital letter, or when its lines rhyme. Verse without rhymes and such marks splits by lines, as a post does.
 
 === "Code"
 

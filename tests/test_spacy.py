@@ -180,14 +180,17 @@ def test_tokenizer_settings():
 
 def test_sentencizer(nlp):
     doc = nlp(TEXT)
+    # Whitespace before the first sentence is a sentence of its own: a parser would take it for the
+    # head of the first one
     assert sentences(doc) == [
-        "  Ёж идёт.\u200b",
+        "  ",
+        "Ёж идёт.\u200b",
         "Кот спит в 1914 г.",
         "Затем\n\n ",
         "Утро \ufeff\n",
     ]
     assert [token.is_sent_start for token in doc] == [
-        True, *[False] * 4, True, *[False] * 5, True, False, True, False,
+        True, True, *[False] * 3, True, *[False] * 5, True, False, True, False,
     ]  # fmt: skip
     assert nlp.get_pipe_meta("anyseg_sentencizer").assigns == ["token.is_sent_start", "doc.sents"]
     assert len(nlp("")) == 0
@@ -282,7 +285,7 @@ def test_to_doc():
         *(("  ", ""), ("Ёж", " "), ("идёт", ""), (".", ""), ("\u200b", "")),
         *(("Кот", " "), ("спит", ""), ("\n", "")),
     ]
-    assert sentences(doc) == ["  Ёж идёт.\u200b", "Кот спит\n"]
+    assert sentences(doc) == ["  ", "Ёж идёт.\u200b", "Кот спит\n"]
     assert [(token.lemma_, token.pos_) for token in doc] == [
         *(("  ", "SPACE"), ("ёж", "NOUN"), ("идти", "VERB"), (".", "PUNCT")),
         *(("\u200b", "SPACE"), ("кот", "NOUN"), ("спать", ""), ("\n", "SPACE")),
@@ -290,7 +293,7 @@ def test_to_doc():
     assert [str(token.morph) for token in doc] == ["", "Case=Nom", *[""] * 6]
     assert not doc.has_annotation("TAG")
     assert [(token.head.i, token.dep_) for token in doc] == [
-        *((1, "dep"), (2, "nsubj"), (2, "ROOT"), (2, "punct"), (3, "dep")),
+        *((0, "dep"), (2, "nsubj"), (2, "ROOT"), (2, "punct"), (3, "dep")),
         *((6, "dep"), (6, "ROOT"), (6, "dep")),
     ]
 

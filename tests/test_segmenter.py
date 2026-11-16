@@ -402,3 +402,10 @@ def test_spanish():
         "-5",
         "km/h",
     ]
+    # A line that ends with a word no heading ends with goes on before a capital letter
+    wrapped = "Entró en el cuarto de\nAugusto sin llamar.\nCapítulo primero\nEra alto."
+    assert [span.text for span in sentenize(wrapped, lang="es")] == [
+        "Entró en el cuarto de\nAugusto sin llamar.",
+        "Capítulo primero",
+        "Era alto.",
+    ]

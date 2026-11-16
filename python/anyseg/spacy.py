@@ -308,7 +308,8 @@ class Sentencizer:
     Description:
         The text of a document is split into sentences by anySeg, whatever the tokens. A sentence
         starts at the token where its first character is, and the whitespace after a sentence
-        stays in it. Before a parser the component fixes the sentences, and the parser keeps them
+        stays in it; whitespace before the first one is a sentence of its own. Before a parser the
+        component fixes the sentences, and the parser keeps them
 
     Arguments:
         lang (str): ISO 639-1 code of the language: "ru", "es"
@@ -352,10 +353,11 @@ class Sentencizer:
         sentences = self.segmenter.sentenize(doc.text)
         edges = doc.to_array([IDX, LENGTH])
         ends = edges[:, 0] + edges[:, 1]
-        starts = numpy.array([span.start for span in sentences[1:]], dtype=numpy.uint64)
+        starts = numpy.array([span.start for span in sentences], dtype=numpy.uint64)
         values = numpy.full(len(doc), -1, dtype=numpy.int64)
         values[0] = 1
-        # The token that ends after the first character of a sentence holds it
+        # The token that ends after the first character of a sentence holds it; whitespace before the first
+        # sentence is a sentence of its own
         values[numpy.searchsorted(ends, starts, side="right")] = 1
         if not self.overwrite:
             known = doc.to_array([SENT_START]).view(numpy.int64)
@@ -436,7 +438,8 @@ def to_doc(document: Document, vocab: Vocab) -> Doc:
     vocab.lex_attr_getters[IS_SPACE] = is_gap  # type: ignore[attr-defined]
     words, spaces, indices = layout(vocab, document.text, tokens.starts, tokens.ends)
     sentence_starts: list[bool | int | None] = [not index for index in range(len(words))]
-    for sentence in document.sentences[1:]:
+    # Whitespace before the first sentence is a sentence of its own, as the sentencizer sets it
+    for sentence in document.sentences:
         sentence_starts[indices[sentence.tokens[0].index]] = True
     heads = document.column("head")
     parse = dependencies(document, len(words), indices) if heads and None not in heads else None
@@ -562,8 +565,9 @@ def dependencies(
     Raises:
         ValueError: If the heads of a sentence do not form a tree with one root
     """
-    # A whitespace token depends on the token before it, at the start of the text - on the next
-    heads = [index - 1 if index else index + 1 for index in range(count)]
+    # A whitespace token depends on the token before it; at the start of the text it is a sentence
+    # of its own
+    heads = [index - 1 if index else 0 for index in range(count)]
     relations = ["dep"] * count
     main = [0] * len(document.tokens)
     multiword = len(document.words) != len(document.tokens)
