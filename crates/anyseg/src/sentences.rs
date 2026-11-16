@@ -224,6 +224,12 @@ fn last_two(end: &str) -> &str {
     &end[start..]
 }
 
+/// The last word of a line in lowercase, if the line ends with a word
+fn last_lowercase_word(line: &str) -> Option<&str> {
+    let word = line.rsplit(|c: char| !is_alpha(c)).next()?;
+    word.starts_with(char::is_lowercase).then_some(word)
+}
+
 /// A line that does not end with punctuation: a heading, a line of a post
 fn ends_open(line: &str) -> bool {
     line.chars()
@@ -1053,9 +1059,13 @@ impl Splitter<'_> {
         }
         // A heading stands apart in verse too
         let verse = self.verse && (!self.cased || before.contains(char::is_lowercase));
+        // A heading ends with no preposition, article or title of `line_continuations`: the line goes on
+        let goes_on = last_lowercase_word(before)
+            .is_some_and(|word| self.tables.line_continuations.contains(word));
         !verse
             && !self.typeset
             && ends_open(before)
+            && !goes_on
             && begins_upper(next, self.tables.conventions.section_headings)
     }
 

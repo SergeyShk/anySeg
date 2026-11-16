@@ -358,6 +358,7 @@ struct Files {
     linkers: &'static str,
     final_abbreviations: &'static str,
     sentence_openers: &'static str,
+    line_continuations: &'static str,
     written_abbreviations: &'static str,
     digit_abbreviations: &'static str,
     not_final_abbreviations: &'static str,
@@ -409,6 +410,8 @@ pub(crate) struct Tables {
     pub(crate) final_abbreviations_written: HashSet<String>,
     /// Words with a capital letter that follow no initial
     pub(crate) sentence_openers: HashSet<String>,
+    /// Words that no heading ends with: a line without a final mark that ends with one goes on
+    pub(crate) line_continuations: HashSet<String>,
     /// Names joined to the next word by a period: «Яндекс.Маркет»
     pub(crate) dotted_names: HashSet<String>,
     /// Latin letters that stand for letters of the language in its words
@@ -609,6 +612,7 @@ impl Tables {
                 })
                 .collect(),
             sentence_openers: list(files.sentence_openers),
+            line_continuations: list(files.line_continuations),
             dotted_names: list(files.dotted_names),
             homoglyphs: lines(files.homoglyphs)
                 .filter_map(|line| {
@@ -702,6 +706,7 @@ pub(crate) fn tables(language: Language) -> &'static Tables {
                     not_abbreviations: include_str!("../data/es/not_abbreviations.txt"),
                     final_abbreviations: include_str!("../data/es/final_abbreviations.txt"),
                     sentence_openers: include_str!("../data/es/sentence_openers.txt"),
+                    line_continuations: include_str!("../data/es/line_continuations.txt"),
                     written_abbreviations: include_str!("../data/es/written_abbreviations.txt"),
                     digit_abbreviations: include_str!("../data/es/digit_abbreviations.txt"),
                     not_final_abbreviations: include_str!("../data/es/not_final_abbreviations.txt"),
@@ -1191,6 +1196,20 @@ mod conventions {
                 );
             }
         }
+    }
+
+    #[test]
+    fn line_continuations() {
+        let tables = Tables::new(Files {
+            line_continuations: "de\n",
+            ..Files::default()
+        });
+        // A line that ends with a word of the list goes on before a capital letter, a heading does not
+        assert_eq!(sentence_count(&tables, "Era un hombre de\nMadrid alto."), 1);
+        assert_eq!(
+            sentence_count(&tables, "Capítulo primero\nEra un hombre alto."),
+            2
+        );
     }
 
     #[test]
