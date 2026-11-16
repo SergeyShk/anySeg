@@ -565,8 +565,9 @@ def dependencies(
     Raises:
         ValueError: If the heads of a sentence do not form a tree with one root
     """
-    # A whitespace token depends on the token before it, at the start of the text - on the next
-    heads = [index - 1 if index else index + 1 for index in range(count)]
+    # A whitespace token depends on the token before it; at the start of the text it is a sentence
+    # of its own
+    heads = [index - 1 if index else 0 for index in range(count)]
     relations = ["dep"] * count
     main = [0] * len(document.tokens)
     multiword = len(document.words) != len(document.tokens)

@@ -285,7 +285,7 @@ def test_to_doc():
         *(("  ", ""), ("Ёж", " "), ("идёт", ""), (".", ""), ("\u200b", "")),
         *(("Кот", " "), ("спит", ""), ("\n", "")),
     ]
-    assert sentences(doc) == ["  Ёж идёт.\u200b", "Кот спит\n"]
+    assert sentences(doc) == ["  ", "Ёж идёт.\u200b", "Кот спит\n"]
     assert [(token.lemma_, token.pos_) for token in doc] == [
         *(("  ", "SPACE"), ("ёж", "NOUN"), ("идти", "VERB"), (".", "PUNCT")),
         *(("\u200b", "SPACE"), ("кот", "NOUN"), ("спать", ""), ("\n", "SPACE")),
@@ -293,7 +293,7 @@ def test_to_doc():
     assert [str(token.morph) for token in doc] == ["", "Case=Nom", *[""] * 6]
     assert not doc.has_annotation("TAG")
     assert [(token.head.i, token.dep_) for token in doc] == [
-        *((1, "dep"), (2, "nsubj"), (2, "ROOT"), (2, "punct"), (3, "dep")),
+        *((0, "dep"), (2, "nsubj"), (2, "ROOT"), (2, "punct"), (3, "dep")),
         *((6, "dep"), (6, "ROOT"), (6, "dep")),
     ]
 
