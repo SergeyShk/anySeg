@@ -930,7 +930,7 @@
 <li><code>Doc.to_json(underscore=["anyseg_words"])</code> needs a multiword token in the <code>Doc</code>, and <code>Doc.from_json</code> fails on a key of a token that was retokenized or cut away.</li>
 </ul>
 <h2 id="sentencizer">Sentences<a class="headerlink" href="#sentencizer" title="Permanent link">&para;</a></h2>
-<p>The component <code>anyseg_sentencizer</code> sets the sentence starts (<code>is_sent_start</code>) of a document as anySeg splits its text; before the parser it fixes the sentences, and the parser keeps them. It works with any tokenizer: a sentence starts at the token where its first character is, and the whitespace after a sentence stays in it.</p>
+<p>The component <code>anyseg_sentencizer</code> sets the sentence starts (<code>is_sent_start</code>) of a document as anySeg splits its text; before the parser it fixes the sentences, and the parser keeps them. It works with any tokenizer: a sentence starts at the token where its first character is, and the whitespace after a sentence stays in it; whitespace before the first one is a sentence of its own, which a parser does not take for the head of the first.</p>
 <div class="highlight"><pre><span></span><code><span class="n">nlp</span> <span class="o">=</span> <span class="n">spacy</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"ru_core_news_sm"</span><span class="p">,</span> <span class="n">config</span><span class="o">=</span><span class="p">{</span><span class="s2">"nlp"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"tokenizer"</span><span class="p">:</span> <span class="n">tokenizer</span><span class="p">}})</span>
 <span class="n">nlp</span><span class="o">.</span><span class="n">add_pipe</span><span class="p">(</span><span class="s2">"anyseg_sentencizer"</span><span class="p">,</span> <span class="n">before</span><span class="o">=</span><span class="s2">"parser"</span><span class="p">)</span>
 </code></pre></div>
@@ -1075,7 +1075,7 @@
 <p class="metric-meta"><code>anyseg.spacy.to_doc</code> · <code>Doc</code></p>
 <div class="signature highlight"><pre><span></span><code><span class="n">to_doc</span><span class="p">(</span><span class="n">document</span><span class="p">,</span> <span class="n">vocab</span><span class="p">)</span>
 </code></pre></div>
-<p>The <code>Doc</code> of a document: its text, its tokens with the whitespace between them as the tokenizer makes it, and its sentences.</p>
+<p>The <code>Doc</code> of a document: its text, its tokens with the whitespace between them as the tokenizer makes it, and its sentences; whitespace before the first sentence is a sentence of its own, as the sentencizer makes it.</p>
 <ul>
 <li>The columns <code>lemma</code>, <code>upos</code>, <code>xpos</code> and <code>feats</code> become <code>lemma_</code>, <code>pos_</code>, <code>tag_</code> and <code>morph</code> where set. A whitespace token has its text for a lemma and <code>SPACE</code> for a part of speech.</li>
 <li>Heads and relations are set when every word has a head, and the heads of every sentence must form a tree with one root. The relation <code>root</code> becomes <code>ROOT</code>, a word without a relation gets <code>dep</code> (a root - <code>ROOT</code>), and a whitespace token depends on the token before it with <code>dep</code>.</li>
