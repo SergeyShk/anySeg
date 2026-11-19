@@ -821,3 +821,84 @@ def test_multiword_tokens_at_once():
 def test_no_multiword_tokens_in_russian():
     doc = Segmenter("ru").segment("Вася del")
     assert len(doc.words) == len(doc.tokens) == 2
+
+
+def test_with_words():
+    doc = Segmenter("es").segment("Cómpraselo del mar. Ven")
+    doc.set_columns(upos=["VERB", "ADP", "DET", "NOUN", "PUNCT", "VERB"])
+    word = doc.words[2]
+    changed = doc.with_words({0: ["Compra", "se", "lo"], 1: ["del"]})
+    assert changed.column("form") == ["Compra", "se", "lo", "del", "mar", ".", "Ven"]
+    assert changed.column("upos") == [None, None, None, None, "NOUN", "PUNCT", "VERB"]
+    assert [token.text for token in changed.multiword_tokens] == ["Cómpraselo"]
+    assert [word.id for word in changed.sentences[0].words] == [1, 2, 3, 4, 5, 6]
+    assert [token.text for token in changed.tokens] == [token.text for token in doc.tokens]
+    assert changed.text is doc.text
+    # The document and its words stay as they were
+    assert doc.column("form") == ["Cómpraselo", "de", "el", "mar", ".", "Ven"]
+    assert (word.form, word.upos) == ("el", "DET")
+    assert same(pickle.loads(pickle.dumps(changed)), changed)
+    read = read_conllu(changed.to_conllu())[0]
+    assert read.column("form") == changed.column("form")
+    assert read.column("upos") == changed.column("upos")
+    # One form makes a token of one word
+    assert doc.with_words({0: ["Cómpraselo"]}).column("form")[:2] == ["Cómpraselo", "de"]
+    assert same(doc.with_words({}), doc)
+
+
+@pytest.mark.parametrize(
+    ("words", "error", "message"),
+    [
+        ({3: ["a"]}, ValueError, "token 3 is not in the document"),
+        ({-1: ["a"]}, ValueError, "token -1 is not in the document"),
+        ({10**30: ["a"]}, ValueError, "is not in the document"),
+        ({0: []}, ValueError, "token 0 has no forms"),
+        ({0: ["a", ""]}, ValueError, "is empty or holds"),
+        ({0: ["a\nb"]}, ValueError, "is empty or holds"),
+        ({0: "ab"}, TypeError, "str"),
+        ({"0": ["a"]}, TypeError, "int"),
+        ([(0, ["a"])], TypeError, "mapping"),
+    ],
+)
+def test_with_wrong_words(words, error, message):
+    with pytest.raises(error, match=message):
+        Document.from_tokens("a b c", [0, 2, 4], [1, 3, 5]).with_words(words)
+
+
+def test_with_words_and_sentences_of_a_parsed_document():
+    parsed = Segmenter("ru").segment("Ёж идёт")
+    parsed.set_columns(head=[2, 0])
+    message = "heads, enhanced dependencies or empty nodes cannot change"
+    for document in (parsed, read_conllu(UD)[0]):
+        with pytest.raises(ValueError, match=message):
+            document.with_words({0: ["a", "b"]})
+        with pytest.raises(ValueError, match=message):
+            document.with_sentences([1])
+
+
+def test_with_sentences():
+    doc = Segmenter("ru").segment("Ёж идёт. Кот спит.\n\nУтро.")
+    doc.set_columns(upos=["NOUN", *[None] * 7])
+    sentence = doc.sentences[1]
+    joined = doc.with_sentences([0])
+    assert [sentence.text for sentence in joined.sentences] == ["Ёж идёт. Кот спит.", "Утро."]
+    split = joined.with_sentences([1, 3])
+    assert [sentence.text for sentence in split.sentences] == [
+        "Ёж",
+        "идёт.",
+        "Кот спит.",
+        "Утро.",
+    ]
+    assert [paragraph.text for paragraph in split.paragraphs] == ["Ёж идёт. Кот спит.", "Утро."]
+    assert split.column("upos") == doc.column("upos")
+    assert sentence.text == "Кот спит."
+    assert same(pickle.loads(pickle.dumps(split)), split)
+    # The same sentences keep the comments of a document read from CoNLL-U
+    read = read_conllu(split.to_conllu().replace("# sent_id = 2", "# sent_id = b"))[0]
+    assert "# sent_id = b" in read.with_sentences([1, 3]).to_conllu()
+    assert "# sent_id = b" not in read.with_sentences([1]).to_conllu()
+    for starts in ([8], [1, 1], [2, 1], [-1]):
+        with pytest.raises(ValueError, match="sentence starts must be increasing token indices"):
+            doc.with_sentences(starts)
+    with pytest.raises(TypeError):
+        doc.with_sentences(["a"])

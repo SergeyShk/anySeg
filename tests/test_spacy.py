@@ -396,6 +396,19 @@ def test_to_doc_of_a_segmented_multiword_token():
     assert from_doc(doc).column("form") == ["Vengo", "de", "el", "mar"]
 
 
+def test_to_doc_of_new_words():
+    document = Segmenter("es").segment("Cómpraselo del mar")
+    document.set_columns(upos=["VERB", "ADP", "DET", "NOUN"])
+    document = document.with_words({0: ["Compra", "se", "lo"], 1: ["del"]})
+    doc = to_doc(document, Vocab())
+    assert [token.text for token in doc] == ["Cómpraselo", "del", "mar"]
+    assert [word["form"] for word in doc[0]._.anyseg_words] == ["Compra", "se", "lo"]
+    assert (doc[1]._.anyseg_words, doc[2].pos_) == (None, "NOUN")
+    back = from_doc(doc)
+    for column in ("form", "upos"):
+        assert back.column(column) == document.column(column), column
+
+
 def test_tokenizer_of_multiword_tokens():
     nlp = spacy.blank("es", config=TOKENIZER)
     nlp.add_pipe("anyseg_sentencizer")

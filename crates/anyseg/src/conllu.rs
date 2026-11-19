@@ -613,15 +613,7 @@ impl Document {
                         .map(|position| &verbatim.multiword[position].1)
                 }) {
                     Some(line) => out.push_str(line),
-                    None => {
-                        let form = self.tokens[token].slice(&self.text);
-                        let _ = write!(
-                            out,
-                            "{}\t_\t_\t_\t_\t_\t_\t_\t{}",
-                            nfc(&clean(form)),
-                            layout.as_deref().unwrap_or("_")
-                        );
-                    }
+                    None => out.push_str(&self.multiword_columns(token, layout.as_deref())),
                 }
                 out.push('\n');
                 lines += 1;
@@ -668,8 +660,24 @@ impl Document {
         out.push('\n');
     }
 
+    /// Columns 2-10 of the line of a multiword token, with MISC of the space after it
+    fn multiword_columns(&self, token: usize, layout: Option<&str>) -> String {
+        let form = self.tokens[token].slice(&self.text);
+        format!(
+            "{}\t_\t_\t_\t_\t_\t_\t_\t{}",
+            nfc(&clean(form)),
+            layout.unwrap_or("_")
+        )
+    }
+
+    /// Columns 2-10 of the line of a multiword token as a segmented document writes them, for a document read from
+    /// CoNLL-U whose token gets new words
+    pub(crate) fn multiword_line(&self, token: usize) -> String {
+        self.multiword_columns(token, self.layout(token).as_deref())
+    }
+
     /// `SpaceAfter=No` or `SpacesAfter` for the space after a token inside its paragraph
-    fn layout(&self, token: usize) -> Option<String> {
+    pub(crate) fn layout(&self, token: usize) -> Option<String> {
         let next = self.tokens.get(token + 1)?;
         let sentence = self.token_sentence(token);
         if self.sentence_tokens[sentence + 1] == token + 1 {

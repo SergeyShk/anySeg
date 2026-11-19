@@ -803,6 +803,8 @@ fn segment_all(segmenter: &anyseg::Segmenter, texts: &[&str], threads: usize) ->
 ///     column: Values of a column of the words
 ///     set_columns: Set columns of the words
 ///     from_tokens: Document of the tokens of a text
+///     with_words: Document with other words in some tokens
+///     with_sentences: Document with other sentences
 ///     to_conllu: Document in CoNLL-U
 #[pyclass(frozen, module = "anyseg")]
 struct Document {
@@ -1022,6 +1024,25 @@ impl Document {
     fn cover(&self, tokens: &Range<usize>) -> (usize, usize) {
         (self.tokens[tokens.start].0, self.tokens[tokens.end - 1].1)
     }
+
+    /// A new document made by a change of the core one, with the same text, tokens and lines
+    fn changed<'py>(
+        slf: &Bound<'py, Self>,
+        change: impl Send + FnOnce(anyseg::Document) -> Result<anyseg::Document, anyseg::DocumentError>,
+    ) -> PyResult<Bound<'py, Document>> {
+        let py = slf.py();
+        let doc = slf.get();
+        let text = doc.text.bind(py);
+        let inner = detached(py, length(text) > DETACH, || change(doc.read().clone()))
+            .map_err(|error| PyValueError::new_err(error.to_string()))?;
+        let parts = Parts {
+            structure: Structure::new(&inner),
+            inner,
+            tokens: doc.tokens.clone(),
+            lines: doc.lines.clone(),
+        };
+        untracked(py, Document::new(parts, text)?)
+    }
 }
 
 /// A column of the core from a list of strings, without a copy of its values on the way
@@ -1044,8 +1065,8 @@ fn checked_column(
     checked.map_err(|error| PyValueError::new_err(error.to_string()))
 }
 
-/// The multiword tokens of a mapping, in the order of the tokens
-fn multiword_tokens(words: &Bound<'_, PyAny>) -> PyResult<Vec<(usize, Vec<String>)>> {
+/// The words of tokens from a mapping, in the order of the tokens; `what` names a token in an error
+fn words_of_tokens(words: &Bound<'_, PyAny>, what: &str) -> PyResult<Vec<(usize, Vec<String>)>> {
     let words = words
         .cast::<PyMapping>()
         .map_err(|_| PyTypeError::new_err("words must be a mapping of tokens to their forms"))?;
@@ -1053,13 +1074,24 @@ fn multiword_tokens(words: &Bound<'_, PyAny>) -> PyResult<Vec<(usize, Vec<String
     for item in words.items()?.iter() {
         let (token, forms): (Bound<'_, PyAny>, Vec<String>) = item.extract()?;
         let token = clamped(&token)?;
-        let token = usize::try_from(token).map_err(|_| {
-            PyValueError::new_err(format!("multiword token {token} is not in the document"))
-        })?;
+        let token = usize::try_from(token)
+            .map_err(|_| PyValueError::new_err(format!("{what} {token} is not in the document")))?;
         tokens.push((token, forms));
     }
     tokens.sort_unstable_by_key(|(token, _)| *token);
     Ok(tokens)
+}
+
+/// Sentence starts as indices of tokens
+fn token_indices(starts: Vec<isize>) -> PyResult<Vec<usize>> {
+    starts
+        .into_iter()
+        .map(|start| {
+            usize::try_from(start).map_err(|_| {
+                PyValueError::new_err("sentence starts must be increasing token indices")
+            })
+        })
+        .collect()
 }
 
 /// The parts of a document of the tokens given in characters, checked
@@ -1332,21 +1364,11 @@ impl Document {
                 ends.len()
             )));
         }
-        let sentence_starts = sentence_starts
-            .map(|starts| {
-                starts
-                    .into_iter()
-                    .map(|start| {
-                        usize::try_from(start).map_err(|_| {
-                            PyValueError::new_err(
-                                "sentence starts must be increasing token indices",
-                            )
-                        })
-                    })
-                    .collect::<PyResult<Vec<_>>>()
-            })
+        let sentence_starts = sentence_starts.map(token_indices).transpose()?;
+        let words = words
+            .as_ref()
+            .map(|words| words_of_tokens(words, "multiword token"))
             .transpose()?;
-        let words = words.as_ref().map(multiword_tokens).transpose()?;
         let py = text.py();
         let parts = with_str(&text, |string, _| {
             detached(py, string.len() > DETACH, || {
@@ -1354,6 +1376,71 @@ impl Document {
             })
         })?;
         untracked(py, Document::new(parts, &text)?)
+    }
+
+    /// Document with other words in some tokens
+    ///
+    /// Description:
+    ///     Several forms make a multiword token and one form a token of one word. The other words
+    ///     keep their forms and columns, the new ones have none; a document read from CoNLL-U
+    ///     keeps its comments. The document itself does not change
+    ///
+    /// Arguments:
+    ///     words (Mapping[int, Sequence[str]]): Forms of the words, by the index of the token
+    ///
+    /// Returns:
+    ///     Document: New document
+    ///
+    /// Raises:
+    ///     ValueError: If the document has heads, enhanced dependencies or empty nodes, which
+    ///         refer to the IDs of words, words names a token that is not in the document or has
+    ///         no forms, or a form is empty or holds a tab or a line break
+    ///     TypeError: If words is not a mapping of integers to sequences of strings
+    ///
+    /// Example:
+    ///     >>> from anyseg import Segmenter
+    ///     >>> doc = Segmenter("es").segment("Cómpraselo ya.")
+    ///     >>> doc = doc.with_words({0: ["Compra", "se", "lo"]})
+    ///     >>> [word.form for word in doc.words]
+    ///     ['Compra', 'se', 'lo', 'ya', '.']
+    fn with_words<'py>(
+        slf: &Bound<'py, Self>,
+        words: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, Document>> {
+        let words = words_of_tokens(words, "token")?;
+        Self::changed(slf, |inner| inner.with_words(words))
+    }
+
+    /// Document with other sentences
+    ///
+    /// Description:
+    ///     Sentences start at the given tokens, as in from_tokens, and every paragraph starts one.
+    ///     Tokens, words, their columns, paragraphs and lines stay; a document read from CoNLL-U
+    ///     with other sentences is written as a segmented one, without its comments. The
+    ///     document itself does not change
+    ///
+    /// Arguments:
+    ///     starts (Sequence[int]): Indices of the tokens that start sentences
+    ///
+    /// Returns:
+    ///     Document: New document
+    ///
+    /// Raises:
+    ///     ValueError: If the document has heads, enhanced dependencies or empty nodes, which
+    ///         refer to the IDs of words, or the starts are not increasing token indices
+    ///     TypeError: If starts holds something other than integers
+    ///
+    /// Example:
+    ///     >>> from anyseg import Segmenter
+    ///     >>> doc = Segmenter("ru").segment("Ёж идёт. Кот спит.")
+    ///     >>> [sentence.text for sentence in doc.with_sentences([0]).sentences]
+    ///     ['Ёж идёт. Кот спит.']
+    fn with_sentences<'py>(
+        slf: &Bound<'py, Self>,
+        #[pyo3(from_py_with = clamped_list)] starts: Vec<isize>,
+    ) -> PyResult<Bound<'py, Document>> {
+        let starts = token_indices(starts)?;
+        Self::changed(slf, |inner| inner.with_sentences(&starts))
     }
 
     /// Document in CoNLL-U

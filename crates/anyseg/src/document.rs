@@ -208,6 +208,17 @@ impl Values {
     }
 }
 
+fn check_starts(starts: &[usize], tokens: usize) -> Result<(), DocumentError> {
+    for (position, &start) in starts.iter().enumerate() {
+        if start >= tokens || (position > 0 && start <= starts[position - 1]) {
+            return Err(DocumentError(
+                "sentence starts must be increasing token indices".to_owned(),
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn wrong_length(name: &str, given: usize, words: usize) -> DocumentError {
     DocumentError(format!("{name} has {given} values for {words} words"))
 }
@@ -355,13 +366,7 @@ impl Document {
             ));
         }
         if let Some(starts) = sentence_starts {
-            for (position, &start) in starts.iter().enumerate() {
-                if start >= tokens.len() || (position > 0 && start <= starts[position - 1]) {
-                    return Err(DocumentError(
-                        "sentence starts must be increasing token indices".to_owned(),
-                    ));
-                }
-            }
+            check_starts(starts, tokens.len())?;
         }
         Self::assemble(text, tokens, sentence_starts)
     }
@@ -517,6 +522,191 @@ impl Document {
         self.token_words = token_words.into();
         self.word_tokens = word_tokens.into();
         self.forms = forms.finished();
+    }
+
+    /// The document with other words in some of its tokens: a token and the forms of its words, in the order of the
+    /// tokens. Several forms make a multiword token and one form a token of one word; a form holds what CoNLL-U
+    /// allows, whatever the text of its token. The other words keep their forms and columns, the new ones have none;
+    /// a document read from CoNLL-U keeps its comments and the lines of its other multiword tokens.
+    ///
+    /// # Errors
+    ///
+    /// [`DocumentError`] if the document has heads, enhanced dependencies or empty nodes, which refer to the IDs of
+    /// words, the tokens are not increasing indices of tokens of the document, a token has no forms, a form is empty
+    /// or holds a tab or a line break, or the forms exceed 2 GiB.
+    pub fn with_words<I, S>(mut self, tokens: I) -> Result<Self, DocumentError>
+    where
+        I: IntoIterator<Item = (usize, Vec<S>)>,
+        S: Into<String>,
+    {
+        self.check_no_ids("words")?;
+        let count = self.tokens.len();
+        let mut changes = Vec::new();
+        let mut next = 0;
+        for (token, forms) in tokens {
+            if token >= count {
+                return Err(DocumentError(format!(
+                    "token {token} is not in the document"
+                )));
+            }
+            if token < next {
+                return Err(DocumentError(
+                    "the tokens of the words must be increasing indices".to_owned(),
+                ));
+            }
+            next = token + 1;
+            let forms: Vec<String> = forms.into_iter().map(Into::into).collect();
+            if forms.is_empty() {
+                return Err(DocumentError(format!("token {token} has no forms")));
+            }
+            if forms
+                .iter()
+                .any(|form| form.is_empty() || form.contains(['\t', '\n', '\r']))
+            {
+                return Err(DocumentError(format!(
+                    "a form of token {token} is empty or holds a tab or a line break"
+                )));
+            }
+            changes.push((token, forms));
+        }
+        if changes.is_empty() {
+            return Ok(self);
+        }
+        let too_large = |_| DocumentError("the forms of the document exceed 2 GiB".to_owned());
+        let mut forms = Values::default();
+        let mut columns: Option<[Values; 7]> = self.columns.as_ref().map(|_| Default::default());
+        let mut token_words = Vec::with_capacity(count + 1);
+        let mut word_tokens = Vec::with_capacity(self.word_count());
+        // A token of one word in a document read from CoNLL-U carries the space after it in MISC
+        let mut spaces = Vec::new();
+        let mut changed = changes.iter().peekable();
+        for token in 0..count {
+            token_words.push(word_tokens.len());
+            match changed.next_if(|(change, _)| *change == token) {
+                Some((_, new)) => {
+                    let text = self.tokens[token].slice(&self.text);
+                    for form in new {
+                        let kept = (new.len() > 1 || form != text).then_some(form.as_str());
+                        forms.push(kept).map_err(too_large)?;
+                        for values in columns.iter_mut().flatten() {
+                            values.push(None).map_err(too_large)?;
+                        }
+                        word_tokens.push(token);
+                    }
+                    if new.len() == 1 && self.verbatim.is_some() {
+                        spaces.extend(self.layout(token).map(|misc| (word_tokens.len() - 1, misc)));
+                    }
+                }
+                None => {
+                    for word in self.token_words(token) {
+                        forms.push(self.forms.get(word)).map_err(too_large)?;
+                        if let (Some(columns), Some(old)) = (&mut columns, &self.columns) {
+                            for (values, old) in columns.iter_mut().zip(old.iter()) {
+                                values.push(old.get(word)).map_err(too_large)?;
+                            }
+                        }
+                        word_tokens.push(token);
+                    }
+                }
+            }
+        }
+        token_words.push(word_tokens.len());
+        if !spaces.is_empty() {
+            let mut misc = Values::default();
+            let old = columns
+                .as_ref()
+                .map(|columns| &columns[Column::Misc as usize]);
+            let mut spaces = spaces.into_iter().peekable();
+            for word in 0..word_tokens.len() {
+                let value = match spaces.next_if(|(spaced, _)| *spaced == word) {
+                    Some((_, space)) => Some(space),
+                    None => old.and_then(|old| old.get(word)).map(str::to_owned),
+                };
+                misc.push(value.as_deref()).map_err(too_large)?;
+            }
+            columns.get_or_insert_with(Default::default)[Column::Misc as usize] = misc;
+        }
+        if self.verbatim.is_some() {
+            let generated: Vec<(usize, String)> = changes
+                .iter()
+                .filter(|(_, new)| new.len() > 1)
+                .map(|&(token, _)| (token, self.multiword_line(token)))
+                .collect();
+            if let Some(verbatim) = self.verbatim.as_deref_mut() {
+                let changed: Vec<usize> = changes.iter().map(|(token, _)| *token).collect();
+                let mut lines = std::mem::take(&mut verbatim.multiword);
+                lines.retain(|(token, _)| changed.binary_search(token).is_err());
+                lines.extend(generated);
+                lines.sort_unstable_by_key(|(token, _)| *token);
+                verbatim.multiword = lines;
+            }
+        }
+        if word_tokens.len() == count {
+            token_words.clear();
+            word_tokens.clear();
+        }
+        self.token_words = token_words.as_slice().into();
+        self.word_tokens = word_tokens.as_slice().into();
+        self.forms = forms.finished();
+        self.columns = columns
+            .map(|columns| columns.map(Values::finished))
+            .filter(|columns| !columns.iter().all(Values::is_empty))
+            .map(Box::new);
+        Ok(self)
+    }
+
+    /// The document with other sentences, which start at the given tokens as in [`from_tokens`](Self::from_tokens);
+    /// a paragraph always starts a sentence. Tokens, words, their columns, paragraphs and lines stay. A document
+    /// read from CoNLL-U with other sentences leaves its comments out: its CoNLL-U is written as that of a segmented
+    /// one.
+    ///
+    /// # Errors
+    ///
+    /// [`DocumentError`] if the document has heads, enhanced dependencies or empty nodes, which refer to the IDs of
+    /// words, or the starts are not increasing token indices.
+    pub fn with_sentences(mut self, starts: &[usize]) -> Result<Self, DocumentError> {
+        self.check_no_ids("sentences")?;
+        let count = self.tokens.len();
+        check_starts(starts, count)?;
+        let paragraphs: Vec<usize> = self.paragraph_sentences[..self.paragraph_count()]
+            .iter()
+            .map(|&sentence| self.sentence_tokens[sentence])
+            .collect();
+        let mut sentence_tokens: Vec<usize> = paragraphs.iter().chain(starts).copied().collect();
+        sentence_tokens.sort_unstable();
+        sentence_tokens.dedup();
+        let sentences = sentence_tokens.len();
+        sentence_tokens.push(count);
+        if sentence_tokens == self.sentence_tokens {
+            return Ok(self);
+        }
+        self.paragraph_sentences = paragraphs
+            .iter()
+            .map(|first| sentence_tokens.partition_point(|start| start < first))
+            .chain([sentences])
+            .collect();
+        self.sentence_tokens = fitted(sentence_tokens);
+        self.verbatim = None;
+        Ok(self)
+    }
+
+    /// Heads, enhanced dependencies and empty nodes refer to the IDs of words in their sentences
+    fn check_no_ids(&self, what: &str) -> Result<(), DocumentError> {
+        let deps = self
+            .columns
+            .as_ref()
+            .is_some_and(|columns| !columns[Column::Deps as usize].is_empty());
+        let empty = self
+            .verbatim
+            .as_ref()
+            .is_some_and(|verbatim| !verbatim.empty.is_empty());
+        if !self.heads.is_empty() || deps || empty {
+            return Err(DocumentError(format!(
+                "the {what} of a document with heads, enhanced dependencies or empty nodes cannot change: they refer \
+                 to the IDs of words"
+            )));
+        }
+        Ok(())
     }
 
     /// The document of valid tokens; fails only on a token that runs over a paragraph boundary
@@ -1082,6 +1272,224 @@ mod tests {
             .with_multiword_tokens([(0, vec!["x", "y"])])
             .unwrap();
         assert!(twice.with_multiword_tokens([(1, vec!["x", "y"])]).is_err());
+    }
+
+    /// The forms of the words of every token
+    fn words_of(doc: &Document) -> Vec<Vec<&str>> {
+        (0..doc.tokens().len())
+            .map(|token| doc.token_words(token).map(|word| doc.form(word)).collect())
+            .collect()
+    }
+
+    fn upos(doc: &Document) -> Vec<Option<&str>> {
+        (0..doc.word_count())
+            .map(|word| doc.column(Column::Upos, word))
+            .collect()
+    }
+
+    /// A sentence read from CoNLL-U, without heads, enhanced dependencies and empty nodes
+    const READ: &str = "\
+# newdoc id = d1
+# sent_id = 1
+# text = Dámelo del norte.
+1\tDámelo\tdar\tVERB\t_\t_\t_\t_\t_\t_
+2-3\tdel\t_\t_\t_\t_\t_\t_\t_\t_
+2\tde\tde\tADP\t_\t_\t_\t_\t_\t_
+3\tel\tel\tDET\t_\t_\t_\t_\t_\t_
+4\tnorte\tnorte\tNOUN\t_\t_\t_\t_\t_\tSpaceAfter=No
+5\t.\t.\tPUNCT\t_\t_\t_\t_\t_\t_
+
+";
+
+    #[test]
+    fn with_words() {
+        let mut doc = document("dámelo del norte", None)
+            .with_multiword_tokens([(1, vec!["de", "el"])])
+            .unwrap();
+        let values = [Some("VERB"), Some("ADP"), Some("DET"), Some("NOUN")];
+        doc.set_columns([(Column::Upos, values)], None).unwrap();
+        let doc = doc
+            .with_words([(0, vec!["da", "me", "lo"]), (1, vec!["del"])])
+            .unwrap();
+        assert_eq!(
+            words_of(&doc),
+            [vec!["da", "me", "lo"], vec!["del"], vec!["norte"]]
+        );
+        assert_eq!(upos(&doc), [None, None, None, None, Some("NOUN")]);
+        assert_eq!(doc.word_id(4), 5);
+        // One word per token again: the maps are the identity, and forms the texts of the tokens
+        let doc = doc.with_words([(0, vec!["dámelo"])]).unwrap();
+        assert!(doc.token_words.is_empty() && doc.word_tokens.is_empty() && doc.forms.is_empty());
+        assert_eq!(upos(&doc), [None, None, Some("NOUN")]);
+        let doc = doc.with_words([(2, vec!["Norte"])]).unwrap();
+        assert_eq!(words_of(&doc)[2], ["Norte"]);
+        assert!(doc.columns.is_none());
+        assert_eq!(
+            doc.clone()
+                .with_words(Vec::<(usize, Vec<&str>)>::new())
+                .unwrap(),
+            doc
+        );
+    }
+
+    #[test]
+    fn with_words_wrong() {
+        let build = || document("a b c", None);
+        for (words, message) in [
+            (vec![(3, vec!["x"])], "token 3 is not in the document"),
+            (
+                vec![(1, vec!["x"]), (0, vec!["y"])],
+                "the tokens of the words must be increasing indices",
+            ),
+            (
+                vec![(1, vec!["x"]), (1, vec!["y"])],
+                "the tokens of the words must be increasing indices",
+            ),
+            (vec![(0, vec![])], "token 0 has no forms"),
+            (
+                vec![(0, vec!["x", ""])],
+                "a form of token 0 is empty or holds a tab or a line break",
+            ),
+            (
+                vec![(0, vec!["x\ny"])],
+                "a form of token 0 is empty or holds a tab or a line break",
+            ),
+        ] {
+            assert_eq!(
+                build().with_words(words).unwrap_err(),
+                DocumentError(message.to_owned())
+            );
+        }
+        let mut parsed = build();
+        parsed.set_heads(vec![Some(0), Some(1), Some(1)]).unwrap();
+        let mut enhanced = build();
+        enhanced
+            .set_columns([(Column::Deps, [Some("0:root"), None, None])], None)
+            .unwrap();
+        let empty = "# text = a b\n1\ta\t_\t_\t_\t_\t_\t_\t_\t_\n1.1\tz\t_\t_\t_\t_\t_\t_\t_\t_\n\
+                     2\tb\t_\t_\t_\t_\t_\t_\t_\t_\n\n";
+        let empty = crate::read_conllu(empty).unwrap().remove(0);
+        for doc in [parsed, enhanced, empty] {
+            assert_eq!(
+                doc.clone().with_words([(0, vec!["x", "y"])]).unwrap_err(),
+                DocumentError(
+                    "the words of a document with heads, enhanced dependencies or empty nodes cannot change: \
+                     they refer to the IDs of words"
+                        .to_owned()
+                )
+            );
+            assert!(doc.with_sentences(&[1]).is_err());
+        }
+    }
+
+    #[test]
+    fn with_words_read_from_conllu() {
+        let doc = crate::read_conllu(READ).unwrap().remove(0);
+        let doc = doc
+            .with_words([
+                (0, vec!["Da", "me", "lo"]),
+                (1, vec!["del"]),
+                (2, vec!["nor", "te"]),
+            ])
+            .unwrap();
+        // The comments stay; the new multiword tokens carry the space after them, as a segmented document writes it
+        let written = doc.to_conllu();
+        assert_eq!(
+            written,
+            "\
+# newdoc id = d1
+# sent_id = 1
+# text = Dámelo del norte.
+1-3\tDámelo\t_\t_\t_\t_\t_\t_\t_\t_
+1\tDa\t_\t_\t_\t_\t_\t_\t_\t_
+2\tme\t_\t_\t_\t_\t_\t_\t_\t_
+3\tlo\t_\t_\t_\t_\t_\t_\t_\t_
+4\tdel\t_\t_\t_\t_\t_\t_\t_\t_
+5-6\tnorte\t_\t_\t_\t_\t_\t_\t_\tSpaceAfter=No
+5\tnor\t_\t_\t_\t_\t_\t_\t_\t_
+6\tte\t_\t_\t_\t_\t_\t_\t_\t_
+7\t.\t.\tPUNCT\t_\t_\t_\t_\t_\t_
+
+"
+        );
+        assert_eq!(crate::read_conllu(&written).unwrap(), [doc]);
+        // A token of one word keeps the space after it in MISC
+        let joined = crate::read_conllu(READ)
+            .unwrap()
+            .remove(0)
+            .with_words([(2, vec!["nor", "te"])])
+            .unwrap()
+            .with_words([(2, vec!["norte"])])
+            .unwrap();
+        assert_eq!(joined.column(Column::Misc, 3), Some("SpaceAfter=No"));
+        assert_eq!(crate::read_conllu(&joined.to_conllu()).unwrap(), [joined]);
+    }
+
+    #[test]
+    fn with_sentences() {
+        let mut doc = document("Ёж идёт. Кот спит.\n\nУтро.", None);
+        doc.set_columns(
+            [(Column::Upos, [Some("NOUN"), None, None, None, None])],
+            None,
+        )
+        .unwrap();
+        let split = doc.clone().with_sentences(&[2]).unwrap();
+        assert_eq!(split.sentence_tokens, [0, 2, 4, 5]);
+        assert_eq!(split.paragraph_sentences, [0, 2, 3]);
+        assert_eq!(split.sentence(1).span.slice(split.text()), "Кот спит.");
+        assert_eq!(
+            (split.column(Column::Upos, 0), split.lines()),
+            (Some("NOUN"), doc.lines())
+        );
+        // Every paragraph starts a sentence
+        assert_eq!(split.clone().with_sentences(&[]).unwrap(), doc);
+        assert_eq!(
+            split.with_sentences(&[1, 4]).unwrap().sentence_tokens,
+            [0, 1, 4, 5]
+        );
+        for starts in [&[5][..], &[2, 2], &[3, 1]] {
+            assert_eq!(
+                doc.clone().with_sentences(starts).unwrap_err(),
+                DocumentError("sentence starts must be increasing token indices".to_owned())
+            );
+        }
+    }
+
+    #[test]
+    fn with_sentences_read_from_conllu() {
+        let doc = crate::read_conllu(READ).unwrap().remove(0);
+        assert_eq!(doc.clone().with_sentences(&[0]).unwrap(), doc);
+        // Other sentences: written as a segmented document, with the forms and columns read
+        let split = doc.with_sentences(&[3]).unwrap();
+        let written = split.to_conllu();
+        assert_eq!(
+            written,
+            "\
+# newdoc
+# newpar
+# sent_id = 1
+# text = Dámelo del norte
+1\tDámelo\tdar\tVERB\t_\t_\t_\t_\t_\t_
+2-3\tdel\t_\t_\t_\t_\t_\t_\t_\t_
+2\tde\tde\tADP\t_\t_\t_\t_\t_\t_
+3\tel\tel\tDET\t_\t_\t_\t_\t_\t_
+4\tnorte\tnorte\tNOUN\t_\t_\t_\t_\t_\tSpaceAfter=No
+
+# sent_id = 2
+# text = .
+1\t.\t.\tPUNCT\t_\t_\t_\t_\t_\t_
+
+"
+        );
+        let back = crate::read_conllu(&written).unwrap().remove(0);
+        assert_eq!(
+            (back.text(), back.tokens(), words_of(&back)),
+            (split.text(), split.tokens(), words_of(&split))
+        );
+        assert_eq!(
+            (back.sentence_tokens, back.columns),
+            (split.sentence_tokens, split.columns)
+        );
     }
 
     #[test]
