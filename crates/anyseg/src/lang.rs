@@ -11,6 +11,7 @@ use std::sync::OnceLock;
 use unicode_normalization::UnicodeNormalization;
 
 use crate::Language;
+use crate::layout::is_format_mark;
 
 const FX_SEED: u64 = 0x517c_c1b7_2722_0a95;
 
@@ -463,7 +464,9 @@ fn plain(character: char) -> bool {
 
 fn normalized_fold(word: &str, marks: &[char]) -> String {
     word.nfd()
-        .filter(|character| *character != '\u{ad}' && !marks.contains(character))
+        .filter(|&character| {
+            character != '\u{ad}' && !is_format_mark(character) && !marks.contains(&character)
+        })
         .nfc()
         .flat_map(char::to_lowercase)
         .collect()

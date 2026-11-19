@@ -2,23 +2,38 @@
 
 use crate::Span;
 
-/// Whitespace, control characters and the invisible characters that separate tokens without being tokens:
-/// zero width space, word joiner, byte order mark, and a soft hyphen and zero width (non-)joiner, which
-/// inside a word or an emoji belong to it
+/// Whitespace, control characters and the invisible characters, which separate tokens without being tokens
 pub(crate) fn is_separator(character: char) -> bool {
     match character {
         '\0'..=' ' | '\u{7f}' => true,
         // ASCII, the letters of Latin-1 and the Russian alphabet skip the tables of Unicode
         '!'..='~' | '\u{c0}'..='\u{ff}' | 'А'..='я' | 'Ё' | 'ё' => false,
-        _ => {
-            character.is_whitespace()
-                || character.is_control()
-                || matches!(
-                    character,
-                    '\u{200b}' | '\u{2060}' | '\u{feff}' | '\u{ad}' | '\u{200c}' | '\u{200d}'
-                )
-        }
+        _ => character.is_whitespace() || character.is_control() || is_invisible(character),
     }
+}
+
+/// Invisible characters: zero width space, byte order mark, and a soft hyphen, zero width (non-)joiner and the
+/// format marks, which inside a word or an emoji belong to it
+pub(crate) fn is_invisible(character: char) -> bool {
+    matches!(
+        character,
+        '\u{200b}' | '\u{feff}' | '\u{ad}' | '\u{200c}' | '\u{200d}'
+    ) || is_format_mark(character)
+}
+
+/// Format characters at which a word does not break (UAX #29): the word joiner, the marks and embeddings of the
+/// direction of text, the Arabic letter mark and the Mongolian vowel separator
+pub(crate) fn is_format_mark(character: char) -> bool {
+    matches!(
+        character,
+        '\u{2060}'
+            | '\u{200e}'
+            | '\u{200f}'
+            | '\u{202a}'..='\u{202e}'
+            | '\u{2066}'..='\u{2069}'
+            | '\u{61c}'
+            | '\u{180e}'
+    )
 }
 
 /// A span without the separators at its edges, if anything is left
@@ -140,12 +155,8 @@ mod tests {
     #[test]
     fn separator_shortcuts() {
         for character in (0..=0x10ffff).filter_map(char::from_u32) {
-            let slow = character.is_whitespace()
-                || character.is_control()
-                || matches!(
-                    character,
-                    '\u{200b}' | '\u{2060}' | '\u{feff}' | '\u{ad}' | '\u{200c}' | '\u{200d}'
-                );
+            let slow =
+                character.is_whitespace() || character.is_control() || is_invisible(character);
             assert_eq!(is_separator(character), slow, "{character:?}");
         }
     }

@@ -245,9 +245,9 @@ impl Segmenter {
         self.exceptions.tokens.iter().map(String::as_str)
     }
 
-    /// The tokens of a text in order. Whitespace, control characters and the invisible separators
-    /// (zero width space, word joiner, byte order mark, and a soft hyphen and zero width
-    /// (non-)joiner outside a word) separate tokens and are in none. Words keep their combining marks and soft hyphens;
+    /// The tokens of a text in order. Whitespace, control characters and the invisible characters
+    /// (zero width space, byte order mark, and outside a word a soft hyphen, zero width (non-)joiner, word joiner
+    /// and the marks of the direction of text) separate tokens and are in none. Words keep their combining marks and soft hyphens;
     /// numbers with decimal marks, dates and times, URLs, e-mail addresses, file names, mentions,
     /// hashtags, emoticons and runs of emoji are one token each. Abbreviations and initials keep
     /// their period, except at the end of a sentence. The lists and conventions of the language

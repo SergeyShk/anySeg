@@ -12,7 +12,7 @@ use crate::Span;
 use crate::document::{
     Column, Document, DocumentError, Line, LineBreak, Sentence, TooLarge, Values, Verbatim,
 };
-use crate::layout::{self, is_separator, one_line};
+use crate::layout::{self, is_invisible, is_separator, one_line};
 
 /// A line of CoNLL-U that cannot be read
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -106,9 +106,14 @@ fn misc_has(misc: Option<&str>, item: &str) -> bool {
 
 /// The value of `SpacesAfter`, if it holds only whitespace
 fn spaces_after(misc: Option<&str>) -> Option<String> {
+    spaces(misc, "SpacesAfter=")
+}
+
+/// The value of `SpacesAfter` or `SpacesBefore`, by its prefix, if it holds only whitespace
+fn spaces(misc: Option<&str>, prefix: &str) -> Option<String> {
     let value = misc?
         .split('|')
-        .find_map(|item| item.strip_prefix("SpacesAfter="))?;
+        .find_map(|item| item.strip_prefix(prefix))?;
     let mut out = String::new();
     let mut chars = value.chars();
     while let Some(character) = chars.next() {
@@ -237,7 +242,8 @@ fn plain_number(text: &str) -> Option<usize> {
 /// The documents of a CoNLL-U text: a `# newdoc` comment starts a document and `# newpar` a paragraph. The text
 /// of a sentence is its `# text` comment or, without it, the forms of its tokens with the spaces of `SpaceAfter`
 /// and `SpacesAfter`; sentences of a paragraph are joined by a space (none after `SpaceAfter=No`) and paragraphs
-/// by a blank line. Comments, multiword token lines and empty nodes are kept, so that
+/// by a blank line, after which `SpacesBefore` of the first token is the indent of the paragraph. Comments, multiword
+/// token lines and empty nodes are kept, so that
 /// [`Document::to_conllu`] writes the text back as it was, with LF line ends. A byte
 /// order mark at the start is skipped.
 ///
@@ -385,7 +391,11 @@ fn document(sentences: &[Block<'_>]) -> Result<Document, ConlluError> {
             // The space between tokens comes from SpacesAfter when MISC has it, else from the text
             let gap = &source[cursor..found.start];
             match position {
-                0 => text.push_str(gap),
+                // The first line of a paragraph may be indented
+                0 => match spaces(token.misc, "SpacesBefore=") {
+                    Some(before) if new_paragraph && gap.is_empty() => text.push_str(&before),
+                    _ => text.push_str(gap),
+                },
                 _ => text.push_str(&space_after(
                     sentence.tokens[position - 1]
                         .misc
@@ -492,8 +502,8 @@ impl Document {
     /// The document in CoNLL-U. A document read from CoNLL-U is written as it was read, with the columns set
     /// since. Otherwise every sentence gets `# sent_id` (its number from 1) and `# text`, the first one
     /// `# newdoc`, every paragraph `# newpar`, and the space after a token inside a paragraph goes to MISC:
-    /// `SpaceAfter=No` when there is none and `SpacesAfter` when it is not one space. In `SpacesAfter` the
-    /// invisible separators are left out, line breaks other than CR and LF become LF and whitespace other than
+    /// `SpaceAfter=No` when there is none and `SpacesAfter` when it is not one space, and the indent of the first
+    /// line of a paragraph goes to `SpacesBefore` of its first token. There the invisible characters are left out, line breaks other than CR and LF become LF and whitespace other than
     /// tabs becomes a space; `# text` is the tokens with these spaces, line breaks turned into spaces. Forms,
     /// `# text` and column values are in Unicode NFC, as CoNLL-U requires; the document keeps its text.
     pub fn to_conllu(&self) -> String {
@@ -599,7 +609,8 @@ impl Document {
             let words = self.token_words(token);
             let layout = match verbatim {
                 Some(_) => None,
-                None => self.layout(token),
+                // A piece that goes on with a paragraph has no indent
+                None => self.layout(token, !(continued && token == sentence.tokens.start)),
             };
             if words.len() > 1 {
                 flush(lines, out);
@@ -673,13 +684,26 @@ impl Document {
     /// Columns 2-10 of the line of a multiword token as a segmented document writes them, for a document read from
     /// CoNLL-U whose token gets new words
     pub(crate) fn multiword_line(&self, token: usize) -> String {
-        self.multiword_columns(token, self.layout(token).as_deref())
+        self.multiword_columns(token, self.layout(token, true).as_deref())
+    }
+
+    /// MISC of the spaces around a token: after it inside its paragraph and, with `indent`, the indent of the
+    /// paragraph it starts
+    pub(crate) fn layout(&self, token: usize, indent: bool) -> Option<String> {
+        let sentence = self.token_sentence(token);
+        let before = indent
+            .then(|| self.spaces_before(token, sentence))
+            .flatten();
+        let after = self.space_after(token, sentence);
+        match (after, before) {
+            (Some(after), Some(before)) => Some(format!("{after}|{before}")),
+            (after, before) => after.or(before),
+        }
     }
 
     /// `SpaceAfter=No` or `SpacesAfter` for the space after a token inside its paragraph
-    pub(crate) fn layout(&self, token: usize) -> Option<String> {
+    fn space_after(&self, token: usize, sentence: usize) -> Option<String> {
         let next = self.tokens.get(token + 1)?;
-        let sentence = self.token_sentence(token);
         if self.sentence_tokens[sentence + 1] == token + 1 {
             let paragraph = self.sentence_paragraph(sentence);
             if self.paragraph_sentences[paragraph + 1] == sentence + 1 {
@@ -695,6 +719,24 @@ impl Document {
             " " => None,
             spaces => Some(format!("SpacesAfter={}", escape_spaces(spaces))),
         }
+    }
+
+    /// `SpacesBefore` for the indent of the first line of a paragraph, at its first token
+    fn spaces_before(&self, token: usize, sentence: usize) -> Option<String> {
+        if self.sentence_tokens[sentence] != token
+            || self.paragraph_sentences[self.sentence_paragraph(sentence)] != sentence
+        {
+            return None;
+        }
+        let previous = token
+            .checked_sub(1)
+            .map_or(0, |token| self.tokens[token].end);
+        let gap = &self.text[previous..self.tokens[token].start];
+        let breaks = [
+            '\n', '\r', '\u{b}', '\u{c}', '\u{85}', '\u{2028}', '\u{2029}',
+        ];
+        let spaces = normalize(gap.rsplit(breaks).next().unwrap_or(gap));
+        (!spaces.is_empty()).then(|| format!("SpacesBefore={}", escape_spaces(&spaces)))
     }
 }
 
@@ -794,7 +836,7 @@ impl Default for ConlluWriter {
 fn normalize(gap: &str) -> String {
     gap.chars()
         .filter_map(|character| match character {
-            '\u{200b}' | '\u{2060}' | '\u{feff}' | '\u{ad}' | '\u{200c}' | '\u{200d}' => None,
+            _ if is_invisible(character) => None,
             '\t' | '\r' | '\n' => Some(character),
             '\u{b}' | '\u{c}' | '\u{85}' | '\u{2028}' | '\u{2029}' => Some('\n'),
             _ if character.is_control() => None,
@@ -803,19 +845,28 @@ fn normalize(gap: &str) -> String {
         .collect()
 }
 
-/// MISC of a word with the space after it, unless it already says
+/// MISC of a word with the spaces after and before it, unless it already says them
 fn merge(misc: Option<&str>, layout: &str) -> String {
-    match misc {
-        Some(misc)
-            if misc.split('|').any(|item| {
-                item.starts_with("SpaceAfter=") || item.starts_with("SpacesAfter=")
-            }) =>
-        {
-            misc.to_owned()
+    let Some(misc) = misc else {
+        return layout.to_owned();
+    };
+    let side = |item: &str| {
+        if item.starts_with("SpaceAfter=") || item.starts_with("SpacesAfter=") {
+            Some(true)
+        } else if item.starts_with("SpacesBefore=") {
+            Some(false)
+        } else {
+            None
         }
-        Some(misc) => format!("{misc}|{layout}"),
-        None => layout.to_owned(),
+    };
+    let mut out = misc.to_owned();
+    for item in layout.split('|') {
+        if !misc.split('|').any(|said| side(said) == side(item)) {
+            out.push('|');
+            out.push_str(item);
+        }
     }
+    out
 }
 
 /// A text in Unicode NFC
@@ -1142,6 +1193,84 @@ mod tests {
             ]
         );
         assert_eq!(doc.to_conllu(), input);
+    }
+
+    #[test]
+    #[cfg(feature = "ru")]
+    fn indented_paragraphs() {
+        // The indent of the first line of a paragraph goes to SpacesBefore, with the other spaces of its token
+        let text = "  Ёж.\n   Кот\n\n\t Утро «да»\n\n \u{200e}Del";
+        let segmenter = crate::Segmenter::new("ru").unwrap();
+        let mut doc = segmenter.segment(text);
+        let conllu = doc.to_conllu();
+        let misc: Vec<&str> = conllu
+            .lines()
+            .filter(|line| line.starts_with(|c: char| c.is_ascii_digit()))
+            .map(|line| line.rsplit('\t').next().unwrap_or_default())
+            .collect();
+        assert_eq!(
+            misc,
+            [
+                "SpaceAfter=No|SpacesBefore=\\s\\s",
+                "SpacesAfter=\\n\\s\\s\\s",
+                "_",
+                "SpacesBefore=\\t\\s",
+                "SpaceAfter=No",
+                "SpaceAfter=No",
+                "_",
+                "SpacesBefore=\\s",
+            ]
+        );
+        assert_eq!(
+            read_conllu(&conllu).unwrap()[0].text(),
+            text.replace('\u{200e}', "")
+        );
+        // MISC of the word keeps what it says, and a multiword token carries the indent on its line
+        let mut misc = vec![None; doc.word_count()];
+        misc[0] = Some("SpacesBefore=\\s");
+        misc[3] = Some("Gloss=morning");
+        doc.set_columns([(Column::Misc, misc)], None).unwrap();
+        let conllu = doc.to_conllu();
+        assert!(
+            conllu.contains("\tSpacesBefore=\\s|SpaceAfter=No\n"),
+            "{conllu}"
+        );
+        assert!(
+            conllu.contains("\tGloss=morning|SpacesBefore=\\t\\s\n"),
+            "{conllu}"
+        );
+        #[cfg(feature = "es")]
+        {
+            let spanish = crate::Segmenter::new("es").unwrap().segment("  Del mar");
+            let conllu = spanish.to_conllu();
+            assert!(
+                conllu.contains("\n1-2\tDel\t_\t_\t_\t_\t_\t_\t_\tSpacesBefore=\\s\\s\n"),
+                "{conllu}"
+            );
+            assert_eq!(read_conllu(&conllu).unwrap()[0].text(), "  Del mar");
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "ru")]
+    fn no_indent_in_a_piece_of_a_paragraph() {
+        let segmenter = crate::Segmenter::new("ru").unwrap();
+        let mut writer = ConlluWriter::new();
+        let mut out = String::new();
+        for (index, piece) in ["Кот спит.", "  Ёж идёт."].into_iter().enumerate() {
+            let doc = segmenter.segment(piece);
+            if index > 0 {
+                writer.continue_paragraph();
+            }
+            writer.write(&doc, 0..doc.sentence_count(), &mut out);
+        }
+        assert!(!out.contains("SpacesBefore"), "{out}");
+        assert!(
+            segmenter
+                .segment("  Ёж идёт.")
+                .to_conllu()
+                .contains("SpacesBefore=\\s\\s")
+        );
     }
 
     #[test]

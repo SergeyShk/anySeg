@@ -124,10 +124,10 @@ def test_invisible_separators_stay_whitespace_out_of_the_process():
     assert [token.is_space for token in restored] == expected
     # The rule goes with a pickled vocabulary, and the lexeme made before it is marked by hand
     vocab = Vocab()
-    assert not vocab["\u2060"].is_space
+    assert not vocab["\u200b"].is_space
     assert not to_doc(Segmenter("ru").segment("а"), vocab)[0].is_space
     assert [
-        token.is_space for token in to_doc(Segmenter("ru").segment("а\u2060б"), vocab)
+        token.is_space for token in to_doc(Segmenter("ru").segment("а\u200bб"), vocab)
     ] == expected
     assert pickle.loads(pickle.dumps(vocab))["\u200b"].is_space
 
@@ -1084,7 +1084,8 @@ def test_from_doc_head_chains():
 def test_separators():
     # The separators are what the segmenter leaves out of tokens
     segmenter = Segmenter("ru")
-    characters = (chr(code) for code in range(0x10000) if not 0xD800 <= code < 0xE000)
+    codes = [*range(0xD800), *range(0xE000, 0x10000), *range(0xE0000, 0xE0100)]
+    characters = map(chr, codes)
     assert {character for character in characters if not segmenter.tokenize(character)} == set(
         SEPARATORS
     )

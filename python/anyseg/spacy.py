@@ -60,12 +60,17 @@ from ._anyseg import Document, Segmenter
 
 __all__ = ["Sentencizer", "Tokenizer", "from_doc", "to_doc"]
 
-# What separates the tokens of anySeg and is in none of them
-SEPARATORS = "".join(
-    character
-    for character in map(chr, range(0x3001))
-    if character.isspace() or unicodedata.category(character) == "Cc"
-) + ("\u00ad\u200b\u200c\u200d\u2060\ufeff")
+# What separates the tokens of anySeg and is in none of them: whitespace, control characters and the invisible
+# ones, including the format marks
+SEPARATORS = (
+    "".join(
+        character
+        for character in map(chr, range(0x3001))
+        if character.isspace() or unicodedata.category(character) == "Cc"
+    )
+    + "\u00ad\u200b\u200c\u200d\u2060\ufeff\u200e\u200f\u202a\u202b\u202c\u202d\u202e"
+    + "\u2066\u2067\u2068\u2069\u061c\u180e"
+)
 
 SEPARATOR_SET = frozenset(SEPARATORS)
 

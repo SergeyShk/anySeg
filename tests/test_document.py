@@ -361,6 +361,13 @@ def test_spaces_in_conllu():
     ]
 
 
+def test_indented_paragraphs_in_conllu():
+    text = "   Стих один,\n   стих два.\n\n     Строфа два,\n   строка."
+    written = segment(text, lang="ru").to_conllu()
+    assert "1\tСтих\t_\t_\t_\t_\t_\t_\t_\tSpacesBefore=\\s\\s\\s\n" in written
+    assert read_conllu(written)[0].text == text
+
+
 def test_read_conllu():
     docs = read_conllu(UD)
     assert len(docs) == 2

@@ -142,7 +142,8 @@ def read_conllu(text: str) -> list[Document]:
         The comment newdoc starts a document and newpar a paragraph. The text of a sentence is its
         comment text or, without it, the forms of its tokens with the spaces of SpaceAfter and
         SpacesAfter; sentences of a paragraph are joined by a space (none after SpaceAfter=No),
-        paragraphs by a blank line. Comments, multiword token lines and empty nodes are kept, so
+        paragraphs by a blank line, after which SpacesBefore of the first token is the indent of
+        the paragraph. Comments, multiword token lines and empty nodes are kept, so
         that to_conllu writes the text back as it was, with LF line ends. A byte order mark at the
         start is skipped
 
