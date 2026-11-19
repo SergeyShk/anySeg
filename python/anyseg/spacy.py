@@ -35,7 +35,20 @@ except ModuleNotFoundError as error:
     raise ImportError('anyseg.spacy needs spaCy: pip install "anyseg[spacy]"') from error
 
 import numpy
-from spacy.attrs import IDX, IS_SPACE, LENGTH, SENT_START
+from spacy.attrs import (
+    DEP,
+    HEAD,
+    IDX,
+    IS_SPACE,
+    LEMMA,
+    LENGTH,
+    MORPH,
+    ORTH,
+    POS,
+    SENT_START,
+    SPACY,
+    TAG,
+)
 from spacy.language import Language
 from spacy.pipeline.senter import senter_score
 from spacy.tokens import Doc, Span, Token
@@ -53,6 +66,8 @@ SEPARATORS = "".join(
     for character in map(chr, range(0x3001))
     if character.isspace() or unicodedata.category(character) == "Cc"
 ) + ("\u00ad\u200b\u200c\u200d\u2060\ufeff")
+
+SEPARATOR_SET = frozenset(SEPARATORS)
 
 # What spaCy cannot keep: its strings are in UTF-8
 SURROGATES = re.compile(r"[\ud800-\udfff]")
@@ -715,46 +730,60 @@ def from_doc(doc: Doc, *, split_unannotated: bool = True) -> Document:
         marks[[span.start for span in doc.sents]] = 1
     elif doc.has_annotation("SENT_START"):
         marks = doc.to_array([SENT_START]).view(numpy.int64)
+    starting = marks.tolist() if marks is not None else [0] * len(doc)
+    text = doc_text(doc)
     pending = True
-    for token in doc:
-        if marks is not None and marks[token.i] == 1:
+    # Positions and numbers from arrays: a Token object costs more than all the rest
+    for index, (idx, length) in enumerate(doc.to_array([IDX, LENGTH]).tolist()):
+        if starting[index] == 1:
             pending = True
-        text = token.text
-        rest = text.lstrip(SEPARATORS)
-        if not rest:
-            continue
-        start = token.idx + len(text) - len(rest)
-        positions[token.i] = len(kept)
+        start = idx
+        end = idx + length
+        if text[start] in SEPARATOR_SET or text[end - 1] in SEPARATOR_SET:
+            rest = text[start:end].lstrip(SEPARATORS)
+            if not rest:
+                continue
+            start = end - len(rest)
+            end = start + len(rest.rstrip(SEPARATORS))
+        positions[index] = len(kept)
         if pending:
             sentence_starts.append(len(kept))
             pending = False
         starts.append(start)
-        ends.append(start + len(rest.rstrip(SEPARATORS)))
+        ends.append(end)
         if given:
-            value = given.get((token.idx, token.idx + len(text)))
+            value = given.get((idx, idx + length))
             if value is not None:
                 words = checked_words(value, len(kept))
                 if split_unannotated or any(
                     name in word for word in words for name in WORD_COLUMNS
                 ):
                     multiword[len(kept)] = words
-        kept.append(token.i)
+        kept.append(index)
     document = Document.from_tokens(
-        doc.text,
+        text,
         starts,
         ends,
         sentence_starts=sentence_starts if marks is not None else None,
         words={token: [word["form"] for word in words] for token, words in multiword.items()},
     )
     columns: dict[str, list[Any]] = {}
-    for column, attribute, value in (
-        ("lemma", "LEMMA", lambda token: token.lemma_),
-        ("upos", "POS", lambda token: token.pos_),
-        ("xpos", "TAG", lambda token: token.tag_),
-        ("feats", "MORPH", lambda token: features(str(token.morph))),
+    for column, name, attribute in (
+        ("lemma", "LEMMA", LEMMA),
+        ("upos", "POS", POS),
+        ("xpos", "TAG", TAG),
+        ("feats", "MORPH", MORPH),
     ):
-        if doc.has_annotation(attribute):
-            columns[column] = [value(doc[index]) or None for index in kept]
+        if doc.has_annotation(name):
+            keys = doc.to_array(attribute)[kept].tolist()
+            # A string once per value, not per token
+            values = {key: doc.vocab.strings[key] for key in set(keys)}
+            if column == "feats":
+                # spaCy keeps empty features as "_", which str(token.morph) gives as ""
+                values = {
+                    key: features(value) if value != "_" else "" for key, value in values.items()
+                }
+            columns[column] = [values[key] or None for key in keys]
     lemmas = columns.get("lemma")
     if lemmas and LINE_BREAKS.search("".join(filter(None, lemmas))):
         columns["lemma"] = [
@@ -768,6 +797,24 @@ def from_doc(doc: Doc, *, split_unannotated: bool = True) -> Document:
     if columns:
         document.set_columns(**columns)
     return document
+
+
+def doc_text(doc: Doc) -> str:
+    """
+    Text of a spaCy document from its arrays: doc.text makes a Token object of every token
+
+    Arguments:
+        doc (Doc): spaCy document
+
+    Returns:
+        str: Text, as doc.text gives it
+    """
+    orths, spaces = doc.to_array([ORTH, SPACY]).T.tolist() if len(doc) else ([], [])
+    strings = {orth: doc.vocab.strings[orth] for orth in set(orths)}
+    return "".join(
+        strings[orth] + " " if space else strings[orth]
+        for orth, space in zip(orths, spaces, strict=True)
+    )
 
 
 def one_line(value: str) -> str:
@@ -847,11 +894,11 @@ def words_columns(
             continue
         values = columns.get(column, [None] * count)
         out: list[Any] = []
-        for position, value in enumerate(values):
-            given = multiword.get(position)
-            if given is None:
-                out.append(value)
-                continue
+        done = 0
+        for position, given in multiword.items():
+            out.extend(values[done:position])
+            done = position + 1
+            value = values[position]
             own = [word.get(column) for word in given]
             main = main_word(given)
             # The token gave its value to the word it came from, as a pipeline may have changed it
@@ -860,6 +907,7 @@ def words_columns(
             elif all(word is None for word in own):
                 own[0] = value
             out.extend(own)
+        out.extend(values[done:])
         result[column] = out
     if "head" in columns:
         result["head"], result["deprel"] = word_relations(
@@ -1070,28 +1118,31 @@ def relations(
     deprels: list[str | None] = []
     roots: dict[int, int] = {}
     loose: list[int] = []
+    # Heads as offsets from their tokens; a token without a head has no relation
+    offsets = doc.to_array(HEAD).view(numpy.int64).tolist()
+    labels = doc.to_array(DEP).tolist()
+    names = {label: doc.vocab.strings[label] for label in set(labels)}
     for position, index in enumerate(kept):
-        token = doc[index]
-        if not token.has_head():
+        if not labels[index]:
             heads.append(None)
             deprels.append(None)
             continue
-        head = token.head
-        # A chain of dropped heads ends at a token left or at the root
-        for _ in range(len(doc)):
-            if positions[head.i] >= 0 or head.head.i == head.i:
+        head = index + offsets[index]
+        # A chain of dropped heads ends at a token left, at the root or at a token without a head
+        for _ in range(len(offsets)):
+            if positions[head] >= 0 or not offsets[head] or not labels[head]:
                 break
-            head = head.head
-        target = positions[head.i]
-        if head.i == index or target < 0 or first[target] != first[position]:
-            if head.i == index:
+            head += offsets[head]
+        target = positions[head]
+        if head == index or target < 0 or first[target] != first[position]:
+            if head == index:
                 roots.setdefault(first[position], position)
             loose.append(position)
             heads.append(0)
             deprels.append("root")
         else:
             heads.append(target - first[position] + 1)
-            deprels.append(token.dep_ or None)
+            deprels.append(names[labels[index]] or None)
     # One root per sentence: the root of the parse, else the first word whose head is outside
     for position in loose:
         root = roots.setdefault(first[position], position)
