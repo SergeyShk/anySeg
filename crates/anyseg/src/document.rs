@@ -609,7 +609,10 @@ impl Document {
                         word_tokens.push(token);
                     }
                     if new.len() == 1 && self.verbatim.is_some() {
-                        spaces.extend(self.layout(token).map(|misc| (word_tokens.len() - 1, misc)));
+                        spaces.extend(
+                            self.layout(token, true)
+                                .map(|misc| (word_tokens.len() - 1, misc)),
+                        );
                     }
                 }
                 None => {

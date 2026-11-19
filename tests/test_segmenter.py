@@ -193,6 +193,18 @@ def test_format_marks(segmenter):
         "Он чи\u200eтает Вто\u2060рой\u200e.",
         "Текст",
     ]
+    # Lists see a word without them, and the tags of a flag stay in it
+    assert [span.text for span in segmenter.tokenize("5 ты\u200eс. руб.")] == [
+        "5",
+        "ты\u200eс.",
+        "руб",
+        ".",
+    ]
+    words = Segmenter("es").segment("Vengo de\u2060l mar").column("form")
+    assert words == ["Vengo", "de", "el", "mar"]
+    flag = "🏴\U000e0067\U000e0062\U000e0065\U000e006e\U000e0067\U000e007f"
+    for text in (f"Англия {flag}", f"Англия {flag}\nи"):
+        assert [span.text for span in segmenter.tokenize(text)][:2] == ["Англия", flag]
 
 
 def test_random_texts(segmenter):

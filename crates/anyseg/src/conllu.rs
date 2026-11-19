@@ -609,7 +609,8 @@ impl Document {
             let words = self.token_words(token);
             let layout = match verbatim {
                 Some(_) => None,
-                None => self.layout(token),
+                // A piece that goes on with a paragraph has no indent
+                None => self.layout(token, !(continued && token == sentence.tokens.start)),
             };
             if words.len() > 1 {
                 flush(lines, out);
@@ -683,13 +684,16 @@ impl Document {
     /// Columns 2-10 of the line of a multiword token as a segmented document writes them, for a document read from
     /// CoNLL-U whose token gets new words
     pub(crate) fn multiword_line(&self, token: usize) -> String {
-        self.multiword_columns(token, self.layout(token).as_deref())
+        self.multiword_columns(token, self.layout(token, true).as_deref())
     }
 
-    /// `SpaceAfter=No` or `SpacesAfter` for the space after a token inside its paragraph
-    pub(crate) fn layout(&self, token: usize) -> Option<String> {
+    /// MISC of the spaces around a token: after it inside its paragraph and, with `indent`, the indent of the
+    /// paragraph it starts
+    pub(crate) fn layout(&self, token: usize, indent: bool) -> Option<String> {
         let sentence = self.token_sentence(token);
-        let before = self.spaces_before(token, sentence);
+        let before = indent
+            .then(|| self.spaces_before(token, sentence))
+            .flatten();
         let after = self.space_after(token, sentence);
         match (after, before) {
             (Some(after), Some(before)) => Some(format!("{after}|{before}")),
@@ -1245,6 +1249,28 @@ mod tests {
             );
             assert_eq!(read_conllu(&conllu).unwrap()[0].text(), "  Del mar");
         }
+    }
+
+    #[test]
+    #[cfg(feature = "ru")]
+    fn no_indent_in_a_piece_of_a_paragraph() {
+        let segmenter = crate::Segmenter::new("ru").unwrap();
+        let mut writer = ConlluWriter::new();
+        let mut out = String::new();
+        for (index, piece) in ["Кот спит.", "  Ёж идёт."].into_iter().enumerate() {
+            let doc = segmenter.segment(piece);
+            if index > 0 {
+                writer.continue_paragraph();
+            }
+            writer.write(&doc, 0..doc.sentence_count(), &mut out);
+        }
+        assert!(!out.contains("SpacesBefore"), "{out}");
+        assert!(
+            segmenter
+                .segment("  Ёж идёт.")
+                .to_conllu()
+                .contains("SpacesBefore=\\s\\s")
+        );
     }
 
     #[test]

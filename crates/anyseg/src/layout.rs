@@ -12,12 +12,12 @@ pub(crate) fn is_separator(character: char) -> bool {
     }
 }
 
-/// Invisible characters: zero width space, byte order mark, the tags of emoji, and a soft hyphen, zero width
-/// (non-)joiner and the format marks, which inside a word or an emoji belong to it
+/// Invisible characters: zero width space, byte order mark, and a soft hyphen, zero width (non-)joiner and the
+/// format marks, which inside a word or an emoji belong to it
 pub(crate) fn is_invisible(character: char) -> bool {
     matches!(
         character,
-        '\u{200b}' | '\u{feff}' | '\u{ad}' | '\u{200c}' | '\u{200d}' | '\u{e0020}'..='\u{e007f}'
+        '\u{200b}' | '\u{feff}' | '\u{ad}' | '\u{200c}' | '\u{200d}'
     ) || is_format_mark(character)
 }
 
