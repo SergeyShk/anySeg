@@ -1065,7 +1065,13 @@ impl Splitter<'_> {
             return true;
         }
         let (before, next) = (self.line(line), self.line(line + 1));
-        if !has_word(before) || !has_word(next) || is_number_line(next) {
+        // A number between a line without a final mark and a lowercase one is the number of a page: «стал¶337¶вдыхать»
+        let page = !before.ends_with(['.', '!', '?', '…'])
+            && self
+                .lines
+                .get(line + 2)
+                .is_some_and(|after| after.slice(self.text).starts_with(char::is_lowercase));
+        if !has_word(before) || !has_word(next) || (is_number_line(next) && !page) {
             return true;
         }
         // A heading stands apart in verse too
@@ -1073,14 +1079,16 @@ impl Splitter<'_> {
         // A heading ends with no preposition, article or title of `line_continuations`: the line goes on
         let goes_on = last_lowercase_word(before)
             .is_some_and(|word| self.tables.line_continuations.contains(word));
-        // A heading of one letter is a number: «Я» is a word of a verse, «V» numbers a chapter
+        // In verse a line of one letter is a word, «Я», unless it is a Roman number, «V», «L»
+        let word = self.verse
+            && before.chars().nth(1).is_none()
+            && before.starts_with(char::is_alphabetic)
+            && !before.starts_with(['I', 'V', 'X', 'L', 'C', 'D', 'M', 'Х']);
         !verse
             && !self.typeset
             && ends_open(before)
             && !goes_on
-            && (before.chars().nth(1).is_some()
-                || !before.starts_with(char::is_alphabetic)
-                || is_number_line(before))
+            && !word
             && begins_upper(next, self.tables.conventions.section_headings)
     }
 
@@ -1390,10 +1398,20 @@ mod tests {
             sentences("Посвящение\nI\nРаз у отца"),
             ["Посвящение", "I", "Раз у отца"]
         );
-        // A line of one letter is a word, not a heading
+        // But not between a line without a final mark and a lowercase one: the number of a page
         assert_eq!(
-            sentences("Я\nСолнца, счастья шел искать…"),
-            ["Я\nСолнца, счастья шел искать…"]
+            sentences("Он широко стал\n337\nвдыхать воздух."),
+            ["Он широко стал\n337\nвдыхать воздух."]
+        );
+        assert_eq!(sentences("Глава\nL\nТекст"), ["Глава", "L", "Текст"]);
+        // In verse a line of one letter is a word, not a heading; in a chat it is a message
+        assert_eq!(
+            sentences("Я\nСолнца, счастья шел искать,\nВ поле, в лес бежал."),
+            ["Я\nСолнца, счастья шел искать,\nВ поле, в лес бежал."]
+        );
+        assert_eq!(
+            sentences("Кто пойдёт со мной\nЯ\nИ я тоже"),
+            ["Кто пойдёт со мной", "Я", "И я тоже"]
         );
         assert_eq!(
             sentences("Ну что ж. Занят так занят"),
