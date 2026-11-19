@@ -38,10 +38,13 @@ pub(crate) fn is_mark(character: char) -> bool {
     is_combining_mark(character)
 }
 
-/// Characters that join the letters of a word without being letters: soft hyphen, zero width (non-)joiner and the
-/// format marks
+/// Characters that join the letters of a word without being letters: soft hyphen, zero width (non-)joiner, the format
+/// marks and the tags
 fn is_joiner(character: char) -> bool {
-    matches!(character, '\u{ad}' | '\u{200c}' | '\u{200d}') || is_format_mark(character)
+    matches!(
+        character,
+        '\u{ad}' | '\u{200c}' | '\u{200d}' | '\u{e0001}' | '\u{e0020}'..='\u{e007f}'
+    ) || is_format_mark(character)
 }
 
 pub(crate) fn is_emoji(character: char) -> bool {
@@ -630,7 +633,9 @@ impl Scanner<'_> {
     #[inline]
     fn run_to<const SUPERSCRIPTS: bool>(&self, start: usize) -> usize {
         let rest = &self.text[start..self.end];
-        let mut chars = rest.char_indices().peekable();
+        let mut chars = rest.char_indices();
+        // The end of a run of joiners inside the word
+        let mut joined = 0;
         while let Some((offset, character)) = chars.next() {
             if SUPERSCRIPTS && !character.is_ascii() && is_superscript(character) {
                 return start + offset;
@@ -638,10 +643,19 @@ impl Scanner<'_> {
             if is_word(character) || is_mark(character) {
                 continue;
             }
+            // A run of joiners inside a word belongs to it, «Вто\u{ad}\u{2060}рой»: looked at once from its start
             let inner = is_joiner(character)
-                && chars.peek().is_some_and(|&(_, c)| {
-                    (is_word(c) || is_mark(c)) && !(SUPERSCRIPTS && is_superscript(c))
-                });
+                && (offset < joined
+                    || match chars.clone().find(|&(_, c)| !is_joiner(c)) {
+                        Some((end, c))
+                            if (is_word(c) || is_mark(c))
+                                && !(SUPERSCRIPTS && is_superscript(c)) =>
+                        {
+                            joined = end;
+                            true
+                        }
+                        _ => false,
+                    });
             if !inner {
                 return start + offset;
             }
@@ -1365,6 +1379,14 @@ mod tests {
         assert_eq!(
             tokens("чи\u{200e}тает Вто\u{2060}рой 12\u{200f}34"),
             ["чи\u{200e}тает", "Вто\u{2060}рой", "12\u{200f}34"]
+        );
+        assert_eq!(
+            tokens("Вто\u{200e}\u{200e}рой чи\u{ad}\u{2060}тает Вто\u{e0041}рой"),
+            [
+                "Вто\u{200e}\u{200e}рой",
+                "чи\u{ad}\u{2060}тает",
+                "Вто\u{e0041}рой"
+            ]
         );
         assert_eq!(
             tokens("\u{200f}слово\u{200e}. \u{202b}текст\u{202c} \u{2066}a\u{2069}"),
