@@ -3,6 +3,7 @@
 import importlib.metadata
 import pickle
 import random
+from itertools import pairwise
 
 import pytest
 
@@ -461,6 +462,76 @@ def test_multiword_tokens_after_a_pipeline():
     assert document.column("head") == [4, 4, 2, 0]
     assert document.column("deprel") == ["x", "case", "dep", "root"]
     assert to_doc(document, nlp.vocab).has_annotation("DEP")
+
+
+def hook(*starts):
+    """A hook of the sentences of a Doc that start at the given tokens"""
+
+    def sentences(doc):
+        bounds = [*starts, len(doc)]
+        return [doc[start:end] for start, end in pairwise(bounds)]
+
+    return sentences
+
+
+def sentence_texts(document):
+    return [sentence.text for sentence in document.sentences]
+
+
+def test_from_doc_takes_the_sentences_of_the_hook():
+    nlp = spacy.blank("es")
+    doc = nlp("Hola . Adiós . Fin\n\nOtra  vez")
+    assert sentence_texts(from_doc(doc)) == ["Hola . Adiós . Fin", "Otra  vez"]
+    # A paragraph still starts a sentence, and a sentence that starts with whitespace starts at the
+    # token after it
+    doc.user_hooks["sents"] = hook(0, 2, 7)
+    assert sentence_texts(from_doc(doc)) == ["Hola .", "Adiós . Fin", "Otra", "vez"]
+    # The hook goes before the starts of a component, as in doc.sents
+    nlp.add_pipe("sentencizer")
+    doc = nlp("Hola . Adiós . Fin")
+    assert sentence_texts(from_doc(doc)) == ["Hola .", "Adiós .", "Fin"]
+    doc.user_hooks["sents"] = hook(0, 2)
+    assert (
+        [span.text for span in doc.sents]
+        == sentence_texts(from_doc(doc))
+        == ["Hola .", "Adiós . Fin"]
+    )
+
+
+def test_from_doc_keeps_the_sentences_of_a_parse():
+    doc = Doc(
+        Vocab(),
+        words=["Hola", ".", "Adiós", "."],
+        heads=[0, 0, 2, 2],
+        deps=["ROOT", "punct", "ROOT", "punct"],
+    )
+    doc.user_hooks["sents"] = hook(0)
+    document = from_doc(doc)
+    assert sentence_texts(document) == ["Hola .", "Adiós ."]
+    assert document.column("head") == [0, 1, 0, 1]
+
+
+def test_from_doc_of_tokens_annotated_whole():
+    nlp = spacy.blank("es", config=TOKENIZER)
+    doc = nlp("Vengo del mar")
+    # A tagger and a parser after the tokenizer see «del» as one token
+    doc[1].lemma_, doc[1].pos_ = "del", "ADP"
+    doc[0].head, doc[1].head, doc[2].head = doc[0], doc[2], doc[0]
+    doc[0].dep_, doc[1].dep_, doc[2].dep_ = "ROOT", "case", "obl"
+    split = from_doc(doc)
+    assert split.column("form") == ["Vengo", "de", "el", "mar"]
+    assert split.column("deprel") == ["root", "case", "dep", "obl"]
+    whole = from_doc(doc, split_unannotated=False)
+    assert whole.column("form") == ["Vengo", "del", "mar"]
+    assert whole.column("lemma") == [None, "del", None]
+    assert whole.column("upos") == [None, "ADP", None]
+    assert whole.column("head") == [0, 3, 1]
+    assert whole.column("deprel") == ["root", "case", "obl"]
+    # Words with columns of their own stay words
+    document = Segmenter("es").segment("Vengo del mar")
+    document.set_columns(upos=["VERB", "ADP", "DET", "NOUN"])
+    annotated = from_doc(to_doc(document, nlp.vocab), split_unannotated=False)
+    assert annotated.column("upos") == ["VERB", "ADP", "DET", "NOUN"]
 
 
 def test_multiword_tokens_are_kept_with_the_document():
