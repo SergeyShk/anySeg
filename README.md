@@ -28,13 +28,14 @@
 
 **anySeg** segments text into tokens, words and sentences with their positions in the source text: a Rust core and a Python package without dependencies. The text is never changed - every token and sentence is a span of the original string - and the tokens follow the conventions of [Universal Dependencies](https://universaldependencies.org/), so the results can be compared with the treebanks and with the tools trained on them. One package serves all languages: the rules are shared, and a language brings its lists. Russian and Spanish are here, English follows.
 
-From Python, tokens and sentences come out at 3.2-4.4 M tokens per second, six times faster than razdel and more than ten times faster than spaCy; the Rust crate gives 13.7 M. On the test files of the Russian treebanks of UD, token F1 is 99.1-99.8, above every other tool on Taiga, GSD and PUD, and the sentence boundaries are above razdel on all four sets. On the Spanish ones, word F1 is 99.77-99.92, above every other tool on GSD and PUD, and no other rule-based tool of the comparison builds the words of multiword tokens.
+From Python, tokens and sentences come out at 3.1-4.2 M tokens per second, six times faster than razdel and more than ten times faster than spaCy; the Rust crate gives 12.8-13.1 M. On the test files of the Russian treebanks of UD, token F1 is 99.1-99.8, above every other tool on Taiga, GSD and PUD, and the sentence boundaries are above razdel on all four sets. On the Spanish ones, word F1 is 99.77-99.92, above every other tool on GSD and PUD, and no other rule-based tool of the comparison builds the words of multiword tokens.
 
 * **Tokens** ([Russian](https://sergeyshk.github.io/anySeg/russian/#tokens), [Spanish](https://sergeyshk.github.io/anySeg/spanish/#tokens)) - words with their marks and soft hyphens, hyphenated words, numbers, dates and times, URLs, e-mail addresses, mentions, hashtags, emoticons and emoji, abbreviations and initials with their period
 * **[Multiword tokens](https://sergeyshk.github.io/anySeg/spanish/#multiword)** - the words that Spanish writes together: «del» is «de» + «el», «dárselo» is «dar» + «se» + «lo»
 * **Sentences** ([Russian](https://sergeyshk.github.io/anySeg/russian/#sentences), [Spanish](https://sergeyshk.github.io/anySeg/spanish/#sentences)) - final marks with the quotes and brackets after them, inverted marks, abbreviations that end a sentence, lines of dialogue, list items, headings and verse
 * **[Paragraphs and lines](https://sergeyshk.github.io/anySeg/russian/#lines)** - paragraphs between blank lines, and every line marked as a break of the author or a wrap at the width of the page, as in text from PDF
-* **[Document model](https://sergeyshk.github.io/anySeg/document/)** - tokens, words with the columns of [CoNLL-U](https://universaldependencies.org/format.html), sentences, paragraphs and lines; reading and writing CoNLL-U, a document read from it written back as it was
+* **[Document model](https://sergeyshk.github.io/anySeg/document/)** - tokens, words with the columns of [CoNLL-U](https://universaldependencies.org/format.html), sentences, paragraphs and lines; reading and writing CoNLL-U, a document read from it written back as it was; a new document with other words or sentences
+* **[Large files](https://sergeyshk.github.io/anySeg/segmenter/#stream)** - the documents of a file read in pieces, with the memory bounded and the sentences of the whole text
 * **[Lists of your own](https://sergeyshk.github.io/anySeg/segmenter/#lists)** - more abbreviations and strings that are one token each
 * **[Command](https://sergeyshk.github.io/anySeg/cli/)** - `anyseg` for the terminal and pipelines: tokens, sentences or CoNLL-U of files and the standard input
 * **[spaCy](https://sergeyshk.github.io/anySeg/spacy/)** - the tokenizer and the sentence starts of a spaCy pipeline, the conversion of documents
@@ -92,7 +93,7 @@ Word(id=2, form='идёт', upos='VERB')
 ['¿', 'Vienes', 'de', 'el', 'mar', '?']
 ```
 
-From the terminal, `anyseg -l ru -f conllu text.txt` writes the text in CoNLL-U. `segmenter.pipe(texts, threads=4)` gives the documents of many texts, segmented in batches without the GIL on several threads. `doc.to_conllu()` writes a document in CoNLL-U, and `read_conllu(text)` reads documents from it. A segmenter takes more abbreviations and strings that are one token each: `Segmenter("ru", abbreviations=["сущ"], tokens=["C++"])`.
+From the terminal, `anyseg -l ru -f conllu text.txt` writes the text in CoNLL-U. `segmenter.pipe(texts, threads=4)` gives the documents of many texts, segmented in batches without the GIL on several threads, and `segmenter.stream(file)` the documents of a large file as it is read. `doc.to_conllu()` writes a document in CoNLL-U, and `read_conllu(text)` reads documents from it. A segmenter takes more abbreviations and strings that are one token each: `Segmenter("ru", abbreviations=["сущ"], tokens=["C++"])`.
 
 ## Comparison
 
@@ -100,7 +101,7 @@ On the test files of the treebanks of Universal Dependencies 2.19, F1 (* marks n
 
 | Tool | Tokens, SynTagRus | Tokens, Taiga | Sentence ends, SynTagRus | Sentence ends, Taiga | Tokens/s from Python |
 | :-- | --: | --: | --: | --: | --: |
-| **anySeg 0.4** | 99.61 | **99.10** | **99.61** | **95.94** | **3.18 M** |
+| **anySeg 0.4** | 99.61 | **99.10** | **99.61** | **95.94** | **3.09 M** |
 | razdel 0.5.0 | 98.73 | 95.74 | 99.41 | 85.58 | 489 k |
 | NLTK 3.10.4 | 98.93 | 96.57 | 97.61 | 82.59 | 195 k |
 | spaCy 3.8.16 | 98.38 | 96.85 | 89.60 | 76.18 | 225 k |
@@ -111,14 +112,14 @@ Spanish:
 
 | Tool | Tokens, AnCora | Words, AnCora | Words, GSD | Sentence ends, AnCora | Sentence ends, GSD | Tokens/s from Python |
 | :-- | --: | --: | --: | --: | --: | --: |
-| **anySeg 0.4** | 99.93 | 99.92 | **99.85** | 99.54 | 96.74 | **4.36 M** |
+| **anySeg 0.4** | 99.93 | 99.92 | **99.85** | 99.54 | 96.74 | **4.16 M** |
 | NLTK 3.10.4 | 99.80 | 96.50 | 96.33 | 98.58 | 96.51 | 266 k |
 | spaCy 3.8.16 | 99.90 | 96.60 | 96.39 | 89.01 | 92.31 | 371 k |
 | Stanza 1.15.0 * | **99.99** | **99.95** | 99.80 | **99.59** | 97.37 | 13 k |
 | UDPipe 1.4 * | 99.92 | 97.13 | 96.81 | 99.42 | 96.02 | 17 k |
 | SaT 12-layer * | - | - | - | 99.36 | **99.65** | 0.3 k |
 
-From Rust, the crate gives 13.7 M tokens per second with sentences, and with words on Spanish. All tools and sets, and how it is measured: [Comparison](https://sergeyshk.github.io/anySeg/comparison/).
+From Rust, the crate gives 13.1 M tokens per second with sentences, and 12.8 M with words on Spanish. All tools and sets, and how it is measured: [Comparison](https://sergeyshk.github.io/anySeg/comparison/).
 
 ## Development
 

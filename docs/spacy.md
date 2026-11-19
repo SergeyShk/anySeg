@@ -132,7 +132,7 @@ With both, `es_core_news_sm` 3.8.0 does so on the test parts of the Spanish tree
 | GSD | 88.14 | **90.97** | 69.35 | **71.09** |
 | PUD | 97.34 | **98.80** | 73.35 | **74.57** |
 
-The tokenizer gives 2.3 M tokens per second, nearly ten times as many as the tokenizer of spaCy; with the component, 1.4 M against 0.24 M with the `sentencizer` of spaCy (SynTagRus test, one thread, Apple M3 Pro). On AnCora test it gives 2.3 M against 0.42 M, and 1.6 M against 0.39 M.
+The tokenizer gives 2.3 M tokens per second, nearly ten times as many as the tokenizer of spaCy; with the component, 1.2 M against 0.22 M with the `sentencizer` of spaCy (SynTagRus test, one thread, Apple M3 Pro). On AnCora test it gives 2.2 M against 0.40 M, and 1.5 M against 0.38 M.
 
 ## Documents { #documents }
 

@@ -81,7 +81,7 @@ From Python: the time to load the tool, tokens per second, and the memory the lo
 
 | Tool | Gives | Load, s | Tokens/s | Memory, MB |
 | :-- | :-- | --: | --: | --: |
-| **anySeg 0.3** | tokens, sentences | 0.00 | **3.18 M** | 0.7 |
+| **anySeg 0.4** | tokens, sentences | 0.00 | **3.09 M** | 0.8 |
 | razdel 0.5.0 | tokens, sentences | 0.00 | 489 k | 0.1 |
 | rusenttokenize 0.0.5 | sentences | 0.00 | 317 k | 0.2 |
 | NLTK 3.10.4 | tokens, sentences | 0.85 | 195 k | 121 |
@@ -104,7 +104,7 @@ From Rust: tokens per second and the peak memory of a process that reads the tex
 
 | Crate | Gives | Tokens/s | Peak memory, MB |
 | :-- | :-- | --: | --: |
-| **anyseg 0.3** | tokens, sentences | 13.7 M | 35 |
+| **anyseg 0.4** | tokens, sentences | 13.1 M | 36 |
 | unicode-segmentation 1.13.3 | tokens, sentences | 7.7 M | 28 |
 | icu_segmenter 2.4.0 | tokens, sentences | **17.6 M** | 114 |
 | sentencex 0.1.32 | sentences | 965 k | 21 |
@@ -195,11 +195,11 @@ F1 of the CoNLL 2018 script: a sentence counts when both of its ends match, so t
 
 ### Speed and memory
 
-From Python, as for Russian, on the raw text of AnCora test. `segment`, which gives the words too, comes to 5.6 M tokens per second with the same spans read and to 3.9 M with the forms of the words.
+From Python, as for Russian, on the raw text of AnCora test. `segment`, which gives the words too, comes to 5.3 M tokens per second with the same spans read and to 3.7 M with the forms of the words.
 
 | Tool | Gives | Load, s | Tokens/s | Memory, MB |
 | :-- | :-- | --: | --: | --: |
-| **anySeg 0.3** | tokens, sentences | 0.00 | 4.36 M | 0.9 |
+| **anySeg 0.4** | tokens, sentences | 0.00 | 4.16 M | 1.0 |
 | NLTK 3.10.4 | tokens, sentences | 1.34 | 266 k | 121 |
 | spaCy 3.8.16, `es` with `sentencizer` | tokens, sentences | 1.41 | 371 k | 195 |
 | spaCy, `es_core_news_sm` with `senter` * | tokens, sentences | 1.22 | 42 k | 263 |
@@ -222,7 +222,7 @@ From Rust, as for Russian; anyseg builds the words of the multiword tokens as it
 
 | Crate | Gives | Tokens/s | Peak memory, MB |
 | :-- | :-- | --: | --: |
-| **anyseg 0.3** | tokens, words, sentences | 13.7 M | 13 |
+| **anyseg 0.4** | tokens, words, sentences | 12.8 M | 13 |
 | unicode-segmentation 1.13.3 | tokens, sentences | 6.9 M | 8 |
 | icu_segmenter 2.4.0 | tokens, sentences | 20.8 M | 14 |
 | sentencex 0.1.32 | sentences | **41.3 M** | 7 |
