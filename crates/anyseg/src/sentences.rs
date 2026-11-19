@@ -230,6 +230,13 @@ fn last_lowercase_word(line: &str) -> Option<&str> {
     word.starts_with(char::is_lowercase).then_some(word)
 }
 
+/// A number alone on a line, Arabic or Roman, maybe with a period: it heads a stanza or a chapter
+fn is_number_line(line: &str) -> bool {
+    let number = line.strip_suffix('.').unwrap_or(line);
+    (!number.is_empty() && number.bytes().all(|byte| byte.is_ascii_digit()))
+        || roman_value(number).is_some()
+}
+
 /// A line that does not end with punctuation: a heading, a line of a post
 fn ends_open(line: &str) -> bool {
     line.chars()
@@ -675,6 +682,10 @@ impl Splitter<'_> {
             return next(1).is_some_and(starts_upper);
         }
         if is_dash(piece) {
+            // A dash at the end of a line, before a line of dialogue, closes the line before it: «Кто там? —\n— Я»
+            if next(1).is_some_and(is_dash) && self.line_start(index + 1) {
+                return false;
+            }
             // Hyphens of a dash may stand apart: «- - Según»
             let mut offset = 1;
             while next(offset).is_some_and(is_dash) {
@@ -1054,7 +1065,7 @@ impl Splitter<'_> {
             return true;
         }
         let (before, next) = (self.line(line), self.line(line + 1));
-        if !has_word(before) || !has_word(next) {
+        if !has_word(before) || !has_word(next) || is_number_line(next) {
             return true;
         }
         // A heading stands apart in verse too
@@ -1062,10 +1073,14 @@ impl Splitter<'_> {
         // A heading ends with no preposition, article or title of `line_continuations`: the line goes on
         let goes_on = last_lowercase_word(before)
             .is_some_and(|word| self.tables.line_continuations.contains(word));
+        // A heading of one letter is a number: «Я» is a word of a verse, «V» numbers a chapter
         !verse
             && !self.typeset
             && ends_open(before)
             && !goes_on
+            && (before.chars().nth(1).is_some()
+                || !before.starts_with(char::is_alphabetic)
+                || is_number_line(before))
             && begins_upper(next, self.tables.conventions.section_headings)
     }
 
@@ -1347,6 +1362,46 @@ mod tests {
         assert_eq!(
             sentences("Абзац заканчивается\nздесь. Второй\nНачинается тут."),
             ["Абзац заканчивается\nздесь.", "Второй\nНачинается тут."]
+        );
+    }
+
+    #[test]
+    fn lines_of_dialogue_numbers_and_letters() {
+        // A dash at the end of a line closes the line of dialogue before it
+        assert_eq!(
+            sentences("Кто там? —\n— Я, — сказал он."),
+            ["Кто там? —", "— Я, — сказал он."]
+        );
+        assert_eq!(
+            sentences("Это песня. -\n   - Да ведь…"),
+            ["Это песня. -", "- Да ведь…"]
+        );
+        // A number alone on a line heads a stanza or a chapter
+        assert_eq!(
+            sentences("Чтоб в груди дремали силы,\nЧтоб дыша вздымалась грудь;\n5\nЧтоб всю ночь"),
+            [
+                "Чтоб в груди дремали силы,\nЧтоб дыша вздымалась грудь;",
+                "5",
+                "Чтоб всю ночь"
+            ]
+        );
+        assert_eq!(sentences("(Быль)\n1\nЖил-был"), ["(Быль)", "1", "Жил-был"]);
+        assert_eq!(
+            sentences("Посвящение\nI\nРаз у отца"),
+            ["Посвящение", "I", "Раз у отца"]
+        );
+        // A line of one letter is a word, not a heading
+        assert_eq!(
+            sentences("Я\nСолнца, счастья шел искать…"),
+            ["Я\nСолнца, счастья шел искать…"]
+        );
+        assert_eq!(
+            sentences("Ну что ж. Занят так занят"),
+            ["Ну что ж.", "Занят так занят"]
+        );
+        assert_eq!(
+            tokens("болг. слово, оч. рад"),
+            ["болг.", "слово", ",", "оч.", "рад"]
         );
     }
 
