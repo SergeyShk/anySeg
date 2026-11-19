@@ -1381,9 +1381,10 @@ impl Document {
     /// Document with other words in some tokens
     ///
     /// Description:
-    ///     Several forms make a multiword token and one form a token of one word. The other words
-    ///     keep their forms and columns, the new ones have none; a document read from CoNLL-U
-    ///     keeps its comments. The document itself does not change
+    ///     Several forms make a multiword token, whatever the text of the token, and one form, the
+    ///     text of the token, a token of one word. The other words keep their forms and columns,
+    ///     the new ones have none; a document read from CoNLL-U keeps its comments. The document
+    ///     itself does not change
     ///
     /// Arguments:
     ///     words (Mapping[int, Sequence[str]]): Forms of the words, by the index of the token
@@ -1394,7 +1395,8 @@ impl Document {
     /// Raises:
     ///     ValueError: If the document has heads, enhanced dependencies or empty nodes, which
     ///         refer to the IDs of words, words names a token that is not in the document or has
-    ///         no forms, or a form is empty or holds a tab or a line break
+    ///         no forms, a form is empty or holds a tab or a line break, or a single form is not
+    ///         the text of its token, whitespace aside
     ///     TypeError: If words is not a mapping of integers to sequences of strings
     ///
     /// Example:
@@ -1416,8 +1418,8 @@ impl Document {
     /// Description:
     ///     Sentences start at the given tokens, as in from_tokens, and every paragraph starts one.
     ///     Tokens, words, their columns, paragraphs and lines stay; a document read from CoNLL-U
-    ///     with other sentences is written as a segmented one, without its comments. The
-    ///     document itself does not change
+    ///     with other sentences is written as a segmented one, with its comments and the lines of
+    ///     its multiword tokens made anew. The document itself does not change
     ///
     /// Arguments:
     ///     starts (Sequence[int]): Indices of the tokens that start sentences

@@ -6,6 +6,7 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use crate::Span;
+use crate::conllu;
 use crate::lang::Tables;
 use crate::layout::{self, is_separator};
 use crate::tokens::Exceptions;
@@ -525,15 +526,16 @@ impl Document {
     }
 
     /// The document with other words in some of its tokens: a token and the forms of its words, in the order of the
-    /// tokens. Several forms make a multiword token and one form a token of one word; a form holds what CoNLL-U
-    /// allows, whatever the text of its token. The other words keep their forms and columns, the new ones have none;
-    /// a document read from CoNLL-U keeps its comments and the lines of its other multiword tokens.
+    /// tokens. Several forms make a multiword token, whatever the text of the token, and one form, the text of the
+    /// token, a token of one word. The other words keep their forms and columns, the new ones have none; a document
+    /// read from CoNLL-U keeps its comments and the lines of its other multiword tokens.
     ///
     /// # Errors
     ///
     /// [`DocumentError`] if the document has heads, enhanced dependencies or empty nodes, which refer to the IDs of
     /// words, the tokens are not increasing indices of tokens of the document, a token has no forms, a form is empty
-    /// or holds a tab or a line break, or the forms exceed 2 GiB.
+    /// or holds a tab or a line break, a single form is not the text of its token, whitespace aside, or the forms
+    /// exceed 2 GiB.
     pub fn with_words<I, S>(mut self, tokens: I) -> Result<Self, DocumentError>
     where
         I: IntoIterator<Item = (usize, Vec<S>)>,
@@ -565,6 +567,19 @@ impl Document {
             {
                 return Err(DocumentError(format!(
                     "a form of token {token} is empty or holds a tab or a line break"
+                )));
+            }
+            // CoNLL-U finds the form of a token of one word in the text of its sentence
+            let piece = self.tokens[token].slice(&self.text);
+            let whole = Span {
+                start: 0,
+                end: piece.len(),
+            };
+            if let [form] = forms.as_slice()
+                && conllu::align(piece, 0, form) != Some(whole)
+            {
+                return Err(DocumentError(format!(
+                    "the single form of token {token} is not its text"
                 )));
             }
             changes.push((token, forms));
@@ -657,8 +672,8 @@ impl Document {
 
     /// The document with other sentences, which start at the given tokens as in [`from_tokens`](Self::from_tokens);
     /// a paragraph always starts a sentence. Tokens, words, their columns, paragraphs and lines stay. A document
-    /// read from CoNLL-U with other sentences leaves its comments out: its CoNLL-U is written as that of a segmented
-    /// one.
+    /// read from CoNLL-U with other sentences is written as a segmented one: its comments and the lines of its
+    /// multiword tokens are made anew.
     ///
     /// # Errors
     ///
@@ -1321,9 +1336,21 @@ mod tests {
         let doc = doc.with_words([(0, vec!["dámelo"])]).unwrap();
         assert!(doc.token_words.is_empty() && doc.word_tokens.is_empty() && doc.forms.is_empty());
         assert_eq!(upos(&doc), [None, None, Some("NOUN")]);
-        let doc = doc.with_words([(2, vec!["Norte"])]).unwrap();
-        assert_eq!(words_of(&doc)[2], ["Norte"]);
-        assert!(doc.columns.is_none());
+        let doc = doc.with_words([(2, vec!["norte"])]).unwrap();
+        assert_eq!(words_of(&doc)[2], ["norte"]);
+        assert!(doc.columns.is_none() && doc.forms.is_empty());
+        // A single form may differ from the text in whitespace only, as CoNLL-U reads it
+        let text = "x 10\u{a0}000".to_owned();
+        let tokens = vec![Span { start: 0, end: 1 }, Span { start: 2, end: 9 }];
+        let spaced = Document::from_tokens(text, tokens, None)
+            .unwrap()
+            .with_words([(1, vec!["10 000"])])
+            .unwrap();
+        assert_eq!(spaced.form(1), "10 000");
+        assert_eq!(
+            crate::read_conllu(&spaced.to_conllu()).unwrap()[0].form(1),
+            "10 000"
+        );
         assert_eq!(
             doc.clone()
                 .with_words(Vec::<(usize, Vec<&str>)>::new())
@@ -1338,11 +1365,11 @@ mod tests {
         for (words, message) in [
             (vec![(3, vec!["x"])], "token 3 is not in the document"),
             (
-                vec![(1, vec!["x"]), (0, vec!["y"])],
+                vec![(1, vec!["b"]), (0, vec!["a"])],
                 "the tokens of the words must be increasing indices",
             ),
             (
-                vec![(1, vec!["x"]), (1, vec!["y"])],
+                vec![(1, vec!["b"]), (1, vec!["b"])],
                 "the tokens of the words must be increasing indices",
             ),
             (vec![(0, vec![])], "token 0 has no forms"),
@@ -1353,6 +1380,14 @@ mod tests {
             (
                 vec![(0, vec!["x\ny"])],
                 "a form of token 0 is empty or holds a tab or a line break",
+            ),
+            (
+                vec![(1, vec!["B"])],
+                "the single form of token 1 is not its text",
+            ),
+            (
+                vec![(1, vec![" "])],
+                "the single form of token 1 is not its text",
             ),
         ] {
             assert_eq!(

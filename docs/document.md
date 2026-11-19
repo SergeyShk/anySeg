@@ -206,7 +206,7 @@ Exceptions:
 with_words(words)
 ```
 
-A new document in which the given tokens hold other words: several forms make a multiword token, one form a token of one word. The other words keep their forms and columns, the new ones have none; a document read from CoNLL-U keeps its comments. The words of a document with heads, enhanced dependencies or empty nodes cannot change, since these refer to the IDs of words.
+A new document in which the given tokens hold other words: several forms make a multiword token, whatever the text of the token, and one form, the text of the token, a token of one word. The other words keep their forms and columns, the new ones have none; a document read from CoNLL-U keeps its comments. The words of a document with heads, enhanced dependencies or empty nodes cannot change, since these refer to the IDs of words.
 
 | Parameter | Type | Default | Description |
 | :-------- | :--- | :------ | :---------- |
@@ -214,7 +214,7 @@ A new document in which the given tokens hold other words: several forms make a 
 
 Exceptions:
 
-- `ValueError` - the document has heads, enhanced dependencies or empty nodes, `words` names a token that is not in the document or has no forms, or a form is empty or holds a tab or a line break;
+- `ValueError` - the document has heads, enhanced dependencies or empty nodes, `words` names a token that is not in the document or has no forms, a form is empty or holds a tab or a line break, or a single form is not the text of its token, whitespace aside;
 - `TypeError` - `words` is not a mapping of integers to sequences of strings.
 
 === "Code"
@@ -245,7 +245,7 @@ Exceptions:
 with_sentences(starts)
 ```
 
-A new document whose sentences start at the given tokens, as in [`Document.from_tokens`](#from_tokens); every paragraph starts a sentence. Tokens, words, their columns, paragraphs and lines stay. A document read from CoNLL-U with other sentences is written as a segmented one, without its comments. The sentences of a document with heads, enhanced dependencies or empty nodes cannot change, since these refer to the IDs of words.
+A new document whose sentences start at the given tokens, as in [`Document.from_tokens`](#from_tokens); every paragraph starts a sentence. Tokens, words, their columns, paragraphs and lines stay. A document read from CoNLL-U with other sentences is written as a segmented one, with its comments and the lines of its multiword tokens made anew. The sentences of a document with heads, enhanced dependencies or empty nodes cannot change, since these refer to the IDs of words.
 
 | Parameter | Type | Default | Description |
 | :-------- | :--- | :------ | :---------- |

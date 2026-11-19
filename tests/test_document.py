@@ -855,6 +855,7 @@ def test_with_words():
         ({0: []}, ValueError, "token 0 has no forms"),
         ({0: ["a", ""]}, ValueError, "is empty or holds"),
         ({0: ["a\nb"]}, ValueError, "is empty or holds"),
+        ({1: ["B"]}, ValueError, "the single form of token 1 is not its text"),
         ({0: "ab"}, TypeError, "str"),
         ({"0": ["a"]}, TypeError, "int"),
         ([(0, ["a"])], TypeError, "mapping"),

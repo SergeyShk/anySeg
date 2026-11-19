@@ -306,7 +306,7 @@ pub fn read_conllu(input: &str) -> Result<Vec<Document>, ConlluError> {
 
 /// The non-whitespace characters of `form` found in order in `text` from `position`, past the separators
 /// between them: the span they cover
-fn align(text: &str, position: usize, form: &str) -> Option<Span> {
+pub(crate) fn align(text: &str, position: usize, form: &str) -> Option<Span> {
     let mut chars = text[position..].char_indices();
     let mut span: Option<Span> = None;
     for expected in form.chars().filter(|character| !character.is_whitespace()) {
