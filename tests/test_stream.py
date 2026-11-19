@@ -1,5 +1,7 @@
+import gc
 import io
 import pickle
+import weakref
 
 import pytest
 
@@ -103,3 +105,25 @@ def test_stream_is_not_picklable():
     assert iter(stream) is stream
     with pytest.raises(TypeError, match="cannot pickle"):
         pickle.dumps(stream)
+
+
+@pytest.mark.parametrize("taken", [0, 1, None])
+def test_stream_in_a_cycle_is_collected(taken):
+    class Source:
+        def __init__(self, text):
+            self.file = io.StringIO(text)
+            self.stream = Segmenter("ru").stream(self)
+
+        def read(self, size):
+            return self.file.read(size)
+
+    source = Source("Кот спит.\n\n" * 20000)
+    if taken is None:
+        list(source.stream)
+    else:
+        for _ in range(taken):
+            next(source.stream)
+    alive = weakref.ref(source)
+    del source
+    gc.collect()
+    assert alive() is None

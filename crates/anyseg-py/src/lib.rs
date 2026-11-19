@@ -786,9 +786,13 @@ impl Stream {
         Err(not_picklable(slf.as_any())?)
     }
 
-    // The file is any object, which may hold the stream itself
+    // The file is any object, which may hold the stream itself; the reader holds it too until the stream ends
     fn __traverse__(&self, visit: PyVisit<'_>) -> Result<(), PyTraverseError> {
-        visit.call(&self.file)
+        visit.call(&self.file)?;
+        if self.state().is_some_and(|state| state.pieces.is_some()) {
+            visit.call(&self.file)?;
+        }
+        Ok(())
     }
 
     fn __clear__(&self) {

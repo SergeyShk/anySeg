@@ -305,6 +305,8 @@ pub struct Stream<S, R> {
     end: bool,
     /// The reading ended, at the end of the input or at an error
     done: bool,
+    /// The error that ended it, given after the pieces before it
+    error: Option<io::Error>,
     /// The number of the current line, from 1, and whether the next read starts a line
     number: usize,
     starts: bool,
@@ -321,6 +323,7 @@ impl<S: AsRef<Segmenter>, R: Read> Stream<S, R> {
             carry: Vec::new(),
             end: false,
             done: false,
+            error: None,
             number: 0,
             starts: true,
         }
@@ -375,14 +378,23 @@ impl<S: AsRef<Segmenter>, R: Read> Iterator for Stream<S, R> {
                 return Some(Ok(cut.piece()));
             }
             if self.done {
-                return None;
+                return self.error.take().map(Err);
+            }
+            // The next read may wait for input: the complete paragraphs go out first
+            if self.reader.buffer().is_empty() && !self.end {
+                let segmenter = self.segmenter.as_ref();
+                self.cutter
+                    .cut_ready(&|text: String| segmenter.segment_string(text));
+                if !self.cutter.pieces.is_empty() {
+                    continue;
+                }
             }
             match self.read() {
                 Ok(true) => {}
                 Ok(false) => self.done = true,
                 Err(err) => {
                     self.done = true;
-                    return Some(Err(err));
+                    self.error = Some(err);
                 }
             }
         }
@@ -491,6 +503,40 @@ mod tests {
         let error = stream.next().unwrap().unwrap_err();
         assert_eq!(error.kind(), io::ErrorKind::InvalidData);
         assert_eq!(error.to_string(), "line 2: not UTF-8");
+        assert!(stream.next().is_none());
+    }
+
+    /// Gives one chunk per read and counts the reads
+    struct Chunks(Vec<&'static [u8]>, std::rc::Rc<std::cell::Cell<usize>>);
+
+    impl Read for Chunks {
+        fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+            self.1.set(self.1.get() + 1);
+            if self.0.is_empty() {
+                return Ok(0);
+            }
+            let chunk = self.0.remove(0);
+            buffer[..chunk.len()].copy_from_slice(chunk);
+            Ok(chunk.len())
+        }
+    }
+
+    #[test]
+    fn complete_paragraphs_before_a_read_that_may_wait() {
+        let segmenter = Segmenter::new("ru").unwrap();
+        let reads = std::rc::Rc::default();
+        let input = Chunks(
+            vec!["Кот спит.\n\n".as_bytes(), b"\xff\n"],
+            std::rc::Rc::clone(&reads),
+        );
+        let mut stream = segmenter.stream(input);
+        let first = stream.next().unwrap().unwrap();
+        assert_eq!((first.document.text(), reads.get()), ("Кот спит.\n\n", 1));
+        // An error comes after the pieces before it
+        assert_eq!(
+            stream.next().unwrap().unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
         assert!(stream.next().is_none());
     }
 
