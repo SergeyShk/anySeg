@@ -96,11 +96,11 @@ From the terminal, `anyseg -l ru -f conllu text.txt` writes the text in CoNLL-U.
 
 ## Comparison
 
-On the test files of the treebanks of Universal Dependencies 2.18, F1 (* marks neural tools). Russian, the neural tools trained on SynTagRus:
+On the test files of the treebanks of Universal Dependencies 2.19, F1 (* marks neural tools). Russian, the neural tools trained on SynTagRus:
 
 | Tool | Tokens, SynTagRus | Tokens, Taiga | Sentence ends, SynTagRus | Sentence ends, Taiga | Tokens/s from Python |
 | :-- | --: | --: | --: | --: | --: |
-| **anySeg 0.3** | 99.61 | **99.10** | **99.61** | **95.94** | **3.18 M** |
+| **anySeg 0.4** | 99.61 | **99.10** | **99.61** | **95.94** | **3.18 M** |
 | razdel 0.5.0 | 98.73 | 95.74 | 99.41 | 85.58 | 489 k |
 | NLTK 3.10.4 | 98.93 | 96.57 | 97.61 | 82.59 | 195 k |
 | spaCy 3.8.16 | 98.38 | 96.85 | 89.60 | 76.18 | 225 k |
@@ -111,11 +111,11 @@ Spanish:
 
 | Tool | Tokens, AnCora | Words, AnCora | Words, GSD | Sentence ends, AnCora | Sentence ends, GSD | Tokens/s from Python |
 | :-- | --: | --: | --: | --: | --: | --: |
-| **anySeg 0.3** | 99.93 | 99.92 | **99.86** | 99.54 | 96.74 | **4.36 M** |
-| NLTK 3.10.4 | 99.80 | 96.50 | 96.41 | 98.58 | 96.51 | 266 k |
-| spaCy 3.8.16 | 99.90 | 96.60 | 96.47 | 89.01 | 92.31 | 371 k |
-| Stanza 1.15.0 * | **99.99** | **99.95** | 99.75 | **99.59** | 97.37 | 13 k |
-| UDPipe 1.4 * | 99.92 | 97.13 | 96.90 | 99.42 | 96.02 | 17 k |
+| **anySeg 0.4** | 99.93 | 99.92 | **99.85** | 99.54 | 96.74 | **4.36 M** |
+| NLTK 3.10.4 | 99.80 | 96.50 | 96.33 | 98.58 | 96.51 | 266 k |
+| spaCy 3.8.16 | 99.90 | 96.60 | 96.39 | 89.01 | 92.31 | 371 k |
+| Stanza 1.15.0 * | **99.99** | **99.95** | 99.80 | **99.59** | 97.37 | 13 k |
+| UDPipe 1.4 * | 99.92 | 97.13 | 96.81 | 99.42 | 96.02 | 17 k |
 | SaT 12-layer * | - | - | - | 99.36 | **99.65** | 0.3 k |
 
 From Rust, the crate gives 13.7 M tokens per second with sentences, and with words on Spanish. All tools and sets, and how it is measured: [Comparison](https://sergeyshk.github.io/anySeg/comparison/).
