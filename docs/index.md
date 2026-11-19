@@ -7,6 +7,10 @@
 !!! note "Early version"
     Before 1.0 the API may change between 0.x versions.
 
+A text becomes tokens - spans of it with their positions - and the tokens hold words: one word, or several where the language joins them in one token, as Spanish «del» is «de» and «el». Sentences hold whole tokens and paragraphs whole sentences.
+
+![How anySeg segments a text: the text, its tokens with their positions, the words of multiword tokens, sentences and paragraphs](img/pipeline.svg)
+
 ## Features
 
 <div class="grid cards" markdown>

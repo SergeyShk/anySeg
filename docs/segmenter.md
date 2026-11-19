@@ -213,6 +213,8 @@ The documents of a large text read from a file as they are asked for, without re
 
 The iterator tells about the last document it gave: `start` is the position of its first character in the text of the file, and `continued` is whether its first paragraph goes on with the last one of the document before it.
 
+![The documents of a file: short paragraphs in pieces of about 64 KiB, and a paragraph without blank lines longer than 256 KiB in pieces of whole sentences that go on with it](img/stream.svg)
+
 | Parameter | Type | Default | Description |
 | :-------- | :--- | :------ | :---------- |
 | `file` | `SupportsRead[str] | SupportsRead[bytes]` | - | File open for reading, in text or binary mode, or another object whose `read(size)` gives strings or bytes |

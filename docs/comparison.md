@@ -1,6 +1,6 @@
 # Comparison
 
-anySeg against the segmenters of Russian and Spanish, rule-based and neural, on the test files of the treebanks of [Universal Dependencies](https://universaldependencies.org/) 2.18: SynTagRus, Taiga, GSD and PUD for [Russian](#russian), AnCora, GSD and PUD for [Spanish](#spanish).
+anySeg against the segmenters of Russian and Spanish, rule-based and neural, on the test files of the treebanks of [Universal Dependencies](https://universaldependencies.org/) 2.19: SynTagRus, Taiga, GSD and PUD for [Russian](#russian), AnCora, GSD and PUD for [Spanish](#spanish).
 
 ## How it is measured
 
@@ -10,7 +10,7 @@ anySeg against the segmenters of Russian and Spanish, rule-based and neural, on 
 - The rules of anySeg were chosen on the train and dev files; the test files are used only for this comparison.
 - Speed is measured on one thread of an Apple M3 Pro, on the raw text of SynTagRus test (903,085 characters, 157,706 tokens of the treebank) and of AnCora test (278,779 characters, 52,454 tokens). Tokens per second count the tokens of the treebank, the same for every tool.
 
-Neural tools are marked with *. For Russian, Stanza, UDPipe and trankit use models trained on SynTagRus. For Spanish, Stanza uses its model `combined` and UDPipe a model trained on AnCora of UD 2.5, where «del» and «al» were not yet split. trankit is not in the Spanish tables, as its model could not be downloaded.
+Neural tools are marked with *. None has a model of UD 2.19 yet: Stanza 1.15.0 is trained on UD 2.18, UDPipe 1.4 and trankit 1.1.2 on UD 2.5. For Russian, Stanza, UDPipe and trankit use models trained on SynTagRus. For Spanish, Stanza uses its model `combined` and UDPipe a model trained on AnCora of UD 2.5, where «del» and «al» were not yet split. trankit is not in the Spanish tables, as its model could not be downloaded.
 
 ## Russian
 
@@ -20,7 +20,7 @@ F1 of the CoNLL 2018 script.
 
 | Tool | SynTagRus | Taiga | GSD | PUD |
 | :-- | --: | --: | --: | --: |
-| **anySeg 0.3** | 99.61 | **99.10** | **99.14** | **99.78** |
+| **anySeg 0.4** | 99.61 | **99.10** | **99.14** | **99.78** |
 | razdel 0.5.0 | 98.73 | 95.74 | 92.64 | 99.26 |
 | NLTK 3.10.4, `word_tokenize` | 98.93 | 96.57 | 94.45 | 99.60 |
 | spaCy 3.8.16, `ru` | 98.38 | 96.85 | 94.66 | 98.46 |
@@ -38,7 +38,7 @@ F1 of the positions of the sentence ends.
 
 | Tool | SynTagRus | Taiga | GSD | PUD |
 | :-- | --: | --: | --: | --: |
-| **anySeg 0.3** | 99.61 | **95.94** | 98.66 | 99.75 |
+| **anySeg 0.4** | 99.61 | **95.94** | 98.66 | 99.75 |
 | razdel 0.5.0 | 99.41 | 85.58 | 96.94 | 99.65 |
 | rusenttokenize 0.0.5 | 99.36 | 84.11 | 98.07 | 99.60 |
 | NLTK 3.10.4, Punkt | 97.61 | 82.59 | 96.92 | 99.04 |
@@ -63,7 +63,7 @@ F1 of the CoNLL 2018 script: a sentence counts when both of its ends match, so t
 
 | Tool | SynTagRus | Taiga | GSD | PUD |
 | :-- | --: | --: | --: | --: |
-| **anySeg 0.3** | **98.92** | **89.92** | **96.32** | 99.25 |
+| **anySeg 0.4** | **98.92** | **89.92** | **96.32** | 99.25 |
 | razdel 0.5.0 | 98.37 | 70.73 | 91.33 | 98.95 |
 | NLTK 3.10.4 | 93.26 | 63.96 | 91.30 | 97.23 |
 | spaCy 3.8.16, `ru` | 82.19 | 56.65 | 91.99 | 91.06 |
@@ -119,16 +119,16 @@ F1 of the CoNLL 2018 script.
 
 | Tool | AnCora | GSD | PUD |
 | :-- | --: | --: | --: |
-| **anySeg 0.3** | 99.93 | **99.95** | **99.78** |
-| NLTK 3.10.4, `word_tokenize` | 99.80 | 99.78 | 99.62 |
-| spaCy 3.8.16, `es` | 99.90 | 99.85 | 99.63 |
-| syntok 1.4.4 | 99.50 | 99.62 | 99.63 |
-| segtok 1.5.11 | 99.89 | 99.78 | 99.61 |
-| sacremoses 0.2.0 | 99.87 | 99.81 | 99.62 |
-| blingfire 0.1.8 | 99.05 | 99.07 | 99.58 |
-| ICU 77.1, UAX #29 | 99.27 | 99.45 | 99.68 |
-| Stanza 1.15.0 * | **99.99** | 99.86 | 99.75 |
-| UDPipe 1.4 * | 99.92 | 99.75 | 99.58 |
+| **anySeg 0.4** | 99.93 | **99.92** | **99.78** |
+| NLTK 3.10.4, `word_tokenize` | 99.80 | 99.75 | 99.62 |
+| spaCy 3.8.16, `es` | 99.90 | 99.82 | 99.63 |
+| syntok 1.4.4 | 99.50 | 99.60 | 99.63 |
+| segtok 1.5.11 | 99.89 | 99.75 | 99.61 |
+| sacremoses 0.2.0 | 99.87 | 99.79 | 99.62 |
+| blingfire 0.1.8 | 99.05 | 99.11 | 99.58 |
+| ICU 77.1, UAX #29 | 99.27 | 99.49 | 99.68 |
+| Stanza 1.15.0 * | **99.99** | 99.90 | 99.75 |
+| UDPipe 1.4 * | 99.92 | 99.72 | 99.58 |
 
 The Rust crates unicode-segmentation 1.13.3 and icu_segmenter 2.4.0 give the same tokens as ICU.
 
@@ -138,16 +138,16 @@ F1 of the CoNLL 2018 script on the words of the treebank, where «del» is «de�
 
 | Tool | AnCora | GSD | PUD |
 | :-- | --: | --: | --: |
-| **anySeg 0.3** | 99.92 | **99.86** | **99.77** |
-| NLTK 3.10.4, `word_tokenize` | 96.50 | 96.41 | 96.62 |
-| spaCy 3.8.16, `es` | 96.60 | 96.47 | 96.60 |
-| syntok 1.4.4 | 96.21 | 96.25 | 96.62 |
-| segtok 1.5.11 | 96.59 | 96.41 | 96.58 |
-| sacremoses 0.2.0 | 96.57 | 96.45 | 96.59 |
-| blingfire 0.1.8 | 95.77 | 95.72 | 96.57 |
-| ICU 77.1, UAX #29 | 95.99 | 96.10 | 96.65 |
-| Stanza 1.15.0 * | **99.95** | 99.75 | 99.66 |
-| UDPipe 1.4 * | 97.13 | 96.90 | 96.95 |
+| **anySeg 0.4** | 99.92 | **99.85** | **99.77** |
+| NLTK 3.10.4, `word_tokenize` | 96.50 | 96.33 | 96.62 |
+| spaCy 3.8.16, `es` | 96.60 | 96.39 | 96.60 |
+| syntok 1.4.4 | 96.21 | 96.16 | 96.62 |
+| segtok 1.5.11 | 96.59 | 96.33 | 96.58 |
+| sacremoses 0.2.0 | 96.57 | 96.36 | 96.59 |
+| blingfire 0.1.8 | 95.77 | 95.70 | 96.57 |
+| ICU 77.1, UAX #29 | 95.99 | 96.07 | 96.65 |
+| Stanza 1.15.0 * | **99.95** | 99.80 | 99.66 |
+| UDPipe 1.4 * | 97.13 | 96.81 | 96.95 |
 
 ### Sentence boundaries
 
@@ -155,13 +155,13 @@ F1 of the positions of the sentence ends.
 
 | Tool | AnCora | GSD | PUD |
 | :-- | --: | --: | --: |
-| **anySeg 0.3** | 99.54 | 96.74 | 99.60 |
+| **anySeg 0.4** | 99.54 | 96.74 | 99.60 |
 | NLTK 3.10.4, Punkt | 98.58 | 96.51 | 99.10 |
 | spaCy 3.8.16, `es` with `sentencizer` | 89.01 | 92.31 | 98.29 |
 | spaCy, `es_core_news_sm` with `senter` * | 94.36 | 95.77 | 75.31 |
 | spaCy, `es_core_news_sm` with the parser * | 99.04 | 95.80 | 98.39 |
 | sentencex 1.0.32 | 94.07 | 84.74 | 82.85 |
-| pysbd 0.3.4 | 97.23 | 85.07 | 98.90 |
+| pysbd 0.3.4 | 97.23 | 85.83 | 98.90 |
 | yasbd-lib 1.0.3 | 95.55 | 84.63 | 98.75 |
 | sentence-splitter 1.4 | 97.27 | 96.12 | 98.40 |
 | syntok 1.4.4 | 98.69 | 96.89 | 98.30 |
@@ -181,7 +181,7 @@ F1 of the CoNLL 2018 script: a sentence counts when both of its ends match, so t
 
 | Tool | AnCora | GSD | PUD |
 | :-- | --: | --: | --: |
-| **anySeg 0.3** | 98.66 | 90.97 | **98.80** |
+| **anySeg 0.4** | 98.66 | 90.97 | **98.80** |
 | NLTK 3.10.4 | 96.15 | 90.04 | 97.59 |
 | spaCy 3.8.16, `es` | 80.41 | 81.77 | 95.98 |
 | syntok 1.4.4 | 96.65 | 91.41 | 95.60 |

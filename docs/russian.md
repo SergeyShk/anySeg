@@ -208,6 +208,8 @@ A paragraph is the part of the text between blank lines (or the paragraph separa
 *   at a line without words: «***», «-», and before a number alone on a line, the number of a stanza or a chapter: «5», «IV.» - but not the number of a page between a line without a final mark and a lowercase one;
 *   after a line without final punctuation before a line with a capital letter: a heading, a line of a post. This rule is silent in text wrapped at the width of the page, where some line goes on with a lowercase letter, and in verse, except after a line without lowercase letters in a paragraph that has them, which is a heading. In verse a line of one letter is a word, not a heading, unless it is a Roman number: «Я», but «V». A paragraph reads as verse when some line ends with a comma or a semicolon before a line with a capital letter, or when its lines rhyme. Verse without rhymes and such marks splits by lines, as a post does.
 
+![Three paragraphs: verse, where a sentence goes on across the lines the author broke; text wrapped at the width of the page; a list and a heading, where every line starts a sentence](img/lines.svg)
+
 === "Code"
 
     ``` python
