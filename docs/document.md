@@ -5,7 +5,7 @@ A segmented text: its tokens, its words with the columns of [CoNLL-U](https://un
 *   The text is never changed: tokens, sentences, paragraphs and lines are its spans, with positions in the characters of the Python string.
 *   A token holds one word or, for a multiword token, several ([Spanish](spanish.md#multiword) «del» is «de» + «el»). The segmenter gives them where the language joins words in one token.
 *   Sentences hold whole tokens, paragraphs - the parts of the text between blank lines - hold whole sentences, and lines are those of the paragraphs.
-*   Words have the columns of CoNLL-U, empty until set; [`set_columns`](#set_columns) is the only change of a document, so a document can be shared between threads. It can be pickled with its columns, to go to another process; its parts cannot.
+*   Words have the columns of CoNLL-U, empty until set; [`set_columns`](#set_columns) is the only change of a document, so a document can be shared between threads. Other words or sentences make a new document: [`with_words`](#with_words), [`with_sentences`](#with_sentences). A document can be pickled with its columns, to go to another process; its parts cannot.
 
 === "Code"
 
@@ -191,6 +191,82 @@ Exceptions:
 
     ```
     (['NOUN', 'VERB', 'ADV'], [2, 0, 2], Word(id=1, form='Ёж', lemma='ёж', upos='NOUN', head=2, deprel='nsubj'))
+    ```
+
+</div>
+
+<div class="metric-card" markdown>
+
+### Document with other words { #with_words }
+
+`with_words` · `Document`
+{ .metric-meta }
+
+``` {.python .signature}
+with_words(words)
+```
+
+A new document in which the given tokens hold other words: several forms make a multiword token, whatever the text of the token, and one form, the text of the token, a token of one word. The other words keep their forms and columns, the new ones have none; a document read from CoNLL-U keeps its comments. The words of a document with heads, enhanced dependencies or empty nodes cannot change, since these refer to the IDs of words.
+
+| Parameter | Type | Default | Description |
+| :-------- | :--- | :------ | :---------- |
+| `words` | `Mapping[int, Sequence[str]]` | - | Forms of the words, by the index of the token |
+
+Exceptions:
+
+- `ValueError` - the document has heads, enhanced dependencies or empty nodes, `words` names a token that is not in the document or has no forms, a form is empty or holds a tab or a line break, or a single form is not the text of its token, whitespace aside;
+- `TypeError` - `words` is not a mapping of integers to sequences of strings.
+
+=== "Code"
+
+    ``` python
+    order = Segmenter("es").segment("Cómpraselo ya.")
+    order.set_columns(upos=["VERB", "ADV", "PUNCT"])
+    other = order.with_words({0: ["Compra", "se", "lo"]})
+    [word.form for word in other.words], other.column("upos")
+    ```
+
+=== "Result"
+
+    ```
+    (['Compra', 'se', 'lo', 'ya', '.'], [None, None, None, 'ADV', 'PUNCT'])
+    ```
+
+</div>
+
+<div class="metric-card" markdown>
+
+### Document with other sentences { #with_sentences }
+
+`with_sentences` · `Document`
+{ .metric-meta }
+
+``` {.python .signature}
+with_sentences(starts)
+```
+
+A new document whose sentences start at the given tokens, as in [`Document.from_tokens`](#from_tokens); every paragraph starts a sentence. Tokens, words, their columns, paragraphs and lines stay. A document read from CoNLL-U with other sentences is written as a segmented one, with its comments and the lines of its multiword tokens made anew. The sentences of a document with heads, enhanced dependencies or empty nodes cannot change, since these refer to the IDs of words.
+
+| Parameter | Type | Default | Description |
+| :-------- | :--- | :------ | :---------- |
+| `starts` | `Sequence[int]` | - | Indices of the tokens that start sentences |
+
+Exceptions:
+
+- `ValueError` - the document has heads, enhanced dependencies or empty nodes, or the starts are not increasing token indices;
+- `TypeError` - `starts` holds something other than integers.
+
+=== "Code"
+
+    ``` python
+    story = Segmenter("ru").segment("Ёж идёт. Кот спит.\n\nУтро.")
+    [sentence.text for sentence in story.with_sentences([0, 1]).sentences]
+    ```
+
+=== "Result"
+
+    ```
+    ['Ёж', 'идёт. Кот спит.', 'Утро.']
     ```
 
 </div>
