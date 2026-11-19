@@ -4,8 +4,9 @@
 //! it was cut from. [`Segmenter::segment`] gives a [`Document`]: tokens, words with the columns of
 //! CoNLL-U, sentences, paragraphs and lines, read from and written to CoNLL-U by [`read_conllu`],
 //! [`Document::to_conllu`] and [`ConlluWriter`]. [`Segmenter::stream`] reads a large text from a
-//! reader in pieces, with the memory bounded. Every language is a Cargo feature, on by default:
-//! `ru` (Russian) and `es` (Spanish).
+//! reader in pieces, with the memory bounded, and [`Document::with_words`] and
+//! [`Document::with_sentences`] give a document with other words or sentences. Every language is a
+//! Cargo feature, on by default: `ru` (Russian) and `es` (Spanish).
 //!
 //! ```
 //! # #[cfg(feature = "ru")] {
