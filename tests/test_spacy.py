@@ -478,6 +478,19 @@ def sentence_texts(document):
     return [sentence.text for sentence in document.sentences]
 
 
+def test_from_doc_stops_at_a_dropped_token_without_a_head():
+    # A partial parse: the head of «Hola» is a line break, which has no head of its own
+    doc = Doc(
+        Vocab(),
+        words=["Hola", "\n", "mundo", "."],
+        heads=[1, 3, 2, 2],
+        deps=["nmod", None, "ROOT", "punct"],
+    )
+    document = from_doc(doc)
+    assert document.column("head") == [2, 0, 2]
+    assert document.column("deprel") == ["dep", "root", "punct"]
+
+
 def test_from_doc_takes_the_sentences_of_the_hook():
     nlp = spacy.blank("es")
     doc = nlp("Hola . Adiós . Fin\n\nOtra  vez")

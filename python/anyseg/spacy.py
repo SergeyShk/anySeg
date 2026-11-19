@@ -1128,9 +1128,9 @@ def relations(
             deprels.append(None)
             continue
         head = index + offsets[index]
-        # A chain of dropped heads ends at a token left or at the root
+        # A chain of dropped heads ends at a token left, at the root or at a token without a head
         for _ in range(len(offsets)):
-            if positions[head] >= 0 or not offsets[head]:
+            if positions[head] >= 0 or not offsets[head] or not labels[head]:
                 break
             head += offsets[head]
         target = positions[head]
