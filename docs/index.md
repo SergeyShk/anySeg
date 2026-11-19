@@ -19,7 +19,7 @@ A text becomes tokens - spans of it with their positions - and the tokens hold w
 
     ---
 
-    Tokens and sentences with their positions, documents of texts in batches on several threads, lists of your own abbreviations and tokens
+    Tokens and sentences with their positions, documents of texts in batches on several threads and of large files in pieces, lists of your own abbreviations and tokens
 
     [:octicons-arrow-right-24: Segmenter](segmenter.md)
 

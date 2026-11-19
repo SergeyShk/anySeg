@@ -289,7 +289,7 @@ A piece of a text with its position: `start` is the position of its first charac
 
 ## Rust
 
-The segmenter is the Rust crate `anyseg`, with every language behind a Cargo feature, on by default: `ru` (Russian) and `es` (Spanish). It has the same `Segmenter` with `tokenize`, `sentenize` and `segment`, and gives positions in bytes of the UTF-8 string. `segment_string` takes a `String` without copying it, and `ConlluWriter` writes documents - the pieces of a long text - into one CoNLL-U, with the sentences numbered through them.
+The segmenter is the Rust crate `anyseg`, with every language behind a Cargo feature, on by default: `ru` (Russian) and `es` (Spanish). It has the same `Segmenter` with `tokenize`, `sentenize` and `segment`, and gives positions in bytes of the UTF-8 string. `segment_string` takes a `String` without copying it, `stream` gives the documents of a text read from a reader in pieces, as in Python, and `ConlluWriter` writes documents - the pieces of a long text - into one CoNLL-U, with the sentences numbered through them.
 
 ``` rust
 use anyseg::Segmenter;
