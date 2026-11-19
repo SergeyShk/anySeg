@@ -1,3 +1,4 @@
+import codecs
 import gc
 import io
 import pickle
@@ -66,7 +67,7 @@ def test_long_paragraph():
 
 
 def test_stream_gives_what_has_come():
-    class Pipe:
+    class Pipe(io.BufferedIOBase):
         """Gives with read1 what has come, as a pipe does; read would wait for the whole size"""
 
         def __init__(self, *chunks):
@@ -84,6 +85,15 @@ def test_stream_gives_what_has_come():
     assert [sentence.text for sentence in next(stream).sentences] == ["Кот спит."]
     assert pipe.reads == 1
     assert [document.text for document in stream] == ["Ёж идёт.\n"]
+
+
+def test_text_readers_of_codecs(tmp_path):
+    # A reader of codecs passes read1 to the bytes under it, which are not UTF-8
+    path = tmp_path / "text.txt"
+    path.write_bytes("Ёж идёт.\n\nКот спит.\n".encode("cp1251"))
+    with path.open("rb") as file:
+        stream = Segmenter("ru").stream(codecs.getreader("cp1251")(file))
+        assert "".join(document.text for document in stream) == "Ёж идёт.\n\nКот спит.\n"
 
 
 def test_lone_surrogate():

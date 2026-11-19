@@ -615,8 +615,9 @@ impl Segmenter {
         }
         let error = Arc::new(Mutex::new(None));
         let reader = FileReader {
-            // read1 gives what has come without waiting for the whole size, from a pipe or a terminal
-            method: if file.hasattr("read1")? {
+            // read1 of a buffered binary file gives what has come without waiting for the whole size, from a pipe or a
+            // terminal; a reader of codecs passes read1 to the bytes under it
+            method: if file.is_instance(&py.import("io")?.getattr("BufferedIOBase")?)? {
                 "read1"
             } else {
                 "read"

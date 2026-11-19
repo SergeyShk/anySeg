@@ -1128,8 +1128,10 @@ impl Splitter<'_> {
         if !has_word(before) || !has_word(next) || (is_number_line(next, lookalikes) && !page) {
             return true;
         }
-        // A Roman number alone on a line is a sentence of its own, in verse too: «II¶Две жизни не прожить»
-        if is_roman(before, lookalikes) && begins_upper(next, false) {
+        // A Roman number alone on a line is a sentence of its own, in verse too: «II¶Две жизни», «IV.¶Не могу»
+        if is_roman(before.strip_suffix('.').unwrap_or(before), lookalikes)
+            && begins_upper(next, false)
+        {
             return true;
         }
         // A heading stands apart in verse too
@@ -1511,8 +1513,16 @@ mod tests {
             ]
         );
         assert_eq!(
-            sentences("и ветер пел\nХ\nОтец уехал."),
-            ["и ветер пел", "Х", "Отец уехал."]
+            sentences("Хмелем осыпь молодых,\nТанцуют девушки\nХ\nСтадо у лесу"),
+            [
+                "Хмелем осыпь молодых,\nТанцуют девушки",
+                "Х",
+                "Стадо у лесу"
+            ]
+        );
+        assert_eq!(
+            sentences("Он ушел.\nIV.\nНе могу выразить."),
+            ["Он ушел.", "IV.", "Не могу выразить."]
         );
         assert_eq!(
             sentences("и ветер пел\nХI\nОтец уехал."),
