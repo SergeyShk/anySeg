@@ -198,6 +198,49 @@ Exceptions:
 
 </div>
 
+<div class="metric-card" markdown>
+
+### Documents of a file { #stream }
+
+`stream` · `Stream`
+{ .metric-meta }
+
+``` {.python .signature}
+stream(file)
+```
+
+The documents of a large text read from a file as they are asked for, without reading it whole. Complete paragraphs come in pieces of about 64 KiB, and a paragraph without blank lines longer than 256 KiB in pieces of whole sentences. The documents have the sentences and words of the whole text, except where a paragraph that long is cut, which sees only its piece there; so that the memory does not grow with the text, a sentence or a word longer than 256 KiB is cut, and a run of whitespace that long inside a line is shortened. A file in binary mode is read as UTF-8. Every document is segmented without the GIL; one iterator serves one thread at a time, as `pipe` does.
+
+The iterator tells about the last document it gave: `start` is the position of its first character in the text of the file, and `continued` is whether its first paragraph goes on with the last one of the document before it.
+
+| Parameter | Type | Default | Description |
+| :-------- | :--- | :------ | :---------- |
+| `file` | `SupportsRead[str] | SupportsRead[bytes]` | - | File open for reading, in text or binary mode, or another object whose `read(size)` gives strings or bytes |
+
+Exceptions:
+
+- `TypeError` - the file has no method `read`, or `read` gives something other than strings or bytes;
+- `ValueError` - a line of a file in binary mode is not UTF-8. An error of `read` comes as it is.
+
+=== "Code"
+
+    ``` python
+    import io
+
+    file = io.StringIO("Ёж идёт домой.\n\nКот спит.\n" * 10000)
+    stream = segmenter.stream(file)
+    documents = list(stream)
+    len(documents), sum(len(doc.sentences) for doc in documents), stream.start
+    ```
+
+=== "Result"
+
+    ```
+    (9, 20000, 259990)
+    ```
+
+</div>
+
 ## Functions
 
 `tokenize(text, *, lang)`, `sentenize(text, *, lang)` and `segment(text, *, lang)` do the same as the methods of `Segmenter(lang)`: the module keeps one segmenter per language. The language is a keyword argument and has no default.

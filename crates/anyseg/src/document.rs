@@ -716,6 +716,44 @@ impl Document {
         Ok(self)
     }
 
+    /// The first sentences of a segmented document, with the text up to `end`: at or after the end of their last token
+    /// and before the next one. Their tokens, words, paragraphs and lines are as the whole document has them
+    pub(crate) fn truncated(mut self, sentences: usize, end: usize) -> Document {
+        let tokens = self.sentence_tokens[sentences];
+        let words = self.first_word(tokens);
+        self.text.truncate(end);
+        self.tokens.truncate(tokens);
+        self.tokens = fitted(std::mem::take(&mut self.tokens));
+        if !self.word_tokens.is_empty() {
+            if words == tokens {
+                self.token_words = Arc::from([]);
+                self.word_tokens = Arc::from([]);
+            } else {
+                self.token_words = self.token_words[..=tokens].into();
+                self.word_tokens = self.word_tokens[..words].into();
+            }
+            let mut forms = Values::default();
+            for word in 0..words {
+                // Fits: no larger than before
+                let _ = forms.push(self.forms.get(word));
+            }
+            self.forms = forms.finished();
+        }
+        self.sentence_tokens.truncate(sentences + 1);
+        let paragraphs = self
+            .paragraph_sentences
+            .partition_point(|&start| start < sentences);
+        self.paragraph_sentences.truncate(paragraphs);
+        self.paragraph_sentences.push(sentences);
+        let last = self.tokens.last().map_or(0, |span| span.end);
+        self.lines.retain(|line| line.span.start < last);
+        if let Some(line) = self.lines.last_mut() {
+            line.span.end = line.span.end.min(last);
+        }
+        self.lines = fitted(std::mem::take(&mut self.lines));
+        self
+    }
+
     /// Heads, enhanced dependencies and empty nodes refer to the IDs of words in their sentences
     fn check_no_ids(&self, what: &str) -> Result<(), DocumentError> {
         let deps = self
