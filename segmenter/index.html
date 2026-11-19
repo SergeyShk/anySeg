@@ -567,6 +567,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#stream" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Documents of a file
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -852,6 +863,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#stream" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Documents of a file
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -993,7 +1015,7 @@ Segmenter('ru', abbreviations=('сущ',), tokens=('C++', 'т.н.'))
 <p class="metric-meta"><code>tokenize</code> · <code>list[Span]</code></p>
 <div class="signature highlight"><pre><span></span><code><span class="n">tokenize</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
 </code></pre></div>
-<p>The tokens of the text in order. Whitespace, control characters and the invisible separators - zero width space, word joiner, byte order mark, and a soft hyphen and zero width (non-)joiner outside a word - separate the tokens and are in none of them. How a language splits its text, see <a href="../russian/">Russian</a> and <a href="../spanish/">Spanish</a>.</p>
+<p>The tokens of the text in order. Whitespace, control characters and the invisible characters - zero width space, byte order mark, and outside a word a soft hyphen, zero width (non-)joiner, word joiner and the marks of the direction of text - separate the tokens and are in none of them. How a language splits its text, see <a href="../russian/">Russian</a> and <a href="../spanish/">Spanish</a>.</p>
 <table>
 <thead>
 <tr>
@@ -1160,9 +1182,58 @@ Segmenter('ru', abbreviations=('сущ',), tokens=('C++', 'т.н.'))
 </div>
 </div>
 </div>
+<div class="metric-card">
+<h3 id="stream">Documents of a file<a class="headerlink" href="#stream" title="Permanent link">&para;</a></h3>
+<p class="metric-meta"><code>stream</code> · <code>Stream</code></p>
+<div class="signature highlight"><pre><span></span><code><span class="n">stream</span><span class="p">(</span><span class="n">file</span><span class="p">)</span>
+</code></pre></div>
+<p>The documents of a large text read from a file as they are asked for, without reading it whole. Complete paragraphs come in pieces of about 64 KiB, and a paragraph without blank lines longer than 256 KiB in pieces of whole sentences. The documents have the sentences and words of the whole text, except in a paragraph that long, whose pieces are segmented each alone; so that the memory does not grow with the text, a sentence or a word longer than 256 KiB is cut, and a run of whitespace that long at the start of a line is left out. A file in binary mode is read as UTF-8 and gives a complete paragraph as soon as it comes, from a pipe as well, while in text mode a read waits for 64 KiB or the end: for input that comes in parts, read <code>sys.stdin.buffer</code>, not <code>sys.stdin</code>. Every document is segmented without the GIL; one iterator serves one thread at a time, as <code>pipe</code> does.</p>
+<p>The iterator tells about the last document it gave: <code>start</code> is the position of its first character in the text of the file, and <code>continued</code> is whether its first paragraph goes on with the last one of the document before it.</p>
+<p><img alt="The documents of a file: short paragraphs in pieces of about 64 KiB, and a paragraph without blank lines longer than 256 KiB in pieces of whole sentences that go on with it" src="../img/stream.svg" /></p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Parameter</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Default</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>file</code></td>
+<td style="text-align: left;"><code>SupportsRead[str] | SupportsRead[bytes]</code></td>
+<td style="text-align: left;">-</td>
+<td style="text-align: left;">File open for reading, in text or binary mode, or another object whose <code>read(size)</code> gives strings or bytes</td>
+</tr>
+</tbody>
+</table>
+<p>Exceptions:</p>
+<ul>
+<li><code>TypeError</code> - the file has no method <code>read</code>, or <code>read</code> gives something other than strings or bytes;</li>
+<li><code>ValueError</code> - a line of a file in binary mode is not UTF-8. An error of <code>read</code> comes as it is.</li>
+</ul>
+<div class="tabbed-set tabbed-alternate" data-tabs="7:2"><input checked="checked" id="__tabbed_7_1" name="__tabbed_7" type="radio" /><input id="__tabbed_7_2" name="__tabbed_7" type="radio" /><div class="tabbed-labels"><label for="__tabbed_7_1">Code</label><label for="__tabbed_7_2">Result</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">io</span>
+
+<span class="n">file</span> <span class="o">=</span> <span class="n">io</span><span class="o">.</span><span class="n">StringIO</span><span class="p">(</span><span class="s2">"Ёж идёт домой.</span><span class="se">\n\n</span><span class="s2">Кот спит.</span><span class="se">\n</span><span class="s2">"</span> <span class="o">*</span> <span class="mi">10000</span><span class="p">)</span>
+<span class="n">stream</span> <span class="o">=</span> <span class="n">segmenter</span><span class="o">.</span><span class="n">stream</span><span class="p">(</span><span class="n">file</span><span class="p">)</span>
+<span class="n">documents</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">stream</span><span class="p">)</span>
+<span class="nb">len</span><span class="p">(</span><span class="n">documents</span><span class="p">),</span> <span class="nb">sum</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">doc</span><span class="o">.</span><span class="n">sentences</span><span class="p">)</span> <span class="k">for</span> <span class="n">doc</span> <span class="ow">in</span> <span class="n">documents</span><span class="p">),</span> <span class="n">stream</span><span class="o">.</span><span class="n">start</span>
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code>(9, 20000, 259990)
+</code></pre></div>
+</div>
+</div>
+</div>
+</div>
 <h2 id="functions">Functions<a class="headerlink" href="#functions" title="Permanent link">&para;</a></h2>
 <p><code>tokenize(text, *, lang)</code>, <code>sentenize(text, *, lang)</code> and <code>segment(text, *, lang)</code> do the same as the methods of <code>Segmenter(lang)</code>: the module keeps one segmenter per language. The language is a keyword argument and has no default.</p>
-<div class="tabbed-set tabbed-alternate" data-tabs="7:2"><input checked="checked" id="__tabbed_7_1" name="__tabbed_7" type="radio" /><input id="__tabbed_7_2" name="__tabbed_7" type="radio" /><div class="tabbed-labels"><label for="__tabbed_7_1">Code</label><label for="__tabbed_7_2">Result</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="8:2"><input checked="checked" id="__tabbed_8_1" name="__tabbed_8" type="radio" /><input id="__tabbed_8_2" name="__tabbed_8" type="radio" /><div class="tabbed-labels"><label for="__tabbed_8_1">Code</label><label for="__tabbed_8_2">Result</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">anyseg</span><span class="w"> </span><span class="kn">import</span> <span class="n">sentenize</span><span class="p">,</span> <span class="n">tokenize</span>
@@ -1182,7 +1253,7 @@ Segmenter('ru', abbreviations=('сущ',), tokens=('C++', 'т.н.'))
 <div class="signature highlight"><pre><span></span><code><span class="n">Span</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
 </code></pre></div>
 <p>A piece of a text with its position: <code>start</code> is the position of its first character, <code>end</code> the position after the last one, and <code>text</code> the piece. Positions are offsets in the characters of the Python string, as in its slices: <code>text[span.start:span.end] == span.text</code>. Spans are immutable, compare by all three attributes and can be pickled.</p>
-<div class="tabbed-set tabbed-alternate" data-tabs="8:2"><input checked="checked" id="__tabbed_8_1" name="__tabbed_8" type="radio" /><input id="__tabbed_8_2" name="__tabbed_8" type="radio" /><div class="tabbed-labels"><label for="__tabbed_8_1">Code</label><label for="__tabbed_8_2">Result</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="9:2"><input checked="checked" id="__tabbed_9_1" name="__tabbed_9" type="radio" /><input id="__tabbed_9_2" name="__tabbed_9" type="radio" /><div class="tabbed-labels"><label for="__tabbed_9_1">Code</label><label for="__tabbed_9_2">Result</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">anyseg</span><span class="w"> </span><span class="kn">import</span> <span class="n">Span</span>
@@ -1199,7 +1270,7 @@ Segmenter('ru', abbreviations=('сущ',), tokens=('C++', 'т.н.'))
 </div>
 </div>
 <h2 id="rust">Rust<a class="headerlink" href="#rust" title="Permanent link">&para;</a></h2>
-<p>The segmenter is the Rust crate <code>anyseg</code>, with every language behind a Cargo feature, on by default: <code>ru</code> (Russian) and <code>es</code> (Spanish). It has the same <code>Segmenter</code> with <code>tokenize</code>, <code>sentenize</code> and <code>segment</code>, and gives positions in bytes of the UTF-8 string. <code>segment_string</code> takes a <code>String</code> without copying it, and <code>ConlluWriter</code> writes documents - the pieces of a long text - into one CoNLL-U, with the sentences numbered through them.</p>
+<p>The segmenter is the Rust crate <code>anyseg</code>, with every language behind a Cargo feature, on by default: <code>ru</code> (Russian) and <code>es</code> (Spanish). It has the same <code>Segmenter</code> with <code>tokenize</code>, <code>sentenize</code> and <code>segment</code>, and gives positions in bytes of the UTF-8 string. <code>segment_string</code> takes a <code>String</code> without copying it, <code>stream</code> gives the documents of a text read from a reader in pieces, as in Python, and <code>ConlluWriter</code> writes documents - the pieces of a long text - into one CoNLL-U, with the sentences numbered through them.</p>
 <div class="highlight"><pre><span></span><code><span class="k">use</span><span class="w"> </span><span class="n">anyseg</span><span class="p">::</span><span class="n">Segmenter</span><span class="p">;</span>
 
 <span class="kd">let</span><span class="w"> </span><span class="n">segmenter</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Segmenter</span><span class="p">::</span><span class="n">new</span><span class="p">(</span><span class="s">"ru"</span><span class="p">).</span><span class="n">unwrap</span><span class="p">();</span>

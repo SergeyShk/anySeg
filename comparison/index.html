@@ -969,7 +969,7 @@
 
 
 <h1 id="comparison">Comparison<a class="headerlink" href="#comparison" title="Permanent link">&para;</a></h1>
-<p>anySeg against the segmenters of Russian and Spanish, rule-based and neural, on the test files of the treebanks of <a href="https://universaldependencies.org/">Universal Dependencies</a> 2.18: SynTagRus, Taiga, GSD and PUD for <a href="#russian">Russian</a>, AnCora, GSD and PUD for <a href="#spanish">Spanish</a>.</p>
+<p>anySeg against the segmenters of Russian and Spanish, rule-based and neural, on the test files of the treebanks of <a href="https://universaldependencies.org/">Universal Dependencies</a> 2.19: SynTagRus, Taiga, GSD and PUD for <a href="#russian">Russian</a>, AnCora, GSD and PUD for <a href="#spanish">Spanish</a>.</p>
 <h2 id="how-it-is-measured">How it is measured<a class="headerlink" href="#how-it-is-measured" title="Permanent link">&para;</a></h2>
 <ul>
 <li>The raw text of a treebank is built from the text of its sentences: documents and paragraphs are separated by blank lines, the sentences of a paragraph are joined by spaces, and a paragraph stays on one line (the <code>conllu_to_text.pl</code> script of UD also wraps lines at 80 characters).</li>
@@ -978,7 +978,7 @@
 <li>The rules of anySeg were chosen on the train and dev files; the test files are used only for this comparison.</li>
 <li>Speed is measured on one thread of an Apple M3 Pro, on the raw text of SynTagRus test (903,085 characters, 157,706 tokens of the treebank) and of AnCora test (278,779 characters, 52,454 tokens). Tokens per second count the tokens of the treebank, the same for every tool.</li>
 </ul>
-<p>Neural tools are marked with *. For Russian, Stanza, UDPipe and trankit use models trained on SynTagRus. For Spanish, Stanza uses its model <code>combined</code> and UDPipe a model trained on AnCora of UD 2.5, where «del» and «al» were not yet split. trankit is not in the Spanish tables, as its model could not be downloaded.</p>
+<p>Neural tools are marked with *. None has a model of UD 2.19 yet: Stanza 1.15.0 is trained on UD 2.18, UDPipe 1.4 and trankit 1.1.2 on UD 2.5. For Russian, Stanza, UDPipe and trankit use models trained on SynTagRus. For Spanish, Stanza uses its model <code>combined</code> and UDPipe a model trained on AnCora of UD 2.5, where «del» and «al» were not yet split. trankit is not in the Spanish tables, as its model could not be downloaded.</p>
 <h2 id="russian">Russian<a class="headerlink" href="#russian" title="Permanent link">&para;</a></h2>
 <h3 id="tokens">Tokens<a class="headerlink" href="#tokens" title="Permanent link">&para;</a></h3>
 <p>F1 of the CoNLL 2018 script.</p>
@@ -994,7 +994,7 @@
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><strong>anySeg 0.3</strong></td>
+<td style="text-align: left;"><strong>anySeg 0.4</strong></td>
 <td style="text-align: right;">99.61</td>
 <td style="text-align: right;"><strong>99.10</strong></td>
 <td style="text-align: right;"><strong>99.14</strong></td>
@@ -1073,7 +1073,7 @@
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><strong>anySeg 0.3</strong></td>
+<td style="text-align: left;"><strong>anySeg 0.4</strong></td>
 <td style="text-align: right;">99.61</td>
 <td style="text-align: right;"><strong>95.94</strong></td>
 <td style="text-align: right;">98.66</td>
@@ -1214,7 +1214,7 @@
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><strong>anySeg 0.3</strong></td>
+<td style="text-align: left;"><strong>anySeg 0.4</strong></td>
 <td style="text-align: right;"><strong>98.92</strong></td>
 <td style="text-align: right;"><strong>89.92</strong></td>
 <td style="text-align: right;"><strong>96.32</strong></td>
@@ -1306,11 +1306,11 @@
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><strong>anySeg 0.3</strong></td>
+<td style="text-align: left;"><strong>anySeg 0.4</strong></td>
 <td style="text-align: left;">tokens, sentences</td>
 <td style="text-align: right;">0.00</td>
-<td style="text-align: right;"><strong>3.18 M</strong></td>
-<td style="text-align: right;">0.7</td>
+<td style="text-align: right;"><strong>3.09 M</strong></td>
+<td style="text-align: right;">0.8</td>
 </tr>
 <tr>
 <td style="text-align: left;">razdel 0.5.0</td>
@@ -1445,10 +1445,10 @@
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><strong>anyseg 0.3</strong></td>
+<td style="text-align: left;"><strong>anyseg 0.4</strong></td>
 <td style="text-align: left;">tokens, sentences</td>
-<td style="text-align: right;">13.7 M</td>
-<td style="text-align: right;">35</td>
+<td style="text-align: right;">13.1 M</td>
+<td style="text-align: right;">36</td>
 </tr>
 <tr>
 <td style="text-align: left;">unicode-segmentation 1.13.3</td>
@@ -1485,63 +1485,63 @@
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><strong>anySeg 0.3</strong></td>
+<td style="text-align: left;"><strong>anySeg 0.4</strong></td>
 <td style="text-align: right;">99.93</td>
-<td style="text-align: right;"><strong>99.95</strong></td>
+<td style="text-align: right;"><strong>99.92</strong></td>
 <td style="text-align: right;"><strong>99.78</strong></td>
 </tr>
 <tr>
 <td style="text-align: left;">NLTK 3.10.4, <code>word_tokenize</code></td>
 <td style="text-align: right;">99.80</td>
-<td style="text-align: right;">99.78</td>
+<td style="text-align: right;">99.75</td>
 <td style="text-align: right;">99.62</td>
 </tr>
 <tr>
 <td style="text-align: left;">spaCy 3.8.16, <code>es</code></td>
 <td style="text-align: right;">99.90</td>
-<td style="text-align: right;">99.85</td>
+<td style="text-align: right;">99.82</td>
 <td style="text-align: right;">99.63</td>
 </tr>
 <tr>
 <td style="text-align: left;">syntok 1.4.4</td>
 <td style="text-align: right;">99.50</td>
-<td style="text-align: right;">99.62</td>
+<td style="text-align: right;">99.60</td>
 <td style="text-align: right;">99.63</td>
 </tr>
 <tr>
 <td style="text-align: left;">segtok 1.5.11</td>
 <td style="text-align: right;">99.89</td>
-<td style="text-align: right;">99.78</td>
+<td style="text-align: right;">99.75</td>
 <td style="text-align: right;">99.61</td>
 </tr>
 <tr>
 <td style="text-align: left;">sacremoses 0.2.0</td>
 <td style="text-align: right;">99.87</td>
-<td style="text-align: right;">99.81</td>
+<td style="text-align: right;">99.79</td>
 <td style="text-align: right;">99.62</td>
 </tr>
 <tr>
 <td style="text-align: left;">blingfire 0.1.8</td>
 <td style="text-align: right;">99.05</td>
-<td style="text-align: right;">99.07</td>
+<td style="text-align: right;">99.11</td>
 <td style="text-align: right;">99.58</td>
 </tr>
 <tr>
 <td style="text-align: left;">ICU 77.1, UAX #29</td>
 <td style="text-align: right;">99.27</td>
-<td style="text-align: right;">99.45</td>
+<td style="text-align: right;">99.49</td>
 <td style="text-align: right;">99.68</td>
 </tr>
 <tr>
 <td style="text-align: left;">Stanza 1.15.0 *</td>
 <td style="text-align: right;"><strong>99.99</strong></td>
-<td style="text-align: right;">99.86</td>
+<td style="text-align: right;">99.90</td>
 <td style="text-align: right;">99.75</td>
 </tr>
 <tr>
 <td style="text-align: left;">UDPipe 1.4 *</td>
 <td style="text-align: right;">99.92</td>
-<td style="text-align: right;">99.75</td>
+<td style="text-align: right;">99.72</td>
 <td style="text-align: right;">99.58</td>
 </tr>
 </tbody>
@@ -1560,63 +1560,63 @@
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><strong>anySeg 0.3</strong></td>
+<td style="text-align: left;"><strong>anySeg 0.4</strong></td>
 <td style="text-align: right;">99.92</td>
-<td style="text-align: right;"><strong>99.86</strong></td>
+<td style="text-align: right;"><strong>99.85</strong></td>
 <td style="text-align: right;"><strong>99.77</strong></td>
 </tr>
 <tr>
 <td style="text-align: left;">NLTK 3.10.4, <code>word_tokenize</code></td>
 <td style="text-align: right;">96.50</td>
-<td style="text-align: right;">96.41</td>
+<td style="text-align: right;">96.33</td>
 <td style="text-align: right;">96.62</td>
 </tr>
 <tr>
 <td style="text-align: left;">spaCy 3.8.16, <code>es</code></td>
 <td style="text-align: right;">96.60</td>
-<td style="text-align: right;">96.47</td>
+<td style="text-align: right;">96.39</td>
 <td style="text-align: right;">96.60</td>
 </tr>
 <tr>
 <td style="text-align: left;">syntok 1.4.4</td>
 <td style="text-align: right;">96.21</td>
-<td style="text-align: right;">96.25</td>
+<td style="text-align: right;">96.16</td>
 <td style="text-align: right;">96.62</td>
 </tr>
 <tr>
 <td style="text-align: left;">segtok 1.5.11</td>
 <td style="text-align: right;">96.59</td>
-<td style="text-align: right;">96.41</td>
+<td style="text-align: right;">96.33</td>
 <td style="text-align: right;">96.58</td>
 </tr>
 <tr>
 <td style="text-align: left;">sacremoses 0.2.0</td>
 <td style="text-align: right;">96.57</td>
-<td style="text-align: right;">96.45</td>
+<td style="text-align: right;">96.36</td>
 <td style="text-align: right;">96.59</td>
 </tr>
 <tr>
 <td style="text-align: left;">blingfire 0.1.8</td>
 <td style="text-align: right;">95.77</td>
-<td style="text-align: right;">95.72</td>
+<td style="text-align: right;">95.70</td>
 <td style="text-align: right;">96.57</td>
 </tr>
 <tr>
 <td style="text-align: left;">ICU 77.1, UAX #29</td>
 <td style="text-align: right;">95.99</td>
-<td style="text-align: right;">96.10</td>
+<td style="text-align: right;">96.07</td>
 <td style="text-align: right;">96.65</td>
 </tr>
 <tr>
 <td style="text-align: left;">Stanza 1.15.0 *</td>
 <td style="text-align: right;"><strong>99.95</strong></td>
-<td style="text-align: right;">99.75</td>
+<td style="text-align: right;">99.80</td>
 <td style="text-align: right;">99.66</td>
 </tr>
 <tr>
 <td style="text-align: left;">UDPipe 1.4 *</td>
 <td style="text-align: right;">97.13</td>
-<td style="text-align: right;">96.90</td>
+<td style="text-align: right;">96.81</td>
 <td style="text-align: right;">96.95</td>
 </tr>
 </tbody>
@@ -1634,7 +1634,7 @@
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><strong>anySeg 0.3</strong></td>
+<td style="text-align: left;"><strong>anySeg 0.4</strong></td>
 <td style="text-align: right;">99.54</td>
 <td style="text-align: right;">96.74</td>
 <td style="text-align: right;">99.60</td>
@@ -1672,7 +1672,7 @@
 <tr>
 <td style="text-align: left;">pysbd 0.3.4</td>
 <td style="text-align: right;">97.23</td>
-<td style="text-align: right;">85.07</td>
+<td style="text-align: right;">85.83</td>
 <td style="text-align: right;">98.90</td>
 </tr>
 <tr>
@@ -1751,7 +1751,7 @@
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><strong>anySeg 0.3</strong></td>
+<td style="text-align: left;"><strong>anySeg 0.4</strong></td>
 <td style="text-align: right;">98.66</td>
 <td style="text-align: right;">90.97</td>
 <td style="text-align: right;"><strong>98.80</strong></td>
@@ -1819,7 +1819,7 @@
 </tbody>
 </table>
 <h3 id="speed-and-memory_1">Speed and memory<a class="headerlink" href="#speed-and-memory_1" title="Permanent link">&para;</a></h3>
-<p>From Python, as for Russian, on the raw text of AnCora test. <code>segment</code>, which gives the words too, comes to 5.6 M tokens per second with the same spans read and to 3.9 M with the forms of the words.</p>
+<p>From Python, as for Russian, on the raw text of AnCora test. <code>segment</code>, which gives the words too, comes to 5.3 M tokens per second with the same spans read and to 3.7 M with the forms of the words.</p>
 <table>
 <thead>
 <tr>
@@ -1832,11 +1832,11 @@
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><strong>anySeg 0.3</strong></td>
+<td style="text-align: left;"><strong>anySeg 0.4</strong></td>
 <td style="text-align: left;">tokens, sentences</td>
 <td style="text-align: right;">0.00</td>
-<td style="text-align: right;">4.36 M</td>
-<td style="text-align: right;">0.9</td>
+<td style="text-align: right;">4.16 M</td>
+<td style="text-align: right;">1.0</td>
 </tr>
 <tr>
 <td style="text-align: left;">NLTK 3.10.4</td>
@@ -1971,9 +1971,9 @@
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><strong>anyseg 0.3</strong></td>
+<td style="text-align: left;"><strong>anyseg 0.4</strong></td>
 <td style="text-align: left;">tokens, words, sentences</td>
-<td style="text-align: right;">13.7 M</td>
+<td style="text-align: right;">12.8 M</td>
 <td style="text-align: right;">13</td>
 </tr>
 <tr>

@@ -1068,7 +1068,7 @@
 </tr>
 </tbody>
 </table>
-<p>The tokenizer gives 2.3 M tokens per second, nearly ten times as many as the tokenizer of spaCy; with the component, 1.4 M against 0.24 M with the <code>sentencizer</code> of spaCy (SynTagRus test, one thread, Apple M3 Pro). On AnCora test it gives 2.3 M against 0.42 M, and 1.6 M against 0.39 M.</p>
+<p>The tokenizer gives 2.3 M tokens per second, nearly ten times as many as the tokenizer of spaCy; with the component, 1.2 M against 0.22 M with the <code>sentencizer</code> of spaCy (SynTagRus test, one thread, Apple M3 Pro). On AnCora test it gives 2.2 M against 0.40 M, and 1.5 M against 0.38 M.</p>
 <h2 id="documents">Documents<a class="headerlink" href="#documents" title="Permanent link">&para;</a></h2>
 <div class="metric-card">
 <h3 id="to_doc">spaCy document of a document<a class="headerlink" href="#to_doc" title="Permanent link">&para;</a></h3>
@@ -1132,13 +1132,15 @@
 <div class="metric-card">
 <h3 id="from_doc">Document of a spaCy document<a class="headerlink" href="#from_doc" title="Permanent link">&para;</a></h3>
 <p class="metric-meta"><code>anyseg.spacy.from_doc</code> · <code>Document</code></p>
-<div class="signature highlight"><pre><span></span><code><span class="n">from_doc</span><span class="p">(</span><span class="n">doc</span><span class="p">)</span>
+<div class="signature highlight"><pre><span></span><code><span class="n">from_doc</span><span class="p">(</span><span class="n">doc</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">split_unannotated</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 </code></pre></div>
 <p>The <a href="../document/">document</a> of a <code>Doc</code>, one word per token except those with <code>token._.anyseg_words</code>.</p>
 <ul>
 <li>Tokens lose the whitespace and the invisible separators at their edges, and tokens of nothing else are dropped. A sentence of the <code>Doc</code> starts at its first token left, a <code>Doc</code> without sentences is a sentence per paragraph, and every paragraph starts a sentence.</li>
+<li>The sentences are those of <code>doc.sents</code>: of the hook <code>doc.user_hooks["sents"]</code> when there is one, else of the sentence starts. A <code>Doc</code> with a parse keeps the sentences of the parse, since the heads are counted inside them.</li>
 <li><code>lemma_</code>, <code>pos_</code>, <code>tag_</code>, <code>morph</code>, the heads and <code>dep_</code> become the columns <code>lemma</code>, <code>upos</code>, <code>xpos</code>, <code>feats</code>, <code>head</code> and <code>deprel</code>, empty values <code>None</code>, the features in the order of UD; a token without a head has neither. In a lemma, a line break or a tab becomes a space inside, with the spaces around it, and goes away at an edge.</li>
 <li>The relation <code>ROOT</code> becomes <code>root</code>, and a word whose head is a dropped token depends on the head of that token. A sentence has one root: the root of the parse or, if the sentence lacks it, the first word whose head is in another sentence; the other such words depend on the root with <code>dep</code>.</li>
+<li>With <code>split_unannotated=False</code>, a token whose words in the extension have their forms only is one word with the values of the token: a tagger or a parser after the <a href="#tokenizer">tokenizer</a> annotates the tokens, not their words.</li>
 <li>The words of a multiword token keep the columns they have in the extension, but the word marked <code>main</code> takes the value of the token, even over an edit of that word in the extension. Without a mark, the first word takes the value for a column none of them has.</li>
 <li>The heads of these words stay if every word has <code>head</code> and <code>sentence_words</code>, <code>sentence_words</code> is the number of words of the sentence, the head of the token is the head of one of its words, which then stands for the token, the marked one if it can, and the words form a tree; otherwise the first word takes the head and the relation of the token, and the other words depend on it with <code>dep</code>. A word of another token that depends on a word of a multiword token other than the one that stands for it moves to that one.</li>
 </ul>
@@ -1157,6 +1159,12 @@
 <td style="text-align: left;"><code>Doc</code></td>
 <td style="text-align: left;">-</td>
 <td style="text-align: left;">spaCy document</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>split_unannotated</code></td>
+<td style="text-align: left;"><code>bool</code></td>
+<td style="text-align: left;"><code>True</code></td>
+<td style="text-align: left;">Whether a token whose words in the extension have their forms only gives these words</td>
 </tr>
 </tbody>
 </table>

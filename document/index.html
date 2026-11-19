@@ -623,6 +623,28 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#with_words" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Document with other words
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#with_sentences" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Document with other sentences
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#to_conllu" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -909,6 +931,28 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#with_words" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Document with other words
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#with_sentences" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Document with other sentences
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#to_conllu" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -972,7 +1016,7 @@
 <li>The text is never changed: tokens, sentences, paragraphs and lines are its spans, with positions in the characters of the Python string.</li>
 <li>A token holds one word or, for a multiword token, several (<a href="../spanish/#multiword">Spanish</a> «del» is «de» + «el»). The segmenter gives them where the language joins words in one token.</li>
 <li>Sentences hold whole tokens, paragraphs - the parts of the text between blank lines - hold whole sentences, and lines are those of the paragraphs.</li>
-<li>Words have the columns of CoNLL-U, empty until set; <a href="#set_columns"><code>set_columns</code></a> is the only change of a document, so a document can be shared between threads. It can be pickled with its columns, to go to another process; its parts cannot.</li>
+<li>Words have the columns of CoNLL-U, empty until set; <a href="#set_columns"><code>set_columns</code></a> is the only change of a document, so a document can be shared between threads. Other words or sentences make a new document: <a href="#with_words"><code>with_words</code></a>, <a href="#with_sentences"><code>with_sentences</code></a>. A document can be pickled with its columns, to go to another process; its parts cannot.</li>
 </ul>
 <div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">Code</label><label for="__tabbed_1_2">Result</label></div>
 <div class="tabbed-content">
@@ -1327,11 +1371,99 @@
 </div>
 </div>
 <div class="metric-card">
+<h3 id="with_words">Document with other words<a class="headerlink" href="#with_words" title="Permanent link">&para;</a></h3>
+<p class="metric-meta"><code>with_words</code> · <code>Document</code></p>
+<div class="signature highlight"><pre><span></span><code><span class="n">with_words</span><span class="p">(</span><span class="n">words</span><span class="p">)</span>
+</code></pre></div>
+<p>A new document in which the given tokens hold other words: several forms make a multiword token, whatever the text of the token, and one form, the text of the token, a token of one word. The other words keep their forms and columns, the new ones have none but the spaces after a token in <code>misc</code> of a document read from CoNLL-U, which keeps its comments. The words of a document with heads, enhanced dependencies or empty nodes cannot change, since these refer to the IDs of words.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Parameter</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Default</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>words</code></td>
+<td style="text-align: left;"><code>Mapping[int, Sequence[str]]</code></td>
+<td style="text-align: left;">-</td>
+<td style="text-align: left;">Forms of the words, by the index of the token</td>
+</tr>
+</tbody>
+</table>
+<p>Exceptions:</p>
+<ul>
+<li><code>ValueError</code> - the document has heads, enhanced dependencies or empty nodes, <code>words</code> names a token that is not in the document or has no forms, a form is empty or holds a tab or a line break, or a single form is not the text of its token, whitespace aside;</li>
+<li><code>TypeError</code> - <code>words</code> is not a mapping of integers to sequences of strings.</li>
+</ul>
+<div class="tabbed-set tabbed-alternate" data-tabs="5:2"><input checked="checked" id="__tabbed_5_1" name="__tabbed_5" type="radio" /><input id="__tabbed_5_2" name="__tabbed_5" type="radio" /><div class="tabbed-labels"><label for="__tabbed_5_1">Code</label><label for="__tabbed_5_2">Result</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><span class="n">order</span> <span class="o">=</span> <span class="n">Segmenter</span><span class="p">(</span><span class="s2">"es"</span><span class="p">)</span><span class="o">.</span><span class="n">segment</span><span class="p">(</span><span class="s2">"Cómpraselo ya."</span><span class="p">)</span>
+<span class="n">order</span><span class="o">.</span><span class="n">set_columns</span><span class="p">(</span><span class="n">upos</span><span class="o">=</span><span class="p">[</span><span class="s2">"VERB"</span><span class="p">,</span> <span class="s2">"ADV"</span><span class="p">,</span> <span class="s2">"PUNCT"</span><span class="p">])</span>
+<span class="n">other</span> <span class="o">=</span> <span class="n">order</span><span class="o">.</span><span class="n">with_words</span><span class="p">({</span><span class="mi">0</span><span class="p">:</span> <span class="p">[</span><span class="s2">"Compra"</span><span class="p">,</span> <span class="s2">"se"</span><span class="p">,</span> <span class="s2">"lo"</span><span class="p">]})</span>
+<span class="p">[</span><span class="n">word</span><span class="o">.</span><span class="n">form</span> <span class="k">for</span> <span class="n">word</span> <span class="ow">in</span> <span class="n">other</span><span class="o">.</span><span class="n">words</span><span class="p">],</span> <span class="n">other</span><span class="o">.</span><span class="n">column</span><span class="p">(</span><span class="s2">"upos"</span><span class="p">)</span>
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code>(['Compra', 'se', 'lo', 'ya', '.'], [None, None, None, 'ADV', 'PUNCT'])
+</code></pre></div>
+</div>
+</div>
+</div>
+</div>
+<div class="metric-card">
+<h3 id="with_sentences">Document with other sentences<a class="headerlink" href="#with_sentences" title="Permanent link">&para;</a></h3>
+<p class="metric-meta"><code>with_sentences</code> · <code>Document</code></p>
+<div class="signature highlight"><pre><span></span><code><span class="n">with_sentences</span><span class="p">(</span><span class="n">starts</span><span class="p">)</span>
+</code></pre></div>
+<p>A new document whose sentences start at the given tokens, as in <a href="#from_tokens"><code>Document.from_tokens</code></a>; every paragraph starts a sentence. Tokens, words, their columns, paragraphs and lines stay. A document read from CoNLL-U with other sentences is written as a segmented one, with its comments and the lines of its multiword tokens made anew. The sentences of a document with heads, enhanced dependencies or empty nodes cannot change, since these refer to the IDs of words.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Parameter</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Default</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>starts</code></td>
+<td style="text-align: left;"><code>Sequence[int]</code></td>
+<td style="text-align: left;">-</td>
+<td style="text-align: left;">Indices of the tokens that start sentences</td>
+</tr>
+</tbody>
+</table>
+<p>Exceptions:</p>
+<ul>
+<li><code>ValueError</code> - the document has heads, enhanced dependencies or empty nodes, or the starts are not increasing token indices;</li>
+<li><code>TypeError</code> - <code>starts</code> holds something other than integers.</li>
+</ul>
+<div class="tabbed-set tabbed-alternate" data-tabs="6:2"><input checked="checked" id="__tabbed_6_1" name="__tabbed_6" type="radio" /><input id="__tabbed_6_2" name="__tabbed_6" type="radio" /><div class="tabbed-labels"><label for="__tabbed_6_1">Code</label><label for="__tabbed_6_2">Result</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><span class="n">story</span> <span class="o">=</span> <span class="n">Segmenter</span><span class="p">(</span><span class="s2">"ru"</span><span class="p">)</span><span class="o">.</span><span class="n">segment</span><span class="p">(</span><span class="s2">"Ёж идёт. Кот спит.</span><span class="se">\n\n</span><span class="s2">Утро."</span><span class="p">)</span>
+<span class="p">[</span><span class="n">sentence</span><span class="o">.</span><span class="n">text</span> <span class="k">for</span> <span class="n">sentence</span> <span class="ow">in</span> <span class="n">story</span><span class="o">.</span><span class="n">with_sentences</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span><span class="o">.</span><span class="n">sentences</span><span class="p">]</span>
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code>['Ёж', 'идёт. Кот спит.', 'Утро.']
+</code></pre></div>
+</div>
+</div>
+</div>
+</div>
+<div class="metric-card">
 <h3 id="to_conllu">Document in CoNLL-U<a class="headerlink" href="#to_conllu" title="Permanent link">&para;</a></h3>
 <p class="metric-meta"><code>to_conllu</code> · <code>str</code></p>
 <div class="signature highlight"><pre><span></span><code><span class="n">to_conllu</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">doc_id</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
 </code></pre></div>
-<p>The document in CoNLL-U, every sentence followed by a blank line. A document read from CoNLL-U is written as it was read, with the columns set since. Otherwise every sentence gets the comments <code>sent_id</code> and <code>text</code>, the first one <code>newdoc</code> and every paragraph <code>newpar</code>, and the space after a token inside a paragraph goes to MISC: <code>SpaceAfter=No</code> when there is none and <code>SpacesAfter</code> when it is not one space. A multiword token has its line before the lines of its words, with the range of their IDs. Forms, the comment <code>text</code> and the values are in Unicode NFC, as CoNLL-U requires, and a lone surrogate is U+FFFD; the document keeps its text.</p>
+<p>The document in CoNLL-U, every sentence followed by a blank line. A document read from CoNLL-U is written as it was read, with the columns set since. Otherwise every sentence gets the comments <code>sent_id</code> and <code>text</code>, the first one <code>newdoc</code> and every paragraph <code>newpar</code>, and the space after a token inside a paragraph goes to MISC: <code>SpaceAfter=No</code> when there is none and <code>SpacesAfter</code> when it is not one space; the indent of the first line of a paragraph goes to <code>SpacesBefore</code> of its first token. A multiword token has its line before the lines of its words, with the range of their IDs. Forms, the comment <code>text</code> and the values are in Unicode NFC, as CoNLL-U requires, and a lone surrogate is U+FFFD; the document keeps its text.</p>
 <table>
 <thead>
 <tr>
@@ -1354,7 +1486,7 @@
 <ul>
 <li><code>ValueError</code> - the ID is empty or holds whitespace.</li>
 </ul>
-<div class="tabbed-set tabbed-alternate" data-tabs="5:2"><input checked="checked" id="__tabbed_5_1" name="__tabbed_5" type="radio" /><input id="__tabbed_5_2" name="__tabbed_5" type="radio" /><div class="tabbed-labels"><label for="__tabbed_5_1">Code</label><label for="__tabbed_5_2">Result</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="7:2"><input checked="checked" id="__tabbed_7_1" name="__tabbed_7" type="radio" /><input id="__tabbed_7_2" name="__tabbed_7" type="radio" /><div class="tabbed-labels"><label for="__tabbed_7_1">Code</label><label for="__tabbed_7_2">Result</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code><span class="nb">print</span><span class="p">(</span><span class="n">doc</span><span class="o">.</span><span class="n">to_conllu</span><span class="p">(),</span> <span class="n">end</span><span class="o">=</span><span class="s2">""</span><span class="p">)</span>
@@ -1451,7 +1583,7 @@
 <li><code>ValueError</code> - the lists differ in length, a token is empty, out of the text, overlaps the token before it, starts or ends with whitespace or runs over a paragraph boundary, the text between the tokens holds anything but whitespace and the invisible separators, the sentence starts are not increasing token indices, <code>words</code> names a token that is not in the document or has fewer than two forms, or a form is empty or holds a tab or a line break;</li>
 <li><code>TypeError</code> - a list holds something other than integers, or <code>words</code> is not a mapping of integers to sequences of strings.</li>
 </ul>
-<div class="tabbed-set tabbed-alternate" data-tabs="6:2"><input checked="checked" id="__tabbed_6_1" name="__tabbed_6" type="radio" /><input id="__tabbed_6_2" name="__tabbed_6" type="radio" /><div class="tabbed-labels"><label for="__tabbed_6_1">Code</label><label for="__tabbed_6_2">Result</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="8:2"><input checked="checked" id="__tabbed_8_1" name="__tabbed_8" type="radio" /><input id="__tabbed_8_2" name="__tabbed_8" type="radio" /><div class="tabbed-labels"><label for="__tabbed_8_1">Code</label><label for="__tabbed_8_2">Result</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">anyseg</span><span class="w"> </span><span class="kn">import</span> <span class="n">Document</span>
@@ -1470,12 +1602,12 @@
 <h2 id="read_conllu">Reading CoNLL-U<a class="headerlink" href="#read_conllu" title="Permanent link">&para;</a></h2>
 <div class="signature highlight"><pre><span></span><code><span class="n">read_conllu</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
 </code></pre></div>
-<p>The documents of a text in CoNLL-U, in order. The comment <code>newdoc</code> starts a document and <code>newpar</code> a paragraph. The text of a sentence is its comment <code>text</code> or, without it, the forms of its tokens with the spaces of <code>SpaceAfter</code> and <code>SpacesAfter</code>; the sentences of a paragraph are joined by a space (none after <code>SpaceAfter=No</code>), the paragraphs by a blank line. Comments, the lines of multiword tokens and empty nodes are kept, so that <code>to_conllu</code> writes the text back as it was, with LF line ends. A byte order mark at the start is skipped.</p>
+<p>The documents of a text in CoNLL-U, in order. The comment <code>newdoc</code> starts a document and <code>newpar</code> a paragraph. The text of a sentence is its comment <code>text</code> or, without it, the forms of its tokens with the spaces of <code>SpaceAfter</code> and <code>SpacesAfter</code>; the sentences of a paragraph are joined by a space (none after <code>SpaceAfter=No</code>), the paragraphs by a blank line, after which <code>SpacesBefore</code> of the first token is the indent of the paragraph. Comments, the lines of multiword tokens and empty nodes are kept, so that <code>to_conllu</code> writes the text back as it was, with LF line ends. A byte order mark at the start is skipped.</p>
 <p>Exceptions:</p>
 <ul>
 <li><code>ValueError</code> - the text does not end with a blank line, a line is neither a comment, a blank line nor a token line of 10 columns with plain numbers for IDs, in order, and for a head, a comment follows token lines, a sentence has no words or a multiword token misses some, or the forms do not match the text of their sentence or the text holds characters that no token has.</li>
 </ul>
-<div class="tabbed-set tabbed-alternate" data-tabs="7:2"><input checked="checked" id="__tabbed_7_1" name="__tabbed_7" type="radio" /><input id="__tabbed_7_2" name="__tabbed_7" type="radio" /><div class="tabbed-labels"><label for="__tabbed_7_1">Code</label><label for="__tabbed_7_2">Result</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="9:2"><input checked="checked" id="__tabbed_9_1" name="__tabbed_9" type="radio" /><input id="__tabbed_9_2" name="__tabbed_9" type="radio" /><div class="tabbed-labels"><label for="__tabbed_9_1">Code</label><label for="__tabbed_9_2">Result</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">anyseg</span><span class="w"> </span><span class="kn">import</span> <span class="n">read_conllu</span>
