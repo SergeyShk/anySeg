@@ -24,3 +24,5 @@ script = cyrillic
 fold_marks = U+0300 U+0301
 # The letters that make one token with a degree sign: «°С», with a Cyrillic letter as well
 degree_letters = CFС
+# Cyrillic letters typed for Roman ones in the numbers of chapters and stanzas: «Х», «ХІ»
+roman_lookalikes = ХX ІI
