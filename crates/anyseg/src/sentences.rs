@@ -230,6 +230,13 @@ fn last_lowercase_word(line: &str) -> Option<&str> {
     word.starts_with(char::is_lowercase).then_some(word)
 }
 
+/// A number alone on a line, Arabic or Roman, maybe with a period: it heads a stanza or a chapter
+fn is_number_line(line: &str) -> bool {
+    let number = line.strip_suffix('.').unwrap_or(line);
+    (!number.is_empty() && number.bytes().all(|byte| byte.is_ascii_digit()))
+        || roman_value(number).is_some()
+}
+
 /// A line that does not end with punctuation: a heading, a line of a post
 fn ends_open(line: &str) -> bool {
     line.chars()
@@ -675,6 +682,10 @@ impl Splitter<'_> {
             return next(1).is_some_and(starts_upper);
         }
         if is_dash(piece) {
+            // A dash at the end of a line, before a line of dialogue, closes the line before it: «Кто там? —\n— Я»
+            if next(1).is_some_and(is_dash) && self.line_start(index + 1) {
+                return false;
+            }
             // Hyphens of a dash may stand apart: «- - Según»
             let mut offset = 1;
             while next(offset).is_some_and(is_dash) {
@@ -1054,7 +1065,13 @@ impl Splitter<'_> {
             return true;
         }
         let (before, next) = (self.line(line), self.line(line + 1));
-        if !has_word(before) || !has_word(next) {
+        // A number between a line without a final mark and a lowercase one is the number of a page: «стал¶337¶вдыхать»
+        let page = !before.ends_with(['.', '!', '?', '…'])
+            && self
+                .lines
+                .get(line + 2)
+                .is_some_and(|after| after.slice(self.text).starts_with(char::is_lowercase));
+        if !has_word(before) || !has_word(next) || (is_number_line(next) && !page) {
             return true;
         }
         // A heading stands apart in verse too
@@ -1062,10 +1079,16 @@ impl Splitter<'_> {
         // A heading ends with no preposition, article or title of `line_continuations`: the line goes on
         let goes_on = last_lowercase_word(before)
             .is_some_and(|word| self.tables.line_continuations.contains(word));
+        // In verse a line of one letter is a word, «Я», unless it is a Roman number, «V», «L»
+        let word = self.verse
+            && before.chars().nth(1).is_none()
+            && before.starts_with(char::is_alphabetic)
+            && !before.starts_with(['I', 'V', 'X', 'L', 'C', 'D', 'M', 'Х']);
         !verse
             && !self.typeset
             && ends_open(before)
             && !goes_on
+            && !word
             && begins_upper(next, self.tables.conventions.section_headings)
     }
 
@@ -1347,6 +1370,56 @@ mod tests {
         assert_eq!(
             sentences("Абзац заканчивается\nздесь. Второй\nНачинается тут."),
             ["Абзац заканчивается\nздесь.", "Второй\nНачинается тут."]
+        );
+    }
+
+    #[test]
+    fn lines_of_dialogue_numbers_and_letters() {
+        // A dash at the end of a line closes the line of dialogue before it
+        assert_eq!(
+            sentences("Кто там? —\n— Я, — сказал он."),
+            ["Кто там? —", "— Я, — сказал он."]
+        );
+        assert_eq!(
+            sentences("Это песня. -\n   - Да ведь…"),
+            ["Это песня. -", "- Да ведь…"]
+        );
+        // A number alone on a line heads a stanza or a chapter
+        assert_eq!(
+            sentences("Чтоб в груди дремали силы,\nЧтоб дыша вздымалась грудь;\n5\nЧтоб всю ночь"),
+            [
+                "Чтоб в груди дремали силы,\nЧтоб дыша вздымалась грудь;",
+                "5",
+                "Чтоб всю ночь"
+            ]
+        );
+        assert_eq!(sentences("(Быль)\n1\nЖил-был"), ["(Быль)", "1", "Жил-был"]);
+        assert_eq!(
+            sentences("Посвящение\nI\nРаз у отца"),
+            ["Посвящение", "I", "Раз у отца"]
+        );
+        // But not between a line without a final mark and a lowercase one: the number of a page
+        assert_eq!(
+            sentences("Он широко стал\n337\nвдыхать воздух."),
+            ["Он широко стал\n337\nвдыхать воздух."]
+        );
+        assert_eq!(sentences("Глава\nL\nТекст"), ["Глава", "L", "Текст"]);
+        // In verse a line of one letter is a word, not a heading; in a chat it is a message
+        assert_eq!(
+            sentences("Я\nСолнца, счастья шел искать,\nВ поле, в лес бежал."),
+            ["Я\nСолнца, счастья шел искать,\nВ поле, в лес бежал."]
+        );
+        assert_eq!(
+            sentences("Кто пойдёт со мной\nЯ\nИ я тоже"),
+            ["Кто пойдёт со мной", "Я", "И я тоже"]
+        );
+        assert_eq!(
+            sentences("Ну что ж. Занят так занят"),
+            ["Ну что ж.", "Занят так занят"]
+        );
+        assert_eq!(
+            tokens("болг. слово, оч. рад"),
+            ["болг.", "слово", ",", "оч.", "рад"]
         );
     }
 
