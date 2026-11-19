@@ -282,7 +282,7 @@ Exceptions:
 to_conllu(*, doc_id=None)
 ```
 
-The document in CoNLL-U, every sentence followed by a blank line. A document read from CoNLL-U is written as it was read, with the columns set since. Otherwise every sentence gets the comments `sent_id` and `text`, the first one `newdoc` and every paragraph `newpar`, and the space after a token inside a paragraph goes to MISC: `SpaceAfter=No` when there is none and `SpacesAfter` when it is not one space. A multiword token has its line before the lines of its words, with the range of their IDs. Forms, the comment `text` and the values are in Unicode NFC, as CoNLL-U requires, and a lone surrogate is U+FFFD; the document keeps its text.
+The document in CoNLL-U, every sentence followed by a blank line. A document read from CoNLL-U is written as it was read, with the columns set since. Otherwise every sentence gets the comments `sent_id` and `text`, the first one `newdoc` and every paragraph `newpar`, and the space after a token inside a paragraph goes to MISC: `SpaceAfter=No` when there is none and `SpacesAfter` when it is not one space; the indent of the first line of a paragraph goes to `SpacesBefore` of its first token. A multiword token has its line before the lines of its words, with the range of their IDs. Forms, the comment `text` and the values are in Unicode NFC, as CoNLL-U requires, and a lone surrogate is U+FFFD; the document keeps its text.
 
 | Parameter | Type | Default | Description |
 | :-------- | :--- | :------ | :---------- |
@@ -386,7 +386,7 @@ Exceptions:
 read_conllu(text)
 ```
 
-The documents of a text in CoNLL-U, in order. The comment `newdoc` starts a document and `newpar` a paragraph. The text of a sentence is its comment `text` or, without it, the forms of its tokens with the spaces of `SpaceAfter` and `SpacesAfter`; the sentences of a paragraph are joined by a space (none after `SpaceAfter=No`), the paragraphs by a blank line. Comments, the lines of multiword tokens and empty nodes are kept, so that `to_conllu` writes the text back as it was, with LF line ends. A byte order mark at the start is skipped.
+The documents of a text in CoNLL-U, in order. The comment `newdoc` starts a document and `newpar` a paragraph. The text of a sentence is its comment `text` or, without it, the forms of its tokens with the spaces of `SpaceAfter` and `SpacesAfter`; the sentences of a paragraph are joined by a space (none after `SpaceAfter=No`), the paragraphs by a blank line, after which `SpacesBefore` of the first token is the indent of the paragraph. Comments, the lines of multiword tokens and empty nodes are kept, so that `to_conllu` writes the text back as it was, with LF line ends. A byte order mark at the start is skipped.
 
 Exceptions:
 

@@ -7,7 +7,7 @@ use unicode_normalization::char::{compose, is_combining_mark};
 
 use crate::Span;
 use crate::lang::{DigitGroups, Hyphens, Tables};
-use crate::layout::is_separator;
+use crate::layout::{is_format_mark, is_separator};
 use crate::sentences::is_opening;
 
 fn char_at(text: &str, index: usize) -> Option<char> {
@@ -38,9 +38,10 @@ pub(crate) fn is_mark(character: char) -> bool {
     is_combining_mark(character)
 }
 
-/// Characters that join the letters of a word without being letters: soft hyphen and zero width (non-)joiner
+/// Characters that join the letters of a word without being letters: soft hyphen, zero width (non-)joiner and the
+/// format marks
 fn is_joiner(character: char) -> bool {
-    matches!(character, '\u{ad}' | '\u{200c}' | '\u{200d}')
+    matches!(character, '\u{ad}' | '\u{200c}' | '\u{200d}') || is_format_mark(character)
 }
 
 pub(crate) fn is_emoji(character: char) -> bool {
@@ -1360,6 +1361,15 @@ mod tests {
             ["Ку\u{301}рица", "До\u{ad}ма"]
         );
         assert_eq!(tokens("\u{ad} кот \u{ad}"), ["кот"]);
+        // Format marks join a word as a soft hyphen does, and outside a word they separate tokens
+        assert_eq!(
+            tokens("чи\u{200e}тает Вто\u{2060}рой 12\u{200f}34"),
+            ["чи\u{200e}тает", "Вто\u{2060}рой", "12\u{200f}34"]
+        );
+        assert_eq!(
+            tokens("\u{200f}слово\u{200e}. \u{202b}текст\u{202c} \u{2066}a\u{2069}"),
+            ["слово", ".", "текст", "a"]
+        );
         assert_eq!(
             tokens("О'Нил д’Артаньян 'да'"),
             ["О'Нил", "д’Артаньян", "'", "да", "'"]

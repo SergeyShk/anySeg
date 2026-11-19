@@ -1025,7 +1025,16 @@ mod tests {
             let (_, conllu, _) = command(&args, text.as_bytes());
             assert_eq!(conllu.matches("# newpar").count(), 2, "{separator:?}");
             let whole = Segmenter::new("ru").unwrap().segment(&text);
-            assert_eq!(conllu, whole.to_conllu());
+            // The indent of «Ёж» is the dropped piece, so it differs in length
+            let indent = |conllu: &str| {
+                conllu
+                    .lines()
+                    .map(|line| line.split("|SpacesBefore=").next().unwrap_or(line))
+                    .map(|line| line.split("\tSpacesBefore=").next().unwrap_or(line))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            };
+            assert_eq!(indent(&conllu), indent(&whole.to_conllu()));
         }
         // And at the start of the line after a sentence written whole; a plain next line goes on with the paragraph
         let long = ("мама мыла раму ".repeat(5) + "\n").repeat(31);

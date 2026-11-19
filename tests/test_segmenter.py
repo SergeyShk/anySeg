@@ -18,7 +18,7 @@ from anyseg import Segmenter, Span, sentenize, tokenize
 TEXT = "\ufeffЁж\u00a0иду\u0301т\t😀\r\nдомо\u0301й\u2028end"
 
 # Whitespace in the alphabet of the random texts and the invisible separators
-SEPARATORS = " \n\r\t\u00a0\u2028\u3000\ufeff\u200b\u2060\u00ad\u200c\u200d"
+SEPARATORS = " \n\r\t\u00a0\u2028\u3000\ufeff\u200b\u2060\u00ad\u200c\u200d\u200e\u200f\u202b\u202c\u2066\u2069\u061c\u180e"
 
 
 # Lone surrogates: in a string of Python they are two characters even side by side
@@ -143,7 +143,9 @@ def test_sentences(segmenter):
     assert [span.text for span in segmenter.tokenize(text)][6:9] == ["1914", "г", "."]
 
 
-@pytest.mark.parametrize("text", ["", " ", "\n\r\n\t\u00a0\u2028\u3000", "\ufeff\u200b\u2060"])
+@pytest.mark.parametrize(
+    "text", ["", " ", "\n\r\n\t\u00a0\u2028\u3000", "\ufeff\u200b\u2060", "\u200e\u202b\u2069"]
+)
 def test_blank_text(segmenter, text):
     assert segmenter.tokenize(text) == []
     assert segmenter.sentenize(text) == []
@@ -177,9 +179,25 @@ def test_lone_surrogate(segmenter, text):
         assert [token.text for token in tokens] == [span.text for span in segmenter.tokenize(text)]
 
 
+def test_format_marks(segmenter):
+    # Marks of the direction of text and the word joiner join a word, and outside one they are no tokens
+    text = "\u200fОн чи\u200eтает Вто\u2060рой\u200e. \u202bТекст\u202c"
+    assert [span.text for span in segmenter.tokenize(text)] == [
+        "Он",
+        "чи\u200eтает",
+        "Вто\u2060рой",
+        ".",
+        "Текст",
+    ]
+    assert [span.text for span in segmenter.sentenize(text)] == [
+        "Он чи\u200eтает Вто\u2060рой\u200e.",
+        "Текст",
+    ]
+
+
 def test_random_texts(segmenter):
     rng = random.Random(0)
-    alphabet = "ab Ёж\u0301\u00ad😀👍🏽\u200d.,-—\n\r\t\u00a0\u2028\u3000\ufeff\u200b\u2060"
+    alphabet = "ab Ёж\u0301\u00ad😀👍🏽\u200d.,-—\n\r\t\u00a0\u2028\u3000\ufeff\u200b\u2060\u200e\u202b\u2069"
     for _ in range(300):
         text = "".join(rng.choices(alphabet, k=rng.randrange(40)))
         spans = segmenter.tokenize(text)

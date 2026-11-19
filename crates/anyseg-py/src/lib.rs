@@ -427,9 +427,9 @@ impl Segmenter {
     /// Tokens of a text
     ///
     /// Description:
-    ///     Whitespace, control characters and the invisible separators (zero width space, word
-    ///     joiner, byte order mark, and a soft hyphen and zero width (non-)joiner outside a word)
-    ///     separate tokens and are in none. Words keep their combining marks and soft hyphens;
+    ///     Whitespace, control characters and the invisible characters (zero width space, byte
+    ///     order mark, and outside a word a soft hyphen, zero width (non-)joiner, word joiner and
+    ///     the marks of the direction of text) separate tokens and are in none. Words keep their combining marks and soft hyphens;
     ///     numbers with decimal marks, dates and times, URLs, e-mail addresses, file names,
     ///     mentions, hashtags, emoticons and runs of emoji are one token each. Abbreviations and
     ///     initials keep their period, except at the end of a sentence. The lists and conventions
@@ -1451,8 +1451,9 @@ impl Document {
     ///     A document read from CoNLL-U is written as it was read, with the columns set since.
     ///     Otherwise every sentence gets the comments sent_id and text, the first one newdoc and
     ///     every paragraph newpar, and the space after a token inside a paragraph goes to MISC:
-    ///     SpaceAfter=No when there is none and SpacesAfter when it is not one space. There the
-    ///     invisible separators are left out, line breaks other than CR and LF become LF and
+    ///     SpaceAfter=No when there is none and SpacesAfter when it is not one space, and the
+    ///     indent of the first line of a paragraph goes to SpacesBefore. There the invisible
+    ///     characters are left out, line breaks other than CR and LF become LF and
     ///     whitespace other than tabs becomes a space; the comment text is the tokens with these
     ///     spaces, line breaks turned into spaces. Forms, the comment text and column values are in
     ///     Unicode NFC, as CoNLL-U requires, and a lone surrogate is U+FFFD; the document keeps its
