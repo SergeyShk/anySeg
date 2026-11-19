@@ -1,45 +1,45 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 642 554" width="642" height="554" font-family="PT Sans, Source Sans Pro, Arial, sans-serif" role="img">
-<rect width="642" height="554" rx="12" fill="white"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 554" width="720" height="554" font-family="PT Sans, Source Sans Pro, Arial, sans-serif" role="img">
+<rect width="720" height="554" rx="12" fill="white"/>
 <text x="24.0" y="34.0" font-size="15" fill="#e65100" font-weight="bold" text-anchor="start">Verse: the author breaks the lines, and a line goes on with its sentence</text>
 <text x="110.0" y="71.0" font-size="13" fill="#78909c" text-anchor="end">first line</text>
-<rect x="124.0" y="54.0" width="276.3" height="26.0" rx="4" fill="#fff3e0" stroke="#fff3e0" stroke-width="1.5"/>
+<rect x="124.0" y="54.0" width="312.0" height="26.0" rx="4" fill="#fff3e0" stroke="#fff3e0" stroke-width="1.5"/>
 <text x="130.0" y="72.0" font-size="17" fill="#263238" text-anchor="start">Мороз и солнце; день чудесный!</text>
 <text x="110.0" y="101.0" font-size="13" fill="#78909c" text-anchor="end">author</text>
-<rect x="124.0" y="84.0" width="312.3" height="26.0" rx="4" fill="#ffe0b2" stroke="#ffe0b2" stroke-width="1.5"/>
+<rect x="124.0" y="84.0" width="352.8" height="26.0" rx="4" fill="#ffe0b2" stroke="#ffe0b2" stroke-width="1.5"/>
 <text x="130.0" y="102.0" font-size="17" fill="#263238" text-anchor="start">Еще ты дремлешь, друг прелестный -</text>
 <text x="110.0" y="131.0" font-size="13" fill="#78909c" text-anchor="end">author</text>
-<rect x="124.0" y="114.0" width="240.3" height="26.0" rx="4" fill="#ffe0b2" stroke="#ffe0b2" stroke-width="1.5"/>
+<rect x="124.0" y="114.0" width="271.2" height="26.0" rx="4" fill="#ffe0b2" stroke="#ffe0b2" stroke-width="1.5"/>
 <text x="130.0" y="132.0" font-size="17" fill="#263238" text-anchor="start">Пора, красавица, проснись:</text>
 <text x="110.0" y="161.0" font-size="13" fill="#78909c" text-anchor="end">author</text>
-<rect x="124.0" y="144.0" width="249.3" height="26.0" rx="4" fill="#ffe0b2" stroke="#ffe0b2" stroke-width="1.5"/>
+<rect x="124.0" y="144.0" width="281.4" height="26.0" rx="4" fill="#ffe0b2" stroke="#ffe0b2" stroke-width="1.5"/>
 <text x="130.0" y="162.0" font-size="17" fill="#263238" text-anchor="start">Открой сомкнуты негой взоры</text>
 <text x="24.0" y="204.0" font-size="15" fill="#e65100" font-weight="bold" text-anchor="start">Text wrapped at the width of the page: a sentence goes on across the lines</text>
 <text x="110.0" y="241.0" font-size="13" fill="#78909c" text-anchor="end">first line</text>
-<rect x="124.0" y="224.0" width="339.4" height="26.0" rx="4" fill="#fff3e0" stroke="#fff3e0" stroke-width="1.5"/>
+<rect x="124.0" y="224.0" width="383.4" height="26.0" rx="4" fill="#fff3e0" stroke="#fff3e0" stroke-width="1.5"/>
 <text x="130.0" y="242.0" font-size="17" fill="#263238" text-anchor="start">Он долго шел по дороге и думал о том,</text>
 <text x="110.0" y="271.0" font-size="13" fill="#78909c" text-anchor="end">typeset</text>
-<rect x="124.0" y="254.0" width="240.3" height="26.0" rx="4" fill="#fff3e0" stroke="#fff3e0" stroke-width="1.5"/>
+<rect x="124.0" y="254.0" width="271.2" height="26.0" rx="4" fill="#fff3e0" stroke="#fff3e0" stroke-width="1.5"/>
 <text x="130.0" y="272.0" font-size="17" fill="#263238" text-anchor="start">что скажет ей при встрече.</text>
-<rect x="370.3" y="254.0" width="87.1" height="26.0" rx="4" fill="#ffe0b2" stroke="#ffe0b2" stroke-width="1.5"/>
-<text x="376.3" y="272.0" font-size="17" fill="#263238" text-anchor="start">Дом стоял</text>
+<rect x="401.2" y="254.0" width="97.8" height="26.0" rx="4" fill="#ffe0b2" stroke="#ffe0b2" stroke-width="1.5"/>
+<text x="407.2" y="272.0" font-size="17" fill="#263238" text-anchor="start">Дом стоял</text>
 <text x="110.0" y="301.0" font-size="13" fill="#78909c" text-anchor="end">typeset</text>
-<rect x="124.0" y="284.0" width="249.3" height="26.0" rx="4" fill="#ffe0b2" stroke="#ffe0b2" stroke-width="1.5"/>
+<rect x="124.0" y="284.0" width="281.4" height="26.0" rx="4" fill="#ffe0b2" stroke="#ffe0b2" stroke-width="1.5"/>
 <text x="130.0" y="302.0" font-size="17" fill="#263238" text-anchor="start">на краю села, у самой реки.</text>
 <text x="24.0" y="344.0" font-size="15" fill="#e65100" font-weight="bold" text-anchor="start">A list and a heading: a line break starts a sentence</text>
 <text x="110.0" y="381.0" font-size="13" fill="#78909c" text-anchor="end">first line</text>
-<rect x="124.0" y="364.0" width="132.1" height="26.0" rx="4" fill="#fff3e0" stroke="#fff3e0" stroke-width="1.5"/>
+<rect x="124.0" y="364.0" width="148.8" height="26.0" rx="4" fill="#fff3e0" stroke="#fff3e0" stroke-width="1.5"/>
 <text x="130.0" y="382.0" font-size="17" fill="#263238" text-anchor="start">Взять с собой:</text>
 <text x="110.0" y="411.0" font-size="13" fill="#78909c" text-anchor="end">author</text>
-<rect x="124.0" y="394.0" width="87.1" height="26.0" rx="4" fill="#ffe0b2" stroke="#ffe0b2" stroke-width="1.5"/>
+<rect x="124.0" y="394.0" width="97.8" height="26.0" rx="4" fill="#ffe0b2" stroke="#ffe0b2" stroke-width="1.5"/>
 <text x="130.0" y="412.0" font-size="17" fill="#263238" text-anchor="start">- паспорт</text>
 <text x="110.0" y="441.0" font-size="13" fill="#78909c" text-anchor="end">author</text>
-<rect x="124.0" y="424.0" width="78.1" height="26.0" rx="4" fill="#fff3e0" stroke="#fff3e0" stroke-width="1.5"/>
+<rect x="124.0" y="424.0" width="87.6" height="26.0" rx="4" fill="#fff3e0" stroke="#fff3e0" stroke-width="1.5"/>
 <text x="130.0" y="442.0" font-size="17" fill="#263238" text-anchor="start">- билеты</text>
 <text x="110.0" y="471.0" font-size="13" fill="#78909c" text-anchor="end">author</text>
-<rect x="124.0" y="454.0" width="69.1" height="26.0" rx="4" fill="#ffe0b2" stroke="#ffe0b2" stroke-width="1.5"/>
+<rect x="124.0" y="454.0" width="77.4" height="26.0" rx="4" fill="#ffe0b2" stroke="#ffe0b2" stroke-width="1.5"/>
 <text x="130.0" y="472.0" font-size="17" fill="#263238" text-anchor="start">Глава 2</text>
 <text x="110.0" y="501.0" font-size="13" fill="#78909c" text-anchor="end">author</text>
-<rect x="124.0" y="484.0" width="213.2" height="26.0" rx="4" fill="#fff3e0" stroke="#fff3e0" stroke-width="1.5"/>
+<rect x="124.0" y="484.0" width="240.6" height="26.0" rx="4" fill="#fff3e0" stroke="#fff3e0" stroke-width="1.5"/>
 <text x="130.0" y="502.0" font-size="17" fill="#263238" text-anchor="start">Утро выдалось холодным.</text>
 <text x="24.0" y="538.0" font-size="13" fill="#78909c" text-anchor="start">a band is a sentence; the word on the left is how the line begins</text>
 </svg>

@@ -56,8 +56,8 @@ STREAM = SHORT + LONG + SHORT
 
 
 def width(value: str, size: float) -> float:
-    """Width of a text in PT Sans, about"""
-    return len(value) * size * 0.53 + 6
+    """Width of a text, about: wide enough for the fonts that stand in for PT Sans"""
+    return len(value) * size * 0.6 + 6
 
 
 def text(
