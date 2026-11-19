@@ -21,6 +21,7 @@ disperse
 diverse
 encarte
 enferme
+ensarte
 esquirla
 esquirlas
 estandarte
@@ -37,6 +38,8 @@ injerte
 inserte
 internos
 inverse
+madreperla
+madreperlas
 maternos
 modernos
 multiparte

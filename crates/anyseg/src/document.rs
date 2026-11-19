@@ -409,8 +409,12 @@ impl Document {
                 if !words::may_hold_several(tables, piece) {
                     continue;
                 }
+                // A token at the start of a line, as in verse, is not after a word: «…volver¶Al lugar»
+                let line_start = token > sentence[0]
+                    && self.text[self.tokens[token - 1].end..self.tokens[token].start]
+                        .contains(['\n', '\r', '\u{b}', '\u{c}', '\u{85}', '\u{2028}']);
                 let before = |back: usize| {
-                    (token >= sentence[0] + back)
+                    (!line_start && token >= sentence[0] + back)
                         .then(|| self.tokens[token - back].slice(&self.text))
                 };
                 let after =

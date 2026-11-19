@@ -138,6 +138,15 @@ fn enclitic_words(tables: &Tables, key: &str) -> Option<Vec<String>> {
     let words = if let Some(verb) = host(tables, &key[..last]) {
         vec![verb.into_owned(), key[last..].to_owned()]
     } else {
+        // Of two pronouns, some only come first: «dárselo», but «apártese» is «aparte» + «se»
+        if tables
+            .conventions
+            .enclitic_first_only
+            .iter()
+            .any(|enclitic| *enclitic == key[last..])
+        {
+            return None;
+        }
         let first = peel(&key[..last])?;
         let verb = host(tables, &key[..first])?;
         vec![
@@ -336,6 +345,25 @@ mod tests {
         assert_eq!(multiword("Pérez et. al. 2010"), []);
         assert_eq!(multiword("Pérez et. al 2010"), []);
         assert_eq!(expanded("Pérez al mar"), [["a", "el"]]);
+    }
+
+    #[test]
+    fn found_by_the_consumers() {
+        // «se» comes first of two pronouns, and nouns of the exceptions stay whole
+        for text in [
+            "Apártese de ahí.",
+            "La madreperla brilla.",
+            "Una ensarte de perlas.",
+        ] {
+            assert_eq!(multiword(text), [], "{text}");
+        }
+        assert_eq!(expanded("Quiero dárselo."), [["dar", "se", "lo"]]);
+        // A capital letter at the start of a line, as in verse, is no name after a word
+        assert_eq!(
+            expanded("que sea otro hombre\n  Del que ahora parece."),
+            [["De", "el"]]
+        );
+        assert_eq!(multiword("San Clemente, anejo de Viana Del Prior."), []);
     }
 
     #[test]

@@ -122,6 +122,8 @@ pub(crate) struct Conventions {
     pub(crate) enclitic_host_marks: Vec<char>,
     /// Letters of which a verb that takes enclitics has one before its ending; none: any verb
     pub(crate) enclitic_stem_letters: Vec<char>,
+    /// Enclitics that come first of two, never second
+    pub(crate) enclitic_first_only: Vec<String>,
     /// A token with a first capital letter after a word or a comma is a name, which stays whole
     pub(crate) capital_after_word_whole: bool,
     /// A dash glued to a final mark with a space after it closes its line, and a dash opens a line before a digit
@@ -176,6 +178,7 @@ impl Default for Conventions {
             degree_letters: "CF".to_owned(),
             enclitic_host_marks: Vec::new(),
             enclitic_stem_letters: Vec::new(),
+            enclitic_first_only: Vec::new(),
             capital_after_word_whole: false,
             closing_dashes: false,
             inner_marks: Vec::new(),
@@ -281,6 +284,10 @@ impl Conventions {
                     }
                 }
                 "degree_letters" => conventions.degree_letters = value.to_owned(),
+                "enclitic_first_only" => {
+                    conventions.enclitic_first_only =
+                        value.split_whitespace().map(str::to_owned).collect();
+                }
                 "enclitic_stem_letters" => {
                     conventions.enclitic_stem_letters = value
                         .split_whitespace()

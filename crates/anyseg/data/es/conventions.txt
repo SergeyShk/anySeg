@@ -54,5 +54,7 @@ superscripts = split
 enclitic_host_marks = U+0301
 # A verb has one of these letters before its ending
 enclitic_stem_letters = a e i o u y
+# Of two pronouns «se» comes first: «dárselo», while «apártese» is no «apar» + «te» + «se»
+enclitic_first_only = se
 # A token with a first capital letter after a word or a comma is a name: «Al Gore», «, Del Bosque»
 capital_after_word = whole
