@@ -535,8 +535,9 @@ impl Document {
 
     /// The document with other words in some of its tokens: a token and the forms of its words, in the order of the
     /// tokens. Several forms make a multiword token, whatever the text of the token, and one form, the text of the
-    /// token, a token of one word. The other words keep their forms and columns, the new ones have none; a document
-    /// read from CoNLL-U keeps its comments and the lines of its other multiword tokens.
+    /// token, a token of one word. The other words keep their forms and columns, the new ones have none but the spaces
+    /// after a token in `misc` of a document read from CoNLL-U, which keeps its comments and the lines of its other
+    /// multiword tokens.
     ///
     /// # Errors
     ///

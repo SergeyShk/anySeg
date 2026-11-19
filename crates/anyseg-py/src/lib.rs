@@ -337,6 +337,7 @@ fn spans(text: &str, source: &[u8], spans: Vec<anyseg::Span>) -> Vec<Span> {
 ///     sentenize: Sentences of a text
 ///     segment: Document of a text
 ///     pipe: Documents of texts
+///     stream: Documents of the pieces of a file
 ///
 /// Raises:
 ///     ValueError: If the language is not supported, an abbreviation is not a word of letters or a
@@ -575,13 +576,14 @@ impl Segmenter {
     ///     The file is read as the documents are asked for, without reading it whole: complete
     ///     paragraphs come in pieces of about 64 KiB, and a paragraph without blank lines longer
     ///     than 256 KiB in pieces of whole sentences. The documents have the sentences and words of
-    ///     the whole text, except where a paragraph that long is cut, which sees only its piece
-    ///     there; so that the memory does not grow with the text, a sentence or a word longer than
-    ///     256 KiB is cut, and a run of whitespace that long inside a line is shortened. The
+    ///     the whole text, except in a paragraph that long, whose pieces are segmented each alone;
+    ///     so that the memory does not grow with the text, a sentence or a word longer than 256 KiB
+    ///     is cut, and a run of whitespace that long at the start of a line is left out. The
     ///     iterator tells where the last document starts in the text of the file and whether it
     ///     goes on with the paragraph of the document before it. A file in binary mode is read as
-    ///     UTF-8. The documents are segmented without the GIL; the iterator is not thread-safe: a
-    ///     call while another runs raises ValueError
+    ///     UTF-8, and gives a complete paragraph as soon as it comes, from a pipe as well; in text
+    ///     mode a read waits for 64 KiB or the end. The documents are segmented without the GIL;
+    ///     the iterator is not thread-safe: a call while another runs raises ValueError
     ///
     /// Arguments:
     ///     file (SupportsRead[str] | SupportsRead[bytes]): File open for reading, in text or
@@ -613,6 +615,12 @@ impl Segmenter {
         }
         let error = Arc::new(Mutex::new(None));
         let reader = FileReader {
+            // read1 gives what has come without waiting for the whole size, from a pipe or a terminal
+            method: if file.hasattr("read1")? {
+                "read1"
+            } else {
+                "read"
+            },
             file: file.clone().unbind(),
             pending: Vec::new(),
             at: 0,
@@ -658,8 +666,9 @@ impl Segmenter {
     }
 }
 
-/// The bytes of a file of Python, read with its method read: strings in UTF-8
+/// The bytes of a file of Python, read with its method read1 or read: strings in UTF-8
 struct FileReader {
+    method: &'static str,
     file: Py<PyAny>,
     /// What the last read gave and was not taken yet
     pending: Vec<u8>,
@@ -672,12 +681,13 @@ impl std::io::Read for FileReader {
     fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
         if self.at == self.pending.len() {
             let read = Python::attach(|py| -> PyResult<Vec<u8>> {
-                let chunk = self.file.bind(py).call_method1("read", (1 << 16,))?;
+                let chunk = self.file.bind(py).call_method1(self.method, (1 << 16,))?;
                 if let Ok(bytes) = chunk.cast::<PyBytes>() {
                     return Ok(bytes.as_bytes().to_vec());
                 }
                 match chunk.cast::<PyString>() {
-                    Ok(text) => Ok(text.to_str()?.as_bytes().to_vec()),
+                    // A lone surrogate reads as U+FFFD, as in segment: one character and three bytes as well
+                    Ok(text) => Ok(Encoded::new(text)?.text().as_bytes().to_vec()),
                     Err(_) => Err(PyTypeError::new_err(format!(
                         "read of the file gave {}, not str or bytes",
                         chunk.get_type().name()?
@@ -1599,8 +1609,8 @@ impl Document {
     /// Description:
     ///     Several forms make a multiword token, whatever the text of the token, and one form, the
     ///     text of the token, a token of one word. The other words keep their forms and columns,
-    ///     the new ones have none; a document read from CoNLL-U keeps its comments. The document
-    ///     itself does not change
+    ///     the new ones have none but the spaces after a token in misc of a document read from
+    ///     CoNLL-U, which keeps its comments. The document itself does not change
     ///
     /// Arguments:
     ///     words (Mapping[int, Sequence[str]]): Forms of the words, by the index of the token

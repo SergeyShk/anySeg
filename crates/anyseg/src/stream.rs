@@ -28,7 +28,8 @@ pub(crate) const PARAGRAPH: usize = 1 << 12;
 pub struct Piece {
     /// The document of the piece
     pub document: Document,
-    /// The offset of the text of the document in the input, in bytes after a byte order mark
+    /// The offset of the text of the document in the input, in bytes; a byte order mark at the start counts, though
+    /// no document holds it
     pub start: usize,
     /// The first paragraph of the document goes on with the last one of the piece before it
     pub continued: bool,
@@ -351,12 +352,14 @@ impl<S: AsRef<Segmenter>, R: Read> Stream<S, R> {
         };
         let first = std::mem::replace(&mut self.starts, ended);
         self.number += usize::from(first);
-        let line = std::str::from_utf8(&self.bytes).map_err(|_| {
-            io::Error::new(
+        let Ok(line) = std::str::from_utf8(&self.bytes) else {
+            // The complete paragraphs before the line go out before the error
+            cutter.cut_ready(&segment);
+            return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!("line {}: not UTF-8", self.number),
-            )
-        })?;
+            ));
+        };
         let line = match line.strip_prefix('\u{feff}') {
             Some(rest) if self.number == 1 && first => {
                 cutter.skip("\u{feff}");
@@ -494,6 +497,22 @@ mod tests {
         assert!(pieces.len() > 1 && pieces[1..].iter().all(|piece| piece.continued));
         same_as_whole("ru", "");
         same_as_whole("ru", " \n\n ");
+    }
+
+    #[test]
+    fn complete_paragraphs_before_a_line_not_utf8() {
+        let segmenter = Segmenter::new("ru").unwrap();
+        let mut input = "Кот спит.\n\nЁж идёт.\n\n".repeat(3).into_bytes();
+        let good = input.len();
+        input.extend_from_slice(b"\xff\n\nTail.\n");
+        let items: Vec<io::Result<Piece>> = segmenter.stream(&input[..]).collect();
+        let given: usize = items
+            .iter()
+            .filter_map(|item| item.as_ref().ok())
+            .map(|piece| piece.document.text().len())
+            .sum();
+        assert_eq!(given, good);
+        assert!(items.last().is_some_and(Result::is_err));
     }
 
     #[test]

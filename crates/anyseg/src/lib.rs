@@ -297,11 +297,13 @@ impl Segmenter {
     }
 
     /// The documents of a text read from a reader in UTF-8, in pieces, without reading it whole: complete
-    /// paragraphs in pieces of about 64 KiB, and a paragraph without blank lines longer than 256 KiB in pieces of
-    /// whole sentences. The pieces have the sentences and words of the whole text, except where a paragraph that long
-    /// is cut, which sees only its piece there; so that the memory does not grow with the text, a sentence or a word
-    /// longer than 256 KiB is cut, and a run of separators that long inside a line is shortened. A piece knows its offset in the input and whether it goes on with the
-    /// paragraph of the piece before it. [`Stream::new`] makes a stream that owns its segmenter.
+    /// paragraphs in pieces of about 64 KiB, or of what a read gives if less comes at a time, and a paragraph without
+    /// blank lines longer than 256 KiB in pieces of whole sentences. The pieces have the sentences and words of the
+    /// whole text, except in a paragraph that long, whose pieces are segmented each alone; so that the memory does not
+    /// grow with the text, a sentence or a word longer than 256 KiB is cut, and a run of separators that long at the
+    /// start of a line is left out of its piece, whose tokens after it stand closer by its length. A piece knows its
+    /// offset in the input and whether it goes on with the paragraph of the piece before it. [`Stream::new`] makes a
+    /// stream that owns its segmenter.
     ///
     /// # Errors
     ///

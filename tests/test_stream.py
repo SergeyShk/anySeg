@@ -65,6 +65,46 @@ def test_long_paragraph():
     assert continued[0] is False and all(continued[1:])
 
 
+def test_stream_gives_what_has_come():
+    class Pipe:
+        """Gives with read1 what has come, as a pipe does; read would wait for the whole size"""
+
+        def __init__(self, *chunks):
+            self.chunks, self.reads = list(chunks), 0
+
+        def read1(self, size):
+            self.reads += 1
+            return self.chunks.pop(0) if self.chunks else b""
+
+        def read(self, size):
+            raise AssertionError("read waits for the whole size")
+
+    pipe = Pipe("Кот спит.\n\n".encode(), "Ёж идёт.\n".encode())
+    stream = Segmenter("ru").stream(pipe)
+    assert [sentence.text for sentence in next(stream).sentences] == ["Кот спит."]
+    assert pipe.reads == 1
+    assert [document.text for document in stream] == ["Ёж идёт.\n"]
+
+
+def test_lone_surrogate():
+    segmenter = Segmenter("ru")
+    text = "Кот спит.\n\nЁж \udcff идёт.\n"
+    stream = segmenter.stream(io.StringIO(text))
+    documents = [(stream.start, document) for document in stream]
+    assert [token.text for _, document in documents for token in document.tokens] == [
+        "Кот",
+        "спит",
+        ".",
+        "Ёж",
+        "\ufffd",
+        "идёт",
+        ".",
+    ]
+    assert [token.start + start for start, document in documents for token in document.tokens] == [
+        token.start for token in segmenter.segment(text).tokens
+    ]
+
+
 def test_empty_file():
     stream = Segmenter("ru").stream(io.StringIO(""))
     assert list(stream) == []
