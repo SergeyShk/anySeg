@@ -662,7 +662,7 @@ def tree(heads: list[int]) -> bool:
     return True
 
 
-def from_doc(doc: Doc) -> Document:
+def from_doc(doc: Doc, *, split_unannotated: bool = True) -> Document:
     r"""
     Document of a spaCy document
 
@@ -676,9 +676,11 @@ def from_doc(doc: Doc) -> Document:
 
     Description:
         Tokens lose the whitespace and invisible separators at their edges, and tokens of nothing
-        else are dropped. A document without sentences is a sentence per paragraph, and every
-        paragraph starts a sentence. Lemmas, parts of speech, tags, features, heads and relations
-        become columns, the features in the order of UD.
+        else are dropped. Sentences are those of doc.sents: of the hook user_hooks["sents"] in a
+        document without a parse, else of the sentence starts, with a parse those of the parse;
+        a document without sentences is a sentence per paragraph, and every paragraph starts a
+        sentence. Lemmas, parts of speech, tags, features, heads and relations become columns,
+        the features in the order of UD.
         A token with token._.anyseg_words is a multiword token: its words keep their columns, but
         the word marked main takes the value of the token. Their heads stay while the parse agrees
         with them; otherwise the first word takes the head and the relation of the token, and the
@@ -686,6 +688,9 @@ def from_doc(doc: Doc) -> Document:
 
     Arguments:
         doc (Doc): spaCy document
+        split_unannotated (bool): Whether a token whose words in token._.anyseg_words have only
+            their forms gives these words; otherwise it is one word with the values of the token,
+            as a pipeline after the tokenizer annotated it
 
     Returns:
         Document: Document
@@ -703,9 +708,13 @@ def from_doc(doc: Doc) -> Document:
     given = given_words(doc)
     positions = [-1] * len(doc)
     sentence_starts: list[int] = []
-    marks = (
-        doc.to_array([SENT_START]).view(numpy.int64) if doc.has_annotation("SENT_START") else None
-    )
+    marks = None
+    # The heads of a parse are counted inside its sentences, which a hook may cut otherwise
+    if "sents" in doc.user_hooks and not doc.has_annotation("DEP"):
+        marks = numpy.zeros(len(doc), dtype=numpy.int64)
+        marks[[span.start for span in doc.sents]] = 1
+    elif doc.has_annotation("SENT_START"):
+        marks = doc.to_array([SENT_START]).view(numpy.int64)
     pending = True
     for token in doc:
         if marks is not None and marks[token.i] == 1:
@@ -724,7 +733,11 @@ def from_doc(doc: Doc) -> Document:
         if given:
             value = given.get((token.idx, token.idx + len(text)))
             if value is not None:
-                multiword[len(kept)] = checked_words(value, len(kept))
+                words = checked_words(value, len(kept))
+                if split_unannotated or any(
+                    name in word for word in words for name in WORD_COLUMNS
+                ):
+                    multiword[len(kept)] = words
         kept.append(token.i)
     document = Document.from_tokens(
         doc.text,

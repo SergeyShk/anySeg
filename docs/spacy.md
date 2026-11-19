@@ -191,20 +191,23 @@ Exceptions:
 { .metric-meta }
 
 ``` {.python .signature}
-from_doc(doc)
+from_doc(doc, *, split_unannotated=True)
 ```
 
 The [document](document.md) of a `Doc`, one word per token except those with `token._.anyseg_words`.
 
 *   Tokens lose the whitespace and the invisible separators at their edges, and tokens of nothing else are dropped. A sentence of the `Doc` starts at its first token left, a `Doc` without sentences is a sentence per paragraph, and every paragraph starts a sentence.
+*   The sentences are those of `doc.sents`: of the hook `doc.user_hooks["sents"]` when there is one, else of the sentence starts. A `Doc` with a parse keeps the sentences of the parse, since the heads are counted inside them.
 *   `lemma_`, `pos_`, `tag_`, `morph`, the heads and `dep_` become the columns `lemma`, `upos`, `xpos`, `feats`, `head` and `deprel`, empty values `None`, the features in the order of UD; a token without a head has neither. In a lemma, a line break or a tab becomes a space inside, with the spaces around it, and goes away at an edge.
 *   The relation `ROOT` becomes `root`, and a word whose head is a dropped token depends on the head of that token. A sentence has one root: the root of the parse or, if the sentence lacks it, the first word whose head is in another sentence; the other such words depend on the root with `dep`.
+*   With `split_unannotated=False`, a token whose words in the extension have their forms only is one word with the values of the token: a tagger or a parser after the [tokenizer](#tokenizer) annotates the tokens, not their words.
 *   The words of a multiword token keep the columns they have in the extension, but the word marked `main` takes the value of the token, even over an edit of that word in the extension. Without a mark, the first word takes the value for a column none of them has.
 *   The heads of these words stay if every word has `head` and `sentence_words`, `sentence_words` is the number of words of the sentence, the head of the token is the head of one of its words, which then stands for the token, the marked one if it can, and the words form a tree; otherwise the first word takes the head and the relation of the token, and the other words depend on it with `dep`. A word of another token that depends on a word of a multiword token other than the one that stands for it moves to that one.
 
 | Parameter | Type | Default | Description |
 | :-------- | :--- | :------ | :---------- |
 | `doc` | `Doc` | - | spaCy document |
+| `split_unannotated` | `bool` | `True` | Whether a token whose words in the extension have their forms only gives these words |
 
 Exceptions:
 
