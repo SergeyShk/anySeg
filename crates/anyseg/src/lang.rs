@@ -157,6 +157,8 @@ pub(crate) struct Conventions {
     pub(crate) written_final_abbreviations: bool,
     /// Endings of grammatical forms, which make a rhyme with one more letter
     pub(crate) weak_rhymes: Vec<String>,
+    /// Letters of the script of the language that stand for the Roman ones they look like, with them
+    pub(crate) roman_lookalikes: Vec<(char, char)>,
 }
 
 impl Default for Conventions {
@@ -195,6 +197,7 @@ impl Default for Conventions {
             inverted_marks: false,
             written_final_abbreviations: false,
             weak_rhymes: Vec::new(),
+            roman_lookalikes: Vec::new(),
         }
     }
 }
@@ -284,6 +287,22 @@ impl Conventions {
                     }
                 }
                 "degree_letters" => conventions.degree_letters = value.to_owned(),
+                "roman_lookalikes" => {
+                    conventions.roman_lookalikes = value
+                        .split_whitespace()
+                        .map(|pair| {
+                            let mut letters = pair.chars();
+                            match (letters.next(), letters.next(), letters.next()) {
+                                (
+                                    Some(lookalike),
+                                    Some(roman @ ('I' | 'V' | 'X' | 'L' | 'C' | 'D' | 'M')),
+                                    None,
+                                ) => (lookalike, roman),
+                                _ => wrong(line),
+                            }
+                        })
+                        .collect();
+                }
                 "enclitic_first_only" => {
                     conventions.enclitic_first_only =
                         value.split_whitespace().map(str::to_owned).collect();

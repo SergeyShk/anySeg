@@ -230,11 +230,52 @@ fn last_lowercase_word(line: &str) -> Option<&str> {
     word.starts_with(char::is_lowercase).then_some(word)
 }
 
+/// A Roman number in its standard form, «IV», «XXIV», «MCMXLV»; a letter of `lookalikes` reads as the Roman one it
+/// looks like: «Х»
+fn is_roman(piece: &str, lookalikes: &[(char, char)]) -> bool {
+    let mut letters = [0; 15];
+    let mut length = 0;
+    for character in piece.chars() {
+        let letter = lookalikes
+            .iter()
+            .find(|(lookalike, _)| *lookalike == character)
+            .map_or(character, |&(_, roman)| roman);
+        if length == letters.len() || !matches!(letter, 'I' | 'V' | 'X' | 'L' | 'C' | 'D' | 'M') {
+            return false;
+        }
+        letters[length] = letter as u8;
+        length += 1;
+    }
+    let thousands = letters[..length]
+        .iter()
+        .take_while(|&&letter| letter == b'M')
+        .count()
+        .min(3);
+    let mut rest = &letters[thousands..length];
+    for (one, five, ten) in [(b'C', b'D', b'M'), (b'X', b'L', b'C'), (b'I', b'V', b'X')] {
+        let forms: [&[u8]; 9] = [
+            &[one, ten],
+            &[one, five],
+            &[five, one, one, one],
+            &[five, one, one],
+            &[five, one],
+            &[five],
+            &[one, one, one],
+            &[one, one],
+            &[one],
+        ];
+        if let Some(form) = forms.iter().find(|form| rest.starts_with(form)) {
+            rest = &rest[form.len()..];
+        }
+    }
+    length > 0 && rest.is_empty()
+}
+
 /// A number alone on a line, Arabic or Roman, maybe with a period: it heads a stanza or a chapter
-fn is_number_line(line: &str) -> bool {
+fn is_number_line(line: &str, lookalikes: &[(char, char)]) -> bool {
     let number = line.strip_suffix('.').unwrap_or(line);
     (!number.is_empty() && number.bytes().all(|byte| byte.is_ascii_digit()))
-        || roman_value(number).is_some()
+        || is_roman(number, lookalikes)
 }
 
 /// A line that does not end with punctuation: a heading, a line of a post
@@ -378,6 +419,10 @@ impl Splitter<'_> {
 
     fn line(&self, index: usize) -> &str {
         self.lines[index].slice(self.text)
+    }
+
+    fn roman_lookalikes(&self) -> &[(char, char)] {
+        &self.tables.conventions.roman_lookalikes
     }
 
     /// The token right after the one before it, without a space between
@@ -682,8 +727,12 @@ impl Splitter<'_> {
             return next(1).is_some_and(starts_upper);
         }
         if is_dash(piece) {
-            // A dash at the end of a line, before a line of dialogue, closes the line before it: «Кто там? —\n— Я»
-            if next(1).is_some_and(is_dash) && self.line_start(index + 1) {
+            // A dash at the end of a line, before a line of dialogue or the number of a stanza, closes the line before
+            // it: «Кто там? —\n— Я», «гулять... —\nIII»
+            if let Ok(line) = self.line_tokens.binary_search(&(index + 1))
+                && (next(1).is_some_and(is_dash)
+                    || is_number_line(self.line(line), self.roman_lookalikes()))
+            {
                 return false;
             }
             // Hyphens of a dash may stand apart: «- - Según»
@@ -1065,13 +1114,24 @@ impl Splitter<'_> {
             return true;
         }
         let (before, next) = (self.line(line), self.line(line + 1));
-        // A number between a line without a final mark and a lowercase one is the number of a page: «стал¶337¶вдыхать»
-        let page = !before.ends_with(['.', '!', '?', '…'])
+        let lookalikes = self.roman_lookalikes();
+        // An Arabic number between a line without a final mark, past closing quotes and brackets, and a lowercase one
+        // is the number of a page: «стал¶337¶вдыхать», but «Аминь! (лат.)¶3¶в сторону»
+        let page = !is_roman(next, lookalikes)
+            && !before
+                .trim_end_matches(|c: char| is_closing(c.encode_utf8(&mut [0; 4])))
+                .ends_with(['.', '!', '?', '…'])
             && self
                 .lines
                 .get(line + 2)
                 .is_some_and(|after| after.slice(self.text).starts_with(char::is_lowercase));
-        if !has_word(before) || !has_word(next) || (is_number_line(next) && !page) {
+        if !has_word(before) || !has_word(next) || (is_number_line(next, lookalikes) && !page) {
+            return true;
+        }
+        // A Roman number alone on a line is a sentence of its own, in verse too: «II¶Две жизни», «IV.¶Не могу»
+        if is_roman(before.strip_suffix('.').unwrap_or(before), lookalikes)
+            && begins_upper(next, false)
+        {
             return true;
         }
         // A heading stands apart in verse too
@@ -1083,7 +1143,7 @@ impl Splitter<'_> {
         let word = self.verse
             && before.chars().nth(1).is_none()
             && before.starts_with(char::is_alphabetic)
-            && !before.starts_with(['I', 'V', 'X', 'L', 'C', 'D', 'M', 'Х']);
+            && !is_roman(before, lookalikes);
         !verse
             && !self.typeset
             && ends_open(before)
@@ -1374,6 +1434,36 @@ mod tests {
     }
 
     #[test]
+    fn roman_numbers() {
+        let roman = |piece| super::is_roman(piece, &[('Х', 'X'), ('І', 'I')]);
+        assert!(
+            [
+                "I",
+                "IV",
+                "XIX",
+                "XXIV",
+                "XL",
+                "LXXXIX",
+                "XC",
+                "CD",
+                "MCMXLV",
+                "MMMCMXCIX",
+                "Х",
+                "ХІ"
+            ]
+            .into_iter()
+            .all(roman)
+        );
+        assert!(
+            [
+                "", "IIII", "IC", "VX", "XXXX", "MMMM", "IIV", "DD", "ABC", "MCMXLVZ", "И"
+            ]
+            .into_iter()
+            .all(|piece| !roman(piece))
+        );
+    }
+
+    #[test]
     fn lines_of_dialogue_numbers_and_letters() {
         // A dash at the end of a line closes the line of dialogue before it
         assert_eq!(
@@ -1404,6 +1494,62 @@ mod tests {
             ["Он широко стал\n337\nвдыхать воздух."]
         );
         assert_eq!(sentences("Глава\nL\nТекст"), ["Глава", "L", "Текст"]);
+        // A Roman number is a sentence of its own in verse too, past XX, and in Cyrillic letters that look like it
+        assert_eq!(
+            sentences("Сладкий сон...\nII\nДве жизни не прожить.\nА эту, что дана,\nкак знать"),
+            [
+                "Сладкий сон...",
+                "II",
+                "Две жизни не прожить.",
+                "А эту, что дана,\nкак знать"
+            ]
+        );
+        assert_eq!(
+            sentences("Хмелем осыпь молодых,\nТанцуют девушки\nXXIV\nСтадо у лесу"),
+            [
+                "Хмелем осыпь молодых,\nТанцуют девушки",
+                "XXIV",
+                "Стадо у лесу"
+            ]
+        );
+        assert_eq!(
+            sentences("Хмелем осыпь молодых,\nТанцуют девушки\nХ\nСтадо у лесу"),
+            [
+                "Хмелем осыпь молодых,\nТанцуют девушки",
+                "Х",
+                "Стадо у лесу"
+            ]
+        );
+        assert_eq!(
+            sentences("Он ушел.\nIV.\nНе могу выразить."),
+            ["Он ушел.", "IV.", "Не могу выразить."]
+        );
+        assert_eq!(
+            sentences("и ветер пел\nХI\nОтец уехал."),
+            ["и ветер пел", "ХI", "Отец уехал."]
+        );
+        // A dash at the end of a line before a number stays with its line; a Roman number is never a page
+        assert_eq!(
+            sentences("Лучше пойдем-ка гулять... —\nIII\nВ доме тревога большая."),
+            [
+                "Лучше пойдем-ка гулять... —",
+                "III",
+                "В доме тревога большая."
+            ]
+        );
+        assert_eq!(
+            sentences("будить и беспокоить\nIII\nморе уходит вспять"),
+            ["будить и беспокоить", "III\nморе уходит вспять"]
+        );
+        // A final mark in brackets ends a line before a number too: footnotes
+        assert_eq!(
+            sentences("Скупой рыцарь (англ).\n2\nАминь! (лат.)\n3\nв сторону (лат.)."),
+            [
+                "Скупой рыцарь (англ).",
+                "2\nАминь! (лат.)",
+                "3\nв сторону (лат.)."
+            ]
+        );
         // In verse a line of one letter is a word, not a heading; in a chat it is a message
         assert_eq!(
             sentences("Я\nСолнца, счастья шел искать,\nВ поле, в лес бежал."),

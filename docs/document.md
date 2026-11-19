@@ -206,7 +206,7 @@ Exceptions:
 with_words(words)
 ```
 
-A new document in which the given tokens hold other words: several forms make a multiword token, whatever the text of the token, and one form, the text of the token, a token of one word. The other words keep their forms and columns, the new ones have none; a document read from CoNLL-U keeps its comments. The words of a document with heads, enhanced dependencies or empty nodes cannot change, since these refer to the IDs of words.
+A new document in which the given tokens hold other words: several forms make a multiword token, whatever the text of the token, and one form, the text of the token, a token of one word. The other words keep their forms and columns, the new ones have none but the spaces after a token in `misc` of a document read from CoNLL-U, which keeps its comments. The words of a document with heads, enhanced dependencies or empty nodes cannot change, since these refer to the IDs of words.
 
 | Parameter | Type | Default | Description |
 | :-------- | :--- | :------ | :---------- |

@@ -1,9 +1,11 @@
-"""Check of the installed package before publishing: segmentation, positions, threads, pickle and the command
+"""Check of the installed package before publishing: segmentation, positions, threads, pickle, a stream, a document
+with other words and sentences, and the command
 
 Run: `python scripts/smoke.py [version]`; from the `scripts` directory Python imports the installed
 package, not the sources of the repository.
 """
 
+import io
 import pickle
 import subprocess
 import sys
@@ -40,6 +42,16 @@ command = subprocess.run(
     check=True,
 )
 assert "2-3\tdel\t" in command.stdout, command
+# A paragraph without blank lines longer than 256 KiB comes in pieces of whole sentences
+long = "Кот спит. Ёж идёт.\n" * 20000
+stream = Segmenter("ru").stream(io.BytesIO(long.encode()))
+starts = [stream.start + start for doc in stream for start in doc.sentences.starts]
+assert starts == Segmenter("ru").segment(long).sentences.starts, len(starts)
+assert stream.continued
+order = Segmenter("es").segment("Cómpraselo ya.")
+words = [word.form for word in order.with_words({0: ["Compra", "se", "lo"]}).words]
+assert words == ["Compra", "se", "lo", "ya", "."], words
+assert [s.text for s in order.with_sentences([0, 1]).sentences] == ["Cómpraselo", "ya."]
 assert "site-packages" in anyseg.__file__, anyseg.__file__
 # Importing the module must not turn the GIL back on in free-threaded Python
 if sysconfig.get_config_var("Py_GIL_DISABLED"):

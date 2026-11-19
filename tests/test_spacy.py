@@ -99,7 +99,7 @@ def test_tokenizer_whitespace_as_spacy():
 
 
 @pytest.mark.parametrize(
-    "gap", ["\u200b\u200b", "\ufeff", "\u2060 ", " \u00ad", "\u200c\u200d", "\x01", " \u200b\n"]
+    "gap", ["\u200b\u200b", "\ufeff", "\u2060 ", " \u00ad", "\u200c\u200d ", "\x01", " \u200b\n"]
 )
 def test_tokenizer_invisible_separators_are_whitespace(gap):
     text = f"из{gap}стали"

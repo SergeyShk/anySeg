@@ -3,6 +3,7 @@
 import ast
 import contextlib
 import doctest
+import importlib.util
 import inspect
 import io
 import re
@@ -81,3 +82,16 @@ def test_documentation(page):
         code = re.sub(r"^``` ?\w*\n|^```\n?", "", textwrap.dedent(match.group(1)), flags=re.M)
         result = re.sub(r"^```\w*\n|^```\n?", "", textwrap.dedent(match.group(2)), flags=re.M)
         assert lines(run(code.strip("\n"), namespace)) == lines(result), code
+
+
+def test_figures(tmp_path, monkeypatch):
+    # The figures of the documentation show what the package gives: `python scripts/figures.py` draws them again
+    spec = importlib.util.spec_from_file_location("figures", ROOT / "scripts" / "figures.py")
+    assert spec is not None and spec.loader is not None
+    figures = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(figures)
+    monkeypatch.setattr(figures, "IMG", tmp_path)
+    figures.main()
+    for path in sorted(tmp_path.iterdir()):
+        expected = (ROOT / "docs" / "img" / path.name).read_text(encoding="utf-8")
+        assert path.read_text(encoding="utf-8") == expected, path.name
