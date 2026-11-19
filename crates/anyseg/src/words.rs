@@ -364,6 +364,13 @@ mod tests {
             [["De", "el"]]
         );
         assert_eq!(multiword("San Clemente, anejo de Viana Del Prior."), []);
+        // But a wrap at the width of the page keeps the word before it
+        assert_eq!(
+            multiword(
+                "llegó a Madrid, Vicente\nDel Bosque, que era el\nentrenador y todos lo sabían."
+            ),
+            []
+        );
     }
 
     #[test]
