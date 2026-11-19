@@ -56,10 +56,10 @@ Some forms keep the period only in context:
 A token can hold several words, as the UD guidelines ask for the words that Spanish writes together. The tokens stay those of the text, and a [document](document.md#word) gives their words:
 
 *   the contractions «del» and «al» are «de» + «el» and «a» + «el»;
-*   an infinitive or a gerund with pronouns is the verb, without the accent the pronouns brought, and the pronouns: «darlo», «dárselo», «viéndolo». Words that only look so stay whole: «parte», «muerte», «Reverte»;
+*   an infinitive or a gerund with pronouns is the verb, without the accent the pronouns brought, and the pronouns: «darlo», «dárselo», «viéndolo». Of two pronouns «se» comes first, so «apártese» stays whole. Words that only look so stay whole: «parte», «muerte», «madreperla», «Reverte»;
 *   frequent imperatives with pronouns and verbs with «os» are in tables: «dámelo», «cállate», «notifíquese», «deciros». Other such forms stay one word: «tranquilícese», «cantaros».
 
-A form with a first capital letter is a name and stays whole after a word, a number or a comma, «El Al», and in quotes or brackets inside a sentence before another capital letter, «Vino (Del Bosque)». A string of the [list of tokens](segmenter.md#lists) stays one word.
+A form with a first capital letter is a name and stays whole after a word, a number or a comma, «El Al», and in quotes or brackets inside a sentence before another capital letter, «Vino (Del Bosque)». At the start of a line that the author broke, as in verse, it follows no word: «…hombre¶Del que ahora parece»; a line wrapped at the width of the page does not count. A string of the [list of tokens](segmenter.md#lists) stays one word.
 
 === "Code"
 

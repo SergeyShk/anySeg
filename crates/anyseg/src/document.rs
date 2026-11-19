@@ -409,8 +409,16 @@ impl Document {
                 if !words::may_hold_several(tables, piece) {
                     continue;
                 }
+                // A token at the start of a line the author broke, as in verse, is not after a word: «…volver¶Al
+                // lugar»; after a wrap at the width of the page it is: «Vicente¶Del Bosque»
+                let start = self.tokens[token].start;
+                let line = self.lines.partition_point(|line| line.span.start <= start);
+                let line_start = token > sentence[0]
+                    && line > 0
+                    && self.lines[line - 1].span.start == start
+                    && self.lines[line - 1].break_before == Some(LineBreak::Author);
                 let before = |back: usize| {
-                    (token >= sentence[0] + back)
+                    (!line_start && token >= sentence[0] + back)
                         .then(|| self.tokens[token - back].slice(&self.text))
                 };
                 let after =
