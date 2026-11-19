@@ -241,7 +241,7 @@ def draw_stream(segmenter: Segmenter) -> None:
         text(
             left + 26,
             192,
-            "starts with a paragraph: complete ones, in pieces of about 64 KiB",
+            "starts with a paragraph: complete ones in pieces of about 64 KiB, or the first sentences of a long one",
             13,
             INK,
             False,
@@ -251,7 +251,7 @@ def draw_stream(segmenter: Segmenter) -> None:
         text(
             left + 26,
             220,
-            "continued: goes on with the paragraph, in whole sentences, at most 256 KiB",
+            "continued: goes on with the paragraph of the document before, in whole sentences",
             13,
             INK,
             False,
