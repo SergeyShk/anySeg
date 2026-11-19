@@ -569,6 +569,67 @@ impl Segmenter {
         Bound::new(slf.py(), pipe)
     }
 
+    /// Documents of the pieces of a file
+    ///
+    /// Description:
+    ///     The file is read as the documents are asked for, without reading it whole: complete
+    ///     paragraphs come in pieces of about 64 KiB, and a paragraph without blank lines longer
+    ///     than 256 KiB in pieces of whole sentences. The documents have the sentences and words of
+    ///     the whole text, except where a paragraph that long is cut, which sees only its piece
+    ///     there; so that the memory does not grow with the text, a sentence or a word longer than
+    ///     256 KiB is cut, and a run of whitespace that long inside a line is shortened. The
+    ///     iterator tells where the last document starts in the text of the file and whether it
+    ///     goes on with the paragraph of the document before it. A file in binary mode is read as
+    ///     UTF-8. The documents are segmented without the GIL; the iterator is not thread-safe: a
+    ///     call while another runs raises ValueError
+    ///
+    /// Arguments:
+    ///     file (SupportsRead[str] | SupportsRead[bytes]): File open for reading, in text or
+    ///         binary mode, or another object whose read(size) gives strings or bytes
+    ///
+    /// Returns:
+    ///     Stream: Iterator over the documents in order
+    ///
+    /// Raises:
+    ///     TypeError: If the file has no method read
+    ///
+    /// Example:
+    ///     >>> import io
+    ///     >>> from anyseg import Segmenter
+    ///     >>> file = io.StringIO("Ёж идёт.\n\nКот спит.\n" * 3000)
+    ///     >>> stream = Segmenter("ru").stream(file)
+    ///     >>> sum(len(document.sentences) for document in stream)
+    ///     6000
+    fn stream<'py>(
+        &self,
+        py: Python<'py>,
+        file: Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, Stream>> {
+        if !file.hasattr("read")? {
+            let name = file.get_type().name()?;
+            return Err(PyTypeError::new_err(format!(
+                "file must have a method read, {name} has none"
+            )));
+        }
+        let error = Arc::new(Mutex::new(None));
+        let reader = FileReader {
+            file: file.clone().unbind(),
+            pending: Vec::new(),
+            at: 0,
+            error: Arc::clone(&error),
+        };
+        let stream = Stream {
+            file: file.unbind(),
+            error,
+            state: Mutex::new(Streaming {
+                pieces: Some(anyseg::Stream::new(self.inner.clone(), reader)),
+                start: 0,
+                continued: false,
+            }),
+        };
+        Bound::new(py, stream)
+    }
+
     fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
         let mut out = format!("Segmenter({}", repr(py, self.lang())?);
         for (name, list) in [
@@ -594,6 +655,161 @@ impl Segmenter {
         let new = py.import("copyreg")?.getattr("__newobj_ex__")?;
         let arguments = (slf.get_type(), (segmenter.lang(),), lists).into_pyobject(py)?;
         Ok((new, arguments))
+    }
+}
+
+/// The bytes of a file of Python, read with its method read: strings in UTF-8
+struct FileReader {
+    file: Py<PyAny>,
+    /// What the last read gave and was not taken yet
+    pending: Vec<u8>,
+    at: usize,
+    /// The error of Python that stopped the reading, for the iterator to raise
+    error: Arc<Mutex<Option<PyErr>>>,
+}
+
+impl std::io::Read for FileReader {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        if self.at == self.pending.len() {
+            let read = Python::attach(|py| -> PyResult<Vec<u8>> {
+                let chunk = self.file.bind(py).call_method1("read", (1 << 16,))?;
+                if let Ok(bytes) = chunk.cast::<PyBytes>() {
+                    return Ok(bytes.as_bytes().to_vec());
+                }
+                match chunk.cast::<PyString>() {
+                    Ok(text) => Ok(text.to_str()?.as_bytes().to_vec()),
+                    Err(_) => Err(PyTypeError::new_err(format!(
+                        "read of the file gave {}, not str or bytes",
+                        chunk.get_type().name()?
+                    ))),
+                }
+            });
+            match read {
+                Ok(bytes) => (self.pending, self.at) = (bytes, 0),
+                Err(error) => {
+                    *self.error.lock().unwrap_or_else(PoisonError::into_inner) = Some(error);
+                    return Err(std::io::Error::other("the file failed"));
+                }
+            }
+        }
+        let count = buffer.len().min(self.pending.len() - self.at);
+        buffer[..count].copy_from_slice(&self.pending[self.at..self.at + count]);
+        self.at += count;
+        Ok(count)
+    }
+}
+
+/// Iterator over the documents of the pieces of a file, made by `Segmenter.stream`
+///
+/// Description:
+///     start and continued tell about the last document given: where its text starts in the text
+///     of the file, in characters, and whether its first paragraph goes on with the last one of the
+///     document before it, a paragraph without blank lines longer than 256 KiB
+#[pyclass(frozen, module = "anyseg")]
+struct Stream {
+    file: Py<PyAny>,
+    error: Arc<Mutex<Option<PyErr>>>,
+    state: Mutex<Streaming>,
+}
+
+struct Streaming {
+    /// `None` once the file ends or fails
+    pieces: Option<anyseg::Stream<anyseg::Segmenter, FileReader>>,
+    start: usize,
+    continued: bool,
+}
+
+#[pymethods]
+impl Stream {
+    fn __iter__(slf: Bound<'_, Self>) -> Bound<'_, Self> {
+        slf
+    }
+
+    fn __next__<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, Document>>> {
+        // As a generator: a call while another runs, in this thread or another, is an error, not a wait
+        let Some(mut state) = self.state() else {
+            return Err(PyValueError::new_err("the stream is already running"));
+        };
+        let Some(pieces) = state.pieces.as_mut() else {
+            return Ok(None);
+        };
+        let next = py.detach(|| {
+            pieces.next().map(|piece| {
+                piece.map(|piece| {
+                    (
+                        piece.char_start,
+                        piece.continued,
+                        Parts::new(piece.document),
+                    )
+                })
+            })
+        });
+        match next {
+            None => {
+                state.pieces = None;
+                Ok(None)
+            }
+            Some(Ok((start, continued, parts))) => {
+                (state.start, state.continued) = (start, continued);
+                drop(state);
+                let text = PyString::new(py, parts.inner.text());
+                untracked(py, Document::new(parts, &text)?).map(Some)
+            }
+            Some(Err(error)) => {
+                state.pieces = None;
+                let raised = self
+                    .error
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .take();
+                Err(raised.unwrap_or_else(|| match error.kind() {
+                    std::io::ErrorKind::InvalidData => PyValueError::new_err(error.to_string()),
+                    _ => error.into(),
+                }))
+            }
+        }
+    }
+
+    /// Position of the first character of the last document in the text of the file
+    #[getter]
+    fn start(&self) -> usize {
+        self.state().map_or(0, |state| state.start)
+    }
+
+    /// The first paragraph of the last document goes on with the last one of the document before it
+    #[getter]
+    fn continued(&self) -> bool {
+        self.state().is_some_and(|state| state.continued)
+    }
+
+    fn __reduce__(slf: &Bound<'_, Self>) -> PyResult<()> {
+        Err(not_picklable(slf.as_any())?)
+    }
+
+    // The file is any object, which may hold the stream itself; the reader holds it too until the stream ends
+    fn __traverse__(&self, visit: PyVisit<'_>) -> Result<(), PyTraverseError> {
+        visit.call(&self.file)?;
+        if self.state().is_some_and(|state| state.pieces.is_some()) {
+            visit.call(&self.file)?;
+        }
+        Ok(())
+    }
+
+    fn __clear__(&self) {
+        if let Some(mut state) = self.state() {
+            state.pieces = None;
+        }
+    }
+}
+
+impl Stream {
+    /// The state, unless a call holds it
+    fn state(&self) -> Option<MutexGuard<'_, Streaming>> {
+        match self.state.try_lock() {
+            Ok(state) => Some(state),
+            Err(TryLockError::Poisoned(error)) => Some(error.into_inner()),
+            Err(TryLockError::WouldBlock) => None,
+        }
     }
 }
 
@@ -2270,6 +2486,7 @@ fn _anyseg(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Sentences>()?;
     m.add_class::<Paragraphs>()?;
     m.add_class::<Lines>()?;
+    m.add_class::<Stream>()?;
     m.add_function(wrap_pyfunction!(read_conllu, m)?)?;
     m.add_function(wrap_pyfunction!(_restore_document, m)?)?;
     m.add_function(wrap_pyfunction!(_main, m)?)?;

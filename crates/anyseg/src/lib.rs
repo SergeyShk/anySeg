@@ -23,6 +23,7 @@
 
 use std::error::Error;
 use std::fmt;
+use std::io::Read;
 
 #[cfg(feature = "cli")]
 pub mod cli;
@@ -32,6 +33,7 @@ mod lang;
 mod layout;
 mod sentences;
 mod state;
+mod stream;
 mod tokens;
 mod words;
 
@@ -42,6 +44,7 @@ pub use conllu::{ConlluError, ConlluWriter, read_conllu};
 #[doc(hidden)]
 pub use document::CheckedColumn;
 pub use document::{Column, Document, DocumentError, Line, LineBreak, Paragraph, Sentence};
+pub use stream::{Piece, Stream};
 
 /// A piece of a text: `&text[start..end]`, in bytes
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -293,6 +296,35 @@ impl Segmenter {
         self.segment_string(text.to_owned())
     }
 
+    /// The documents of a text read from a reader in UTF-8, in pieces, without reading it whole: complete
+    /// paragraphs in pieces of about 64 KiB, and a paragraph without blank lines longer than 256 KiB in pieces of
+    /// whole sentences. The pieces have the sentences and words of the whole text, except where a paragraph that long
+    /// is cut, which sees only its piece there; so that the memory does not grow with the text, a sentence or a word
+    /// longer than 256 KiB is cut, and a run of separators that long inside a line is shortened. A piece knows its offset in the input and whether it goes on with the
+    /// paragraph of the piece before it. [`Stream::new`] makes a stream that owns its segmenter.
+    ///
+    /// # Errors
+    ///
+    /// The stream gives an error of the reader, or [`std::io::ErrorKind::InvalidData`] at a line that is not UTF-8, and
+    /// ends.
+    ///
+    /// ```
+    /// # #[cfg(feature = "ru")] {
+    /// use anyseg::Segmenter;
+    ///
+    /// let segmenter = Segmenter::new("ru").unwrap();
+    /// let text = "Кот спит.\n\nЁж идёт. Утро.\n".repeat(1000);
+    /// let mut sentences = 0;
+    /// for piece in segmenter.stream(text.as_bytes()) {
+    ///     sentences += piece.unwrap().document.sentence_count();
+    /// }
+    /// assert_eq!(sentences, 3000);
+    /// # }
+    /// ```
+    pub fn stream<R: Read>(&self, reader: R) -> Stream<&Segmenter, R> {
+        Stream::new(self, reader)
+    }
+
     /// The document of a text as [`segment`](Self::segment) gives it, without a copy of the text
     pub fn segment_string(&self, text: String) -> Document {
         let split = self.split(&text, true);
@@ -325,6 +357,12 @@ impl Segmenter {
 
     fn split(&self, text: &str, lines: bool) -> Split {
         split_text(text, lang::tables(self.language), &self.exceptions, lines)
+    }
+}
+
+impl AsRef<Segmenter> for Segmenter {
+    fn as_ref(&self) -> &Segmenter {
+        self
     }
 }
 

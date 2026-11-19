@@ -7,7 +7,8 @@ use std::fs::File;
 use std::io::{self, BufRead, BufReader, BufWriter, IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
 
-use crate::layout::{self, is_separator, one_line};
+use crate::layout::one_line;
+use crate::stream::{self, Cutter};
 use crate::{ConlluWriter, Document, Language, Segmenter};
 
 const HELP: &str = "\
@@ -68,20 +69,6 @@ fn closed_stdout() -> bool {
 fn closed_stdout() -> bool {
     false
 }
-
-/// The buffer of the input: the output is flushed when it is empty and the next read may wait for input
-#[cfg(not(test))]
-const INPUT_BUFFER: usize = 1 << 16;
-#[cfg(test)]
-const INPUT_BUFFER: usize = 1 << 9;
-
-/// The longest text without blank lines that is segmented at once: a longer one is written without its last
-/// sentence, and a longer line is cut at a space, so that the memory does not grow with the input. The allocator of
-/// macOS does not give back blocks of more than 4 MiB, which the tokens of larger pieces reach, at two bytes a token
-#[cfg(not(test))]
-const PARAGRAPH: usize = 1 << 18;
-#[cfg(test)]
-const PARAGRAPH: usize = 1 << 12;
 
 /// Output format
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -297,10 +284,7 @@ fn execute(
         pending: false,
         conllu: ConlluWriter::new(),
         paragraphs: 0,
-        text: String::new(),
-        ready: 0,
-        continued: false,
-        carry: Vec::new(),
+        cutter: Cutter::default(),
         out: String::new(),
     };
     let mut code = 0;
@@ -496,6 +480,13 @@ enum Failure {
     Write(io::Error),
 }
 
+/// An error of reading the input
+impl From<io::Error> for Failure {
+    fn from(err: io::Error) -> Self {
+        Failure::Read(err)
+    }
+}
+
 struct Writer<'a> {
     segmenter: &'a Segmenter,
     format: Format,
@@ -507,14 +498,8 @@ struct Writer<'a> {
     conllu: ConlluWriter,
     /// The number of paragraphs written: a blank line goes before the next one in the format `sentences`
     paragraphs: usize,
-    /// The text read and not yet written, and its length up to the last blank line: the paragraphs before it are
-    /// complete
-    text: String,
-    ready: usize,
-    /// The text goes on with a paragraph cut by its length: its first paragraph is not a new one
-    continued: bool,
-    /// The end of a line longer than PARAGRAPH, which the next read gives
-    carry: Vec<u8>,
+    /// The pieces of the input, segmented as in the whole text
+    cutter: Cutter,
     /// The output of a sentence, kept between the pieces: a block of its own for each would not be given back
     out: String,
 }
@@ -523,7 +508,7 @@ impl Writer<'_> {
     /// Reads the input by lines and writes every paragraph as soon as a blank line or the end of the input
     /// closes it; returns the number of the first line that is not UTF-8, whose wrong bytes become U+FFFD
     fn process(&mut self, reader: &mut dyn Read) -> Result<Option<usize>, Failure> {
-        let mut reader = BufReader::with_capacity(INPUT_BUFFER, reader);
+        let mut reader = BufReader::with_capacity(stream::BUFFER, reader);
         self.flush_pending().map_err(Failure::Write)?;
         // The encoding shows at the start of the input: ASCII at the start of a file in another encoding is not
         // written
@@ -542,22 +527,35 @@ impl Writer<'_> {
             return Ok(None);
         }
         self.conllu.start_document();
-        self.text.clear();
-        self.carry.clear();
-        (self.ready, self.continued) = (0, false);
+        self.cutter = Cutter::default();
+        let (segmenter, format) = (self.segmenter, self.format);
+        let segment = move |text: String| {
+            if format == Format::Conllu {
+                segmenter.segment_string(text)
+            } else {
+                segmenter.segment_tokens(text)
+            }
+        };
         let mut bytes = Vec::new();
+        let mut carry = Vec::new();
         let mut end = false;
         let mut number = 0;
         let mut invalid = None;
-        // A line longer than PARAGRAPH is read in pieces: the piece starts a line, and the line so far is blank
+        // A line longer than PARAGRAPH is read in pieces: the piece starts a line
         let mut starts = true;
-        let mut line_blank = false;
         // A line of UTF-8 with non-ASCII bytes was read: before it, wrong bytes and NUL mean another encoding of
         // the file (cp1251, UTF-16 without BOM), after it a damaged line
         let mut utf8 = false;
         loop {
             bytes.clear();
-            let Some(ended) = self.read_line(&mut reader, &mut bytes, &mut end)? else {
+            // The next read may wait for input: the complete paragraphs go out first, so that the command can be
+            // kept open and fed text
+            let read = stream::read_line(&mut reader, &mut bytes, &mut carry, &mut end, || {
+                self.cutter.cut_ready(&segment);
+                self.write_pieces().map_err(Failure::Write)?;
+                self.flush_pending().map_err(Failure::Write)
+            })?;
+            let Some(ended) = read else {
                 break;
             };
             let first = starts;
@@ -578,163 +576,32 @@ impl Writer<'_> {
             if number == 1 && first {
                 line = line.strip_prefix('\u{feff}').unwrap_or(line);
             }
-            line_blank = (first || line_blank) && blank(line);
-            if !line_blank {
-                self.text.push_str(line);
-                if self.text.len() >= PARAGRAPH || !ended {
-                    self.write_long().map_err(Failure::Write)?;
-                }
-            } else if ended || closes_paragraph(&format!("\n{line}")) {
-                // A blank line ends the paragraphs before it, which are segmented as in the whole text: in pieces of
-                // about INPUT_BUFFER, or as soon as the next read may wait. It also ends a paragraph written whole, and
-                // so does a piece of a long line of separators that holds the end of a paragraph
-                if blank(&self.text) {
-                    self.continued = false;
-                }
-                if !self.text.is_empty() {
-                    self.text.push_str(line);
-                    self.ready = self.text.len();
-                }
-                if self.ready >= INPUT_BUFFER {
-                    self.write_ready().map_err(Failure::Write)?;
-                }
-            }
+            self.cutter.line(&segment, line, first, ended);
+            self.write_pieces().map_err(Failure::Write)?;
         }
-        self.ready = self.text.len();
-        self.write_ready().map_err(Failure::Write)?;
+        self.cutter.finish(&segment);
+        self.write_pieces().map_err(Failure::Write)?;
         Ok(invalid)
     }
 
-    /// A line of the input with its line break (LF, CR or CRLF), or a piece of a line longer than PARAGRAPH, which
-    /// ends after a space or else at a character; `true` - the line ended, `None` - the input did. Before a read
-    /// that may wait for input (an empty buffer), the output is flushed, so that the command can be kept open and
-    /// fed text. After the end of the input (`end`) nothing is read: in a terminal a line without a line break ends
-    /// with one Ctrl+D
-    fn read_line(
-        &mut self,
-        reader: &mut BufReader<&mut dyn Read>,
-        bytes: &mut Vec<u8>,
-        end: &mut bool,
-    ) -> Result<Option<bool>, Failure> {
-        bytes.append(&mut self.carry);
-        // A CR ended the buffer: the line feed of CRLF may begin the next one
-        let mut after_cr = false;
-        while !*end {
-            if bytes.len() >= PARAGRAPH && !after_cr {
-                let cut = bytes
-                    .iter()
-                    .rposition(|&byte| byte == b' ' || byte == b'\t')
-                    .map(|at| at + 1)
-                    .or_else(|| (1..bytes.len()).rev().find(|&at| bytes[at] & 0xC0 != 0x80))
-                    .unwrap_or(bytes.len());
-                self.carry = bytes.split_off(cut);
-                return Ok(Some(false));
-            }
-            // The next read may wait for input: the complete paragraphs go out first
-            if reader.buffer().is_empty() {
-                self.write_ready().map_err(Failure::Write)?;
-                self.flush_pending().map_err(Failure::Write)?;
-            }
-            let available = match reader.fill_buf() {
-                Ok(available) => available,
-                Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
-                Err(err) => return Err(Failure::Read(err)),
-            };
-            if available.is_empty() {
-                *end = true;
-                break;
-            }
-            if after_cr {
-                if available[0] == b'\n' {
-                    bytes.push(b'\n');
-                    reader.consume(1);
-                }
-                break;
-            }
-            let (length, done) = match available
-                .iter()
-                .position(|&byte| byte == b'\n' || byte == b'\r')
-            {
-                Some(at) if available[at] == b'\r' => match available.get(at + 1) {
-                    Some(b'\n') => (at + 2, true),
-                    Some(_) => (at + 1, true),
-                    None => {
-                        after_cr = true;
-                        (at + 1, false)
-                    }
-                },
-                Some(at) => (at + 1, true),
-                None => (available.len(), false),
-            };
-            bytes.extend_from_slice(&available[..length]);
-            reader.consume(length);
-            if done {
-                break;
-            }
+    /// The pieces cut so far
+    fn write_pieces(&mut self) -> io::Result<()> {
+        while let Some(cut) = self.cutter.pieces.pop_front() {
+            self.write_sentences(&cut.document, cut.sentences, cut.continued)?;
         }
-        Ok((!bytes.is_empty()).then_some(true))
-    }
-
-    fn segment(&self, text: String) -> Document {
-        if self.format == Format::Conllu {
-            self.segmenter.segment_string(text)
-        } else {
-            self.segmenter.segment_tokens(text)
-        }
-    }
-
-    /// The text up to its last blank line, whose paragraphs are complete
-    fn write_ready(&mut self) -> io::Result<()> {
-        if self.ready == 0 {
-            return Ok(());
-        }
-        let rest = self.text.split_off(self.ready);
-        let ready = std::mem::replace(&mut self.text, rest);
-        self.ready = 0;
-        let doc = self.segment(ready);
-        self.write_sentences(&doc, doc.sentence_count())?;
-        self.continued = false;
         Ok(())
     }
 
-    /// A text without a blank line that reached PARAGRAPH, without its last sentence, which the next line may go on
-    /// with: it stays at the start of the text, and the next piece continues its paragraph. One sentence longer than
-    /// PARAGRAPH is written whole, and the separators after it stay: with the next line they may end the paragraph
-    fn write_long(&mut self) -> io::Result<()> {
-        let text = std::mem::take(&mut self.text);
-        let doc = self.segment(text);
-        let count = doc.sentence_count();
-        let (written, keep) = match count {
-            0 => (0, doc.text().len()),
-            1 => (1, doc.sentence(0).span.end),
-            _ => (count - 1, doc.sentence(count - 1).span.start),
-        };
-        self.write_sentences(&doc, written)?;
-        // The last sentence may itself start a paragraph (after U+2029), and the separators dropped may end one
-        self.continued = match count {
-            0 => self.continued && !closes_paragraph(doc.text()),
-            1 => true,
-            _ => doc.paragraph(doc.paragraph_count() - 1).sentences.start < count - 1,
-        };
-        self.text = doc.text()[keep..].to_owned();
-        self.ready = 0;
-        Ok(())
-    }
-
-    /// The first `count` sentences of a document in the format of the output, written sentence by sentence
-    fn write_sentences(&mut self, doc: &Document, count: usize) -> io::Result<()> {
+    /// The first `count` sentences of a document in the format of the output, written sentence by sentence;
+    /// `continued` - its first paragraph goes on with the last one written
+    fn write_sentences(&mut self, doc: &Document, count: usize, continued: bool) -> io::Result<()> {
         self.out.clear();
-        // What the last piece kept and what was read since may end the paragraph before the first token
-        let lead = doc
-            .tokens()
-            .first()
-            .map_or("", |token| &doc.text()[..token.start]);
         for paragraph in 0..doc.paragraph_count() {
             let sentences = doc.paragraph(paragraph).sentences;
             if sentences.start >= count {
                 break;
             }
-            if std::mem::take(&mut self.continued) && !closes_paragraph(lead) {
+            if paragraph == 0 && continued {
                 self.conllu.continue_paragraph();
             } else {
                 if self.format == Format::Sentences && self.paragraphs > 0 {
@@ -777,16 +644,6 @@ impl Writer<'_> {
         }
         Ok(())
     }
-}
-
-/// A text of nothing but separators
-fn blank(text: &str) -> bool {
-    text.chars().all(is_separator)
-}
-
-/// The separators after a sentence hold the end of its paragraph: U+2029 or a blank line
-fn closes_paragraph(separators: &str) -> bool {
-    layout::paragraphs(&format!("x{separators}x")).len() > 1
 }
 
 /// The line at which the start of the input shows another encoding than UTF-8: a byte order mark of UTF-16, NUL
@@ -832,6 +689,7 @@ fn lines(bytes: &[u8]) -> impl Iterator<Item = &[u8]> {
 #[cfg(all(test, feature = "ru"))]
 mod tests {
     use super::*;
+    use crate::stream::PARAGRAPH;
 
     /// The exit code, the output and the messages of the command on an input
     fn command(args: &[&str], input: &[u8]) -> (u8, String, String) {
@@ -911,7 +769,7 @@ mod tests {
         let text = (0..20_000)
             .map(|number| format!("Абзац {number}. Ещё\n\n"))
             .collect::<String>();
-        assert!(text.len() > 4 * INPUT_BUFFER);
+        assert!(text.len() > 4 * stream::BUFFER);
         let (_, out, _) = command(&["-l", "ru", "-f", "conllu"], text.as_bytes());
         assert_eq!(
             out,

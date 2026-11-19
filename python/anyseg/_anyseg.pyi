@@ -1,5 +1,5 @@
 from collections.abc import Iterable, Iterator, Mapping, Sequence
-from typing import Literal, Self, final, overload
+from typing import Literal, Protocol, Self, final, overload
 
 __all__ = [
     "Document",
@@ -11,6 +11,7 @@ __all__ = [
     "Sentence",
     "Sentences",
     "Span",
+    "Stream",
     "Token",
     "Tokens",
     "Word",
@@ -21,6 +22,9 @@ __all__ = [
     "read_conllu",
 ]
 __version__: str
+
+class _Readable(Protocol):
+    def read(self, size: int, /) -> str | bytes: ...
 
 @final
 class Span:
@@ -55,8 +59,18 @@ class Segmenter:
     def pipe(
         self, texts: Iterable[str], *, threads: int = 1, batch_size: int = 1000
     ) -> Iterator[Document]: ...
+    def stream(self, file: _Readable) -> Stream: ...
     def __eq__(self, other: object, /) -> bool: ...
     def __hash__(self) -> int: ...
+
+@final
+class Stream(Iterator[Document]):
+    @property
+    def start(self) -> int: ...
+    @property
+    def continued(self) -> bool: ...
+    def __iter__(self) -> Self: ...
+    def __next__(self) -> Document: ...
 
 @final
 class Document:
