@@ -645,6 +645,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#slice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part of a document
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#to_conllu" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -759,33 +770,6 @@
     
   
     Spanish
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../spacy/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    spaCy
   
 
     
@@ -953,6 +937,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#slice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part of a document
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#to_conllu" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1016,7 +1011,7 @@
 <li>The text is never changed: tokens, sentences, paragraphs and lines are its spans, with positions in the characters of the Python string.</li>
 <li>A token holds one word or, for a multiword token, several (<a href="../spanish/#multiword">Spanish</a> «del» is «de» + «el»). The segmenter gives them where the language joins words in one token.</li>
 <li>Sentences hold whole tokens, paragraphs - the parts of the text between blank lines - hold whole sentences, and lines are those of the paragraphs.</li>
-<li>Words have the columns of CoNLL-U, empty until set; <a href="#set_columns"><code>set_columns</code></a> is the only change of a document, so a document can be shared between threads. Other words or sentences make a new document: <a href="#with_words"><code>with_words</code></a>, <a href="#with_sentences"><code>with_sentences</code></a>. A document can be pickled with its columns, to go to another process; its parts cannot.</li>
+<li>Words have the columns of CoNLL-U, empty until set; <a href="#set_columns"><code>set_columns</code></a> is the only change of a document, so a document can be shared between threads. Other words or sentences make a new document: <a href="#with_words"><code>with_words</code></a>, <a href="#with_sentences"><code>with_sentences</code></a>, and so does a part of the text: <a href="#slice"><code>slice</code></a>. A document can be pickled with its columns, to go to another process; its tokens, words and other <a href="#parts-of-a-document">parts</a> cannot.</li>
 </ul>
 <div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">Code</label><label for="__tabbed_1_2">Result</label></div>
 <div class="tabbed-content">
@@ -1459,6 +1454,58 @@
 </div>
 </div>
 <div class="metric-card">
+<h3 id="slice">Part of a document<a class="headerlink" href="#slice" title="Permanent link">&para;</a></h3>
+<p class="metric-meta"><code>slice</code> · <code>Document</code></p>
+<div class="signature highlight"><pre><span></span><code><span class="nb">slice</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">)</span>
+</code></pre></div>
+<p>A new document of the part of the text between two positions: the tokens, the words with their columns, the sentences, the paragraphs and the lines inside it, with positions counted from its start. The start and the end of a sentence or a paragraph give it as a document. A sentence, a paragraph or a line that the part cuts is cut too: the IDs of the words of a sentence and their heads count from its first word in the part, and a head out of the part is an error. A part of whole sentences of a document read from CoNLL-U keeps their comments and empty nodes; a part that cuts a sentence is written as a segmented document and cannot hold enhanced dependencies or empty nodes, since these refer to the IDs of words. Words keep <code>misc</code> as read, so the indent of a paragraph in <code>SpacesBefore</code> comes back when the CoNLL-U of a part without it is read.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Parameter</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Default</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>start</code></td>
+<td style="text-align: left;"><code>int</code></td>
+<td style="text-align: left;">-</td>
+<td style="text-align: left;">Position of the first character of the part</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>end</code></td>
+<td style="text-align: left;"><code>int</code></td>
+<td style="text-align: left;">-</td>
+<td style="text-align: left;">Position after its last character</td>
+</tr>
+</tbody>
+</table>
+<p>Exceptions:</p>
+<ul>
+<li><code>ValueError</code> - the part is not within the text with its start not after its end, cuts a token, cuts a sentence and holds enhanced dependencies or empty nodes, or cuts a sentence in which the head of a word is out of the part;</li>
+<li><code>TypeError</code> - <code>start</code> or <code>end</code> is not an integer.</li>
+</ul>
+<div class="tabbed-set tabbed-alternate" data-tabs="7:2"><input checked="checked" id="__tabbed_7_1" name="__tabbed_7" type="radio" /><input id="__tabbed_7_2" name="__tabbed_7" type="radio" /><div class="tabbed-labels"><label for="__tabbed_7_1">Code</label><label for="__tabbed_7_2">Result</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><span class="n">story</span> <span class="o">=</span> <span class="n">Segmenter</span><span class="p">(</span><span class="s2">"ru"</span><span class="p">)</span><span class="o">.</span><span class="n">segment</span><span class="p">(</span><span class="s2">"Ёж идёт домой. Кот спит."</span><span class="p">)</span>
+<span class="n">story</span><span class="o">.</span><span class="n">set_columns</span><span class="p">(</span><span class="n">upos</span><span class="o">=</span><span class="p">[</span><span class="s2">"NOUN"</span><span class="p">,</span> <span class="s2">"VERB"</span><span class="p">,</span> <span class="s2">"ADV"</span><span class="p">,</span> <span class="s2">"PUNCT"</span><span class="p">,</span> <span class="s2">"NOUN"</span><span class="p">,</span> <span class="s2">"VERB"</span><span class="p">,</span> <span class="s2">"PUNCT"</span><span class="p">])</span>
+<span class="n">sentence</span> <span class="o">=</span> <span class="n">story</span><span class="o">.</span><span class="n">sentences</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+<span class="n">part</span> <span class="o">=</span> <span class="n">story</span><span class="o">.</span><span class="n">slice</span><span class="p">(</span><span class="n">sentence</span><span class="o">.</span><span class="n">start</span><span class="p">,</span> <span class="n">sentence</span><span class="o">.</span><span class="n">end</span><span class="p">)</span>
+<span class="n">part</span><span class="o">.</span><span class="n">text</span><span class="p">,</span> <span class="n">part</span><span class="o">.</span><span class="n">tokens</span><span class="o">.</span><span class="n">starts</span><span class="p">,</span> <span class="n">part</span><span class="o">.</span><span class="n">column</span><span class="p">(</span><span class="s2">"upos"</span><span class="p">)</span>
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code>('Кот спит.', [0, 4, 8], ['NOUN', 'VERB', 'PUNCT'])
+</code></pre></div>
+</div>
+</div>
+</div>
+</div>
+<div class="metric-card">
 <h3 id="to_conllu">Document in CoNLL-U<a class="headerlink" href="#to_conllu" title="Permanent link">&para;</a></h3>
 <p class="metric-meta"><code>to_conllu</code> · <code>str</code></p>
 <div class="signature highlight"><pre><span></span><code><span class="n">to_conllu</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">doc_id</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
@@ -1486,7 +1533,7 @@
 <ul>
 <li><code>ValueError</code> - the ID is empty or holds whitespace.</li>
 </ul>
-<div class="tabbed-set tabbed-alternate" data-tabs="7:2"><input checked="checked" id="__tabbed_7_1" name="__tabbed_7" type="radio" /><input id="__tabbed_7_2" name="__tabbed_7" type="radio" /><div class="tabbed-labels"><label for="__tabbed_7_1">Code</label><label for="__tabbed_7_2">Result</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="8:2"><input checked="checked" id="__tabbed_8_1" name="__tabbed_8" type="radio" /><input id="__tabbed_8_2" name="__tabbed_8" type="radio" /><div class="tabbed-labels"><label for="__tabbed_8_1">Code</label><label for="__tabbed_8_2">Result</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code><span class="nb">print</span><span class="p">(</span><span class="n">doc</span><span class="o">.</span><span class="n">to_conllu</span><span class="p">(),</span> <span class="n">end</span><span class="o">=</span><span class="s2">""</span><span class="p">)</span>
@@ -1583,7 +1630,7 @@
 <li><code>ValueError</code> - the lists differ in length, a token is empty, out of the text, overlaps the token before it, starts or ends with whitespace or runs over a paragraph boundary, the text between the tokens holds anything but whitespace and the invisible separators, the sentence starts are not increasing token indices, <code>words</code> names a token that is not in the document or has fewer than two forms, or a form is empty or holds a tab or a line break;</li>
 <li><code>TypeError</code> - a list holds something other than integers, or <code>words</code> is not a mapping of integers to sequences of strings.</li>
 </ul>
-<div class="tabbed-set tabbed-alternate" data-tabs="8:2"><input checked="checked" id="__tabbed_8_1" name="__tabbed_8" type="radio" /><input id="__tabbed_8_2" name="__tabbed_8" type="radio" /><div class="tabbed-labels"><label for="__tabbed_8_1">Code</label><label for="__tabbed_8_2">Result</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="9:2"><input checked="checked" id="__tabbed_9_1" name="__tabbed_9" type="radio" /><input id="__tabbed_9_2" name="__tabbed_9" type="radio" /><div class="tabbed-labels"><label for="__tabbed_9_1">Code</label><label for="__tabbed_9_2">Result</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">anyseg</span><span class="w"> </span><span class="kn">import</span> <span class="n">Document</span>
@@ -1607,7 +1654,7 @@
 <ul>
 <li><code>ValueError</code> - the text does not end with a blank line, a line is neither a comment, a blank line nor a token line of 10 columns with plain numbers for IDs, in order, and for a head, a comment follows token lines, a sentence has no words or a multiword token misses some, or the forms do not match the text of their sentence or the text holds characters that no token has.</li>
 </ul>
-<div class="tabbed-set tabbed-alternate" data-tabs="9:2"><input checked="checked" id="__tabbed_9_1" name="__tabbed_9" type="radio" /><input id="__tabbed_9_2" name="__tabbed_9" type="radio" /><div class="tabbed-labels"><label for="__tabbed_9_1">Code</label><label for="__tabbed_9_2">Result</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="10:2"><input checked="checked" id="__tabbed_10_1" name="__tabbed_10" type="radio" /><input id="__tabbed_10_2" name="__tabbed_10" type="radio" /><div class="tabbed-labels"><label for="__tabbed_10_1">Code</label><label for="__tabbed_10_2">Result</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">anyseg</span><span class="w"> </span><span class="kn">import</span> <span class="n">read_conllu</span>
