@@ -90,7 +90,7 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --no-default-groups --group test
       - name: Run tests
-        run: uv run --no-sync pytest --cov anyseg ${{ endsWith(matrix.python-version, 't') && '--cov-fail-under=0' || '' }}
+        run: uv run --no-sync pytest --cov anyseg
       - name: Run Rust tests
         shell: bash
         run: |

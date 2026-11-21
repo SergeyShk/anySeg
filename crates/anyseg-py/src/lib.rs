@@ -1703,8 +1703,10 @@ impl Document {
     ///     sentence, a paragraph or a line that the part cuts is cut too: the IDs of the words of a
     ///     sentence and their heads count from its first word in the part. A part of whole
     ///     sentences of a document read from CoNLL-U keeps their comments and empty nodes; a part
-    ///     that cuts a sentence is written as a segmented document. The start and the end of a
-    ///     sentence or a paragraph give it as a document. The document itself does not change
+    ///     that cuts a sentence is written as a segmented document. Words keep misc as read, so the
+    ///     indent of a paragraph in SpacesBefore comes back when the CoNLL-U of a part without it is
+    ///     read. The start and the end of a sentence or a paragraph give it as a document. The
+    ///     document itself does not change
     ///
     /// Arguments:
     ///     start (int): Position of the first character of the part
