@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "anyseg"
-version = "0.5.0.dev1"
+version = "0.5.0.dev2"
 description = "Fast segmentation of text into tokens and sentences, written in Rust with a Python API"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -19,7 +19,6 @@ keywords = [
     "sentence boundary detection",
     "segmentation",
     "universal dependencies",
-    "spacy",
     "NLP",
     "russian",
     "spanish",
@@ -45,17 +44,8 @@ classifiers = [
 ]
 dependencies = []
 
-[project.optional-dependencies]
-spacy = ["spacy>=3.8,<4"]
-
 [project.scripts]
 anyseg = "anyseg.__main__:main"
-
-[project.entry-points.spacy_tokenizers]
-"anyseg.Tokenizer.v1" = "anyseg.spacy:create_tokenizer"
-
-[project.entry-points.spacy_factories]
-anyseg_sentencizer = "anyseg.spacy:create_sentencizer"
 
 [project.urls]
 Homepage = "https://github.com/SergeyShk/anySeg"
@@ -80,13 +70,10 @@ cache-keys = [
 
 [dependency-groups]
 test = ["pytest>=8.3", "pytest-cov>=6.0"]
-# No wheels for the free-threaded builds: CI installs the group on the other versions
-spacy = ["spacy>=3.8,<4"]
 lint = ["mypy>=1.14", "pre-commit>=4.0", "ruff>=0.9"]
 docs = ["mkdocs>=1.6", "mkdocs-material>=9.5", "pymdown-extensions>=10.0"]
 dev = [
     { include-group = "test" },
-    { include-group = "spacy" },
     { include-group = "lint" },
     { include-group = "docs" },
 ]

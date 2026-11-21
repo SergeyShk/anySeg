@@ -55,14 +55,6 @@ A text becomes tokens - spans of it with their positions - and the tokens hold w
 
     [:octicons-arrow-right-24: Spanish](spanish.md)
 
--   :material-pipe:{ .lg .middle } __spaCy__
-
-    ---
-
-    The tokenizer and the sentence starts of a spaCy pipeline, the conversion of documents
-
-    [:octicons-arrow-right-24: spaCy](spacy.md)
-
 -   :material-speedometer:{ .lg .middle } __Comparison__
 
     ---

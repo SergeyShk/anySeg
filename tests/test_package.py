@@ -40,28 +40,6 @@ def test_extension():
     assert Path(extension.__file__).parent == Path(anyseg.__file__).parent
 
 
-def test_spacy_bridge_without_spacy(monkeypatch):
-    monkeypatch.setitem(sys.modules, "spacy", None)
-    monkeypatch.delitem(sys.modules, "anyseg.spacy", raising=False)
-    with pytest.raises(ImportError, match='pip install "anyseg\\[spacy\\]"'):
-        importlib.import_module("anyseg.spacy")
-
-
-def test_broken_spacy(monkeypatch):
-    # An error inside spaCy is its own, not a missing extra
-    class Broken:
-        @staticmethod
-        def find_spec(name, path=None, target=None):
-            if name == "spacy":
-                raise ModuleNotFoundError("No module named 'numpy'", name="numpy")
-
-    monkeypatch.delitem(sys.modules, "spacy", raising=False)
-    monkeypatch.delitem(sys.modules, "anyseg.spacy", raising=False)
-    monkeypatch.setattr(sys, "meta_path", [Broken(), *sys.meta_path])
-    with pytest.raises(ModuleNotFoundError, match="numpy"):
-        importlib.import_module("anyseg.spacy")
-
-
 @pytest.mark.skipif(shutil.which("cargo") is None, reason="the crates are read with cargo")
 def test_third_party_notices(tmp_path):
     # The notices follow Cargo.lock: after a change of it, run python scripts/notices.py
@@ -103,7 +81,6 @@ def test_wheel_contents(tmp_path):
         "anyseg/__init__.py",
         "anyseg/_anyseg.pyi",
         "anyseg/py.typed",
-        "anyseg/spacy.py",
     } <= names
     licenses = {name.rsplit("/", 1)[-1] for name in names if "/licenses/" in name}
     assert licenses == {"LICENSE.txt", "THIRD-PARTY-NOTICES.txt"}
