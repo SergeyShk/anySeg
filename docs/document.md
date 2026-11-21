@@ -5,7 +5,7 @@ A segmented text: its tokens, its words with the columns of [CoNLL-U](https://un
 *   The text is never changed: tokens, sentences, paragraphs and lines are its spans, with positions in the characters of the Python string.
 *   A token holds one word or, for a multiword token, several ([Spanish](spanish.md#multiword) «del» is «de» + «el»). The segmenter gives them where the language joins words in one token.
 *   Sentences hold whole tokens, paragraphs - the parts of the text between blank lines - hold whole sentences, and lines are those of the paragraphs.
-*   Words have the columns of CoNLL-U, empty until set; [`set_columns`](#set_columns) is the only change of a document, so a document can be shared between threads. Other words or sentences make a new document: [`with_words`](#with_words), [`with_sentences`](#with_sentences). A document can be pickled with its columns, to go to another process; its parts cannot.
+*   Words have the columns of CoNLL-U, empty until set; [`set_columns`](#set_columns) is the only change of a document, so a document can be shared between threads. Other words or sentences make a new document: [`with_words`](#with_words), [`with_sentences`](#with_sentences), and so does a part of the text: [`slice`](#slice). A document can be pickled with its columns, to go to another process; its tokens, words and other [parts](#parts-of-a-document) cannot.
 
 === "Code"
 
@@ -267,6 +267,47 @@ Exceptions:
 
     ```
     ['Ёж', 'идёт. Кот спит.', 'Утро.']
+    ```
+
+</div>
+
+<div class="metric-card" markdown>
+
+### Part of a document { #slice }
+
+`slice` · `Document`
+{ .metric-meta }
+
+``` {.python .signature}
+slice(start, end)
+```
+
+A new document of the part of the text between two positions: the tokens, the words with their columns, the sentences, the paragraphs and the lines inside it, with positions counted from its start. The start and the end of a sentence or a paragraph give it as a document. A sentence, a paragraph or a line that the part cuts is cut too: the IDs of the words of a sentence and their heads count from its first word in the part, and a head out of the part is an error. A part of whole sentences of a document read from CoNLL-U keeps their comments and empty nodes; a part that cuts a sentence is written as a segmented document and cannot hold enhanced dependencies or empty nodes, since these refer to the IDs of words.
+
+| Parameter | Type | Default | Description |
+| :-------- | :--- | :------ | :---------- |
+| `start` | `int` | - | Position of the first character of the part |
+| `end` | `int` | - | Position after its last character |
+
+Exceptions:
+
+- `ValueError` - the part is not within the text with its start not after its end, cuts a token, cuts a sentence and holds enhanced dependencies or empty nodes, or cuts a sentence in which the head of a word is out of the part;
+- `TypeError` - `start` or `end` is not an integer.
+
+=== "Code"
+
+    ``` python
+    story = Segmenter("ru").segment("Ёж идёт домой. Кот спит.")
+    story.set_columns(upos=["NOUN", "VERB", "ADV", "PUNCT", "NOUN", "VERB", "PUNCT"])
+    sentence = story.sentences[1]
+    part = story.slice(sentence.start, sentence.end)
+    part.text, part.tokens.starts, part.column("upos")
+    ```
+
+=== "Result"
+
+    ```
+    ('Кот спит.', [0, 4, 8], ['NOUN', 'VERB', 'PUNCT'])
     ```
 
 </div>
