@@ -38,7 +38,6 @@ From Python, tokens and sentences come out at 3.1-4.2 M tokens per second, six t
 * **[Large files](https://sergeyshk.github.io/anySeg/segmenter/#stream)** - the documents of a file read in pieces, with the memory bounded and the sentences of the whole text
 * **[Lists of your own](https://sergeyshk.github.io/anySeg/segmenter/#lists)** - more abbreviations and strings that are one token each
 * **[Command](https://sergeyshk.github.io/anySeg/cli/)** - `anyseg` for the terminal and pipelines: tokens, sentences or CoNLL-U of files and the standard input
-* **[spaCy](https://sergeyshk.github.io/anySeg/spacy/)** - the tokenizer and the sentence starts of a spaCy pipeline, the conversion of documents
 * **[Comparison](https://sergeyshk.github.io/anySeg/comparison/)** - quality and speed against razdel, NLTK, spaCy, Stanza, trankit, SaT and other tools
 
 > [!NOTE]
@@ -57,8 +56,6 @@ Or with [uv](https://docs.astral.sh/uv/):
 ```bash
 uv add anyseg
 ```
-
-The tokenizer and the sentence starts for [spaCy](https://sergeyshk.github.io/anySeg/spacy/) come with the extra `spacy`: `pip install "anyseg[spacy]"`.
 
 Wheels are built for Linux (Alpine included), macOS and Windows, the free-threaded Python 3.14t and 3.15t included (3.13t is not supported); installing them does not require Rust. On other platforms pip builds the package from source, which requires [Rust](https://www.rust-lang.org/tools/install) 1.88 or newer. The segmenter is also the Rust crate [`anyseg`](https://crates.io/crates/anyseg). See the [Installation](https://sergeyshk.github.io/anySeg/installation/) page.
 

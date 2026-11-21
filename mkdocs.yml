@@ -14,7 +14,6 @@ nav:
     - Command: cli.md
     - Russian: russian.md
     - Spanish: spanish.md
-    - spaCy: spacy.md
 
 theme:
   name: material
