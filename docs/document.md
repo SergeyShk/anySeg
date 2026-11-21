@@ -5,7 +5,7 @@ A segmented text: its tokens, its words with the columns of [CoNLL-U](https://un
 *   The text is never changed: tokens, sentences, paragraphs and lines are its spans, with positions in the characters of the Python string.
 *   A token holds one word or, for a multiword token, several ([Spanish](spanish.md#multiword) «del» is «de» + «el»). The segmenter gives them where the language joins words in one token.
 *   Sentences hold whole tokens, paragraphs - the parts of the text between blank lines - hold whole sentences, and lines are those of the paragraphs.
-*   Words have the columns of CoNLL-U, empty until set; [`set_columns`](#set_columns) is the only change of a document, so a document can be shared between threads. Other words or sentences make a new document: [`with_words`](#with_words), [`with_sentences`](#with_sentences), and so does a part of the text: [`slice`](#slice). A document can be pickled with its columns, to go to another process; its parts cannot.
+*   Words have the columns of CoNLL-U, empty until set; [`set_columns`](#set_columns) is the only change of a document, so a document can be shared between threads. Other words or sentences make a new document: [`with_words`](#with_words), [`with_sentences`](#with_sentences), and so does a part of the text: [`slice`](#slice). A document can be pickled with its columns, to go to another process; its tokens, words and other [parts](#parts-of-a-document) cannot.
 
 === "Code"
 

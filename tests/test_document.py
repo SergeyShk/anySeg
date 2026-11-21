@@ -970,6 +970,13 @@ def test_slice_read_from_conllu():
     assert "3.1\tvino" in parts[0].to_conllu()
     with pytest.raises(ValueError, match="cannot hold enhanced dependencies or empty nodes"):
         doc.slice(0, 9)
+    # A part that cuts a sentence is written as a segmented document
+    sentence = doc.sentences[1]
+    part = doc.slice(sentence.start, sentence.end - 1)
+    conllu = part.to_conllu()
+    assert conllu.startswith("# newdoc\n# newpar\n# sent_id = 1\n# text = Sí\n1\tSí\tsí\tINTJ\t")
+    (back,) = read_conllu(conllu)
+    assert (back.text, back.column("head"), back.to_conllu()) == ("Sí", [0], conllu)
 
 
 def test_slice_with_lone_surrogates():

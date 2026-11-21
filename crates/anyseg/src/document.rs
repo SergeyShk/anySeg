@@ -2178,4 +2178,30 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn slice_cut_read_from_conllu() {
+        // A part that cuts a sentence is written as a segmented document, without the comments it would contradict
+        let mut doc = crate::read_conllu(ENHANCED).unwrap().remove(0);
+        let words = doc.word_count();
+        doc.set_columns([(Column::Deps, vec![None::<&str>; words])], None)
+            .unwrap();
+        let sentence = doc.sentence(2).span;
+        let part = doc
+            .slice(Span {
+                start: sentence.start,
+                end: sentence.end - 1,
+            })
+            .unwrap();
+        let written = part.to_conllu();
+        assert!(
+            written.starts_with("# newdoc\n# newpar\n# sent_id = 1\n# text = Al fin\n1-2\tAl\t")
+        );
+        let back = crate::read_conllu(&written).unwrap().remove(0);
+        assert_eq!(
+            (back.tokens(), back.heads.as_slice()),
+            (part.tokens(), part.heads.as_slice())
+        );
+        assert_eq!(back.to_conllu(), written);
+    }
 }
