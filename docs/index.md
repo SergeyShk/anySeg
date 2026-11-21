@@ -27,7 +27,7 @@ A text becomes tokens - spans of it with their positions - and the tokens hold w
 
     ---
 
-    Tokens, words with the columns of CoNLL-U, sentences, paragraphs and lines; reading and writing CoNLL-U
+    Tokens, words with the columns of CoNLL-U, sentences, paragraphs and lines; reading and writing CoNLL-U; a part of a text as a document of its own
 
     [:octicons-arrow-right-24: Document](document.md)
 
