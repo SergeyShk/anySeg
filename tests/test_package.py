@@ -40,6 +40,7 @@ def test_extension():
     assert Path(extension.__file__).parent == Path(anyseg.__file__).parent
 
 
+@pytest.mark.skipif(shutil.which("cargo") is None, reason="the crates are read with cargo")
 def test_third_party_notices(tmp_path):
     # The notices follow Cargo.lock: after a change of it, run python scripts/notices.py
     path = tmp_path / "notices.txt"
