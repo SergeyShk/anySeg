@@ -282,7 +282,7 @@ Exceptions:
 slice(start, end)
 ```
 
-A new document of the part of the text between two positions: the tokens, the words with their columns, the sentences, the paragraphs and the lines inside it, with positions counted from its start. The start and the end of a sentence or a paragraph give it as a document. A sentence, a paragraph or a line that the part cuts is cut too: the IDs of the words of a sentence and their heads count from its first word in the part, and a head out of the part is an error. A part of whole sentences of a document read from CoNLL-U keeps their comments and empty nodes; a part that cuts a sentence is written as a segmented document and cannot hold enhanced dependencies or empty nodes, since these refer to the IDs of words.
+A new document of the part of the text between two positions: the tokens, the words with their columns, the sentences, the paragraphs and the lines inside it, with positions counted from its start. The start and the end of a sentence or a paragraph give it as a document. A sentence, a paragraph or a line that the part cuts is cut too: the IDs of the words of a sentence and their heads count from its first word in the part, and a head out of the part is an error. A part of whole sentences of a document read from CoNLL-U keeps their comments and empty nodes; a part that cuts a sentence is written as a segmented document and cannot hold enhanced dependencies or empty nodes, since these refer to the IDs of words. Words keep `misc` as read, so the indent of a paragraph in `SpacesBefore` comes back when the CoNLL-U of a part without it is read.
 
 | Parameter | Type | Default | Description |
 | :-------- | :--- | :------ | :---------- |

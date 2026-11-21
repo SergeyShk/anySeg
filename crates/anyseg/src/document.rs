@@ -742,7 +742,9 @@ impl Document {
     /// sentence, a paragraph or a line that the part cuts is cut too: the IDs of the words of a sentence and their
     /// heads count from its first word in the part. A part of whole sentences of a document read from CoNLL-U keeps
     /// their comments, the lines of their multiword tokens and their empty nodes; a part that cuts a sentence is
-    /// written as a segmented document. The span of a sentence or a paragraph gives it as a document.
+    /// written as a segmented document. Words keep MISC as read, so the indent of a paragraph in `SpacesBefore` comes
+    /// back when the CoNLL-U of a part without it is read. The span of a sentence or a paragraph gives it as a
+    /// document.
     ///
     /// ```
     /// # #[cfg(feature = "ru")] {

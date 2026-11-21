@@ -1,5 +1,5 @@
 """Check of the installed package before publishing: segmentation, positions, threads, pickle, a stream, a document
-with other words and sentences, and the command
+with other words and sentences, a part of a document, and the command
 
 Run: `python scripts/smoke.py [version]`; from the `scripts` directory Python imports the installed
 package, not the sources of the repository.
@@ -52,6 +52,12 @@ order = Segmenter("es").segment("Cómpraselo ya.")
 words = [word.form for word in order.with_words({0: ["Compra", "se", "lo"]}).words]
 assert words == ["Compra", "se", "lo", "ya", "."], words
 assert [s.text for s in order.with_sentences([0, 1]).sentences] == ["Cómpraselo", "ya."]
+# Positions of a part count in characters from its start, after a character outside the BMP
+story = Segmenter("es").segment(f"{text}. Vengo del mar.")
+sentence = story.sentences[1]
+part = story.slice(sentence.start, sentence.end)
+assert (part.text, part.tokens.starts) == ("Vengo del mar.", [0, 6, 10, 13]), part
+assert [word.form for word in part.words] == ["Vengo", "de", "el", "mar", "."], part
 assert "site-packages" in anyseg.__file__, anyseg.__file__
 # Importing the module must not turn the GIL back on in free-threaded Python
 if sysconfig.get_config_var("Py_GIL_DISABLED"):
