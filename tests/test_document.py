@@ -910,3 +910,107 @@ def test_with_sentences():
             doc.with_sentences(starts)
     with pytest.raises(TypeError):
         doc.with_sentences(["a"])
+
+
+def test_slice(doc):
+    # Positions count from the start of the part, in characters
+    part = doc.slice(23, len(TEXT))
+    assert part.text == TEXT[23:]
+    assert [(token.start, token.end, token.text) for token in part.tokens] == [
+        (start - 23, end - 23, text) for start, end, text in TOKENS[5:]
+    ]
+    assert [sentence.text for sentence in part.sentences] == ["😀", "Утро  Ночь"]
+    assert [word.id for word in part.words] == [1, 1, 2]
+    doc.set_columns(upos=[f"U{word}" for word in range(8)], head=[2, 0, 2, 5, 2, 5, 0, 1])
+    # A sentence across a typeset line keeps the kind of its lines
+    part = doc.slice(0, 24)
+    assert (part.text, len(part.sentences), len(part.paragraphs)) == (TEXT[:24], 1, 1)
+    assert [(line.text, line.break_before) for line in part.lines] == [
+        ("Ёж идёт домой", None),
+        ("кот спит 😀", "typeset"),
+    ]
+    assert part.column("upos") == doc.column("upos")[:6]
+    assert part.column("head") == doc.column("head")[:6]
+    # The line cuts a sentence: the IDs of its words and the heads count from its first word
+    part = doc.slice(0, 13)
+    assert [(word.id, word.head) for word in part.words] == [(1, 2), (2, 0), (3, 2)]
+    assert [(line.text, line.break_before) for line in part.lines] == [("Ёж идёт домой", None)]
+    with pytest.raises(ValueError, match="the head of word 4 is out of the part"):
+        doc.slice(14, 24)
+    assert same(doc.slice(0, len(TEXT)), doc)
+    assert same(pickle.loads(pickle.dumps(part)), part)
+    blank = doc.slice(24, 27)
+    assert (blank.text, len(blank.tokens), len(blank.sentences), len(blank.lines)) == (
+        "\n\n﻿",
+        0,
+        0,
+        0,
+    )
+
+
+def test_slice_of_multiword_tokens():
+    doc = Segmenter("es").segment("Él vino del mar, decírselo. Al fin")
+    part = doc.slice(8, 15)
+    assert [(token.text, [word.form for word in token.words]) for token in part.tokens] == [
+        ("del", ["de", "el"]),
+        ("mar", ["mar"]),
+    ]
+    assert [word.id for word in part.words] == [1, 2, 3]
+    sentence = doc.sentences[1]
+    part = doc.slice(sentence.start, sentence.end)
+    assert [token.text for token in part.multiword_tokens] == ["Al"]
+    assert part.column("form") == ["A", "el", "fin"]
+
+
+def test_slice_read_from_conllu():
+    doc = read_conllu(UD)[0]
+    # Whole sentences are written as the document writes them, with their comments and empty nodes
+    parts = [doc.slice(sentence.start, sentence.end) for sentence in doc.sentences]
+    assert "".join(part.to_conllu() for part in parts) == doc.to_conllu()
+    assert "3.1\tvino" in parts[0].to_conllu()
+    with pytest.raises(ValueError, match="cannot hold enhanced dependencies or empty nodes"):
+        doc.slice(0, 9)
+
+
+def test_slice_with_lone_surrogates():
+    high, low = chr(0xD83D), chr(0xDE00)
+    text = f"Ёж {high}. Кот {low}{high}"
+    doc = segment(text, lang="ru")
+    sentence = doc.sentences[1]
+    part = doc.slice(sentence.start, sentence.end)
+    assert part.text == text[sentence.start : sentence.end]
+    assert [token.text for token in part.tokens] == [token.text for token in sentence.tokens]
+    assert part.column("form") == [token.text for token in sentence.tokens]
+
+
+def test_slice_of_a_long_text():
+    # A long part is made without the GIL; every sentence of a long text is a part of its own
+    text = "Ёж идёт домой. Кот спит.\n\n" * 400
+    doc = segment(text, lang="ru")
+    whole = doc.slice(0, len(text))
+    assert whole.tokens.starts == doc.tokens.starts
+    parts = [doc.slice(sentence.start, sentence.end) for sentence in doc.sentences]
+    assert [part.text for part in parts] == [sentence.text for sentence in doc.sentences]
+    assert sum(len(part.tokens) for part in parts) == len(doc.tokens)
+
+
+@pytest.mark.parametrize(
+    ("start", "end", "message"),
+    [
+        (-1, 2, "the part -1..2 is not within the text of 37 characters"),
+        (3, 2, "the part 3..2 is not within the text of 37 characters"),
+        (0, 38, "the part 0..38 is not within the text of 37 characters"),
+        (0, 10**30, "the part 0..9223372036854775807 is not within"),
+        (1, 7, "the part cuts token 0"),
+        (0, 5, "the part cuts token 1"),
+    ],
+)
+def test_wrong_slice(doc, start, end, message):
+    with pytest.raises(ValueError, match=message):
+        doc.slice(start, end)
+
+
+@pytest.mark.parametrize(("start", "end"), [("a", 2), (0, 1.5), (None, 2)])
+def test_slice_of_wrong_types(doc, start, end):
+    with pytest.raises(TypeError):
+        doc.slice(start, end)

@@ -207,6 +207,26 @@ impl Values {
     pub(crate) fn is_empty(&self) -> bool {
         self.ends.is_empty()
     }
+
+    /// The values of some items, as values of their own
+    fn part(&self, items: Range<usize>) -> Values {
+        let ends = match self.ends.get(items.clone()) {
+            Some(ends) if ends.iter().any(|end| end & PRESENT != 0) => ends,
+            _ => return Values::default(),
+        };
+        let start = items
+            .start
+            .checked_sub(1)
+            .map_or(0, |previous| self.ends[previous] & !PRESENT);
+        let end = self.ends[items.end - 1] & !PRESENT;
+        Values {
+            text: self.text[start as usize..end as usize].to_owned(),
+            ends: ends
+                .iter()
+                .map(|end| ((end & !PRESENT) - start) | (end & PRESENT))
+                .collect(),
+        }
+    }
 }
 
 fn check_starts(starts: &[usize], tokens: usize) -> Result<(), DocumentError> {
@@ -715,6 +735,208 @@ impl Document {
         self.sentence_tokens = fitted(sentence_tokens);
         self.verbatim = None;
         Ok(self)
+    }
+
+    /// The part of the text in a span as a document of its own, with offsets from the start of the part: the tokens,
+    /// the words with their columns, the sentences, the paragraphs and the lines of the document inside it. A
+    /// sentence, a paragraph or a line that the part cuts is cut too: the IDs of the words of a sentence and their
+    /// heads count from its first word in the part. A part of whole sentences of a document read from CoNLL-U keeps
+    /// their comments, the lines of their multiword tokens and their empty nodes; a part that cuts a sentence is
+    /// written as a segmented document. The span of a sentence or a paragraph gives it as a document.
+    ///
+    /// ```
+    /// # #[cfg(feature = "ru")] {
+    /// use anyseg::Segmenter;
+    ///
+    /// let doc = Segmenter::new("ru").unwrap().segment("Ёж идёт. Кот спит.");
+    /// let part = doc.slice(doc.sentence(1).span).unwrap();
+    /// assert_eq!((part.text(), part.tokens().len()), ("Кот спит.", 3));
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// [`DocumentError`] if the span is out of the text, not on character boundaries or cuts a token, if the part
+    /// cuts a sentence and holds enhanced dependencies or empty nodes, which refer to the IDs of words, or if the
+    /// head of a word of a sentence it cuts is out of the part.
+    pub fn slice(&self, span: Span) -> Result<Document, DocumentError> {
+        let Span { start, end } = span;
+        if start > end || end > self.text.len() {
+            return Err(DocumentError(format!(
+                "the part {start}..{end} is not within the text of {} bytes",
+                self.text.len()
+            )));
+        }
+        if !self.text.is_char_boundary(start) || !self.text.is_char_boundary(end) {
+            return Err(DocumentError(format!(
+                "the part {start}..{end} is not on character boundaries"
+            )));
+        }
+        let first = self.tokens.partition_point(|token| token.start < start);
+        let last = self.tokens.partition_point(|token| token.start < end);
+        let cut = |token: usize| DocumentError(format!("the part cuts token {token}"));
+        if first > 0 && self.tokens[first - 1].end > start {
+            return Err(cut(first - 1));
+        }
+        if last > first && self.tokens[last - 1].end > end {
+            return Err(cut(last - 1));
+        }
+        let words = self.first_word(first)..self.first_word(last);
+        // The sentences and the paragraphs of the part, and whether it cuts the first or the last sentence
+        let (sentences, paragraphs, cuts) = if first == last {
+            (0..0, 0..0, false)
+        } else {
+            let sentences = self.token_sentence(first)..self.token_sentence(last - 1) + 1;
+            let paragraphs = self.sentence_paragraph(sentences.start)
+                ..self.sentence_paragraph(sentences.end - 1) + 1;
+            let cuts = self.sentence_tokens[sentences.start] != first
+                || self.sentence_tokens[sentences.end] != last;
+            (sentences, paragraphs, cuts)
+        };
+        let empty: &[(usize, usize, String)] = self.verbatim.as_ref().map_or(&[], |verbatim| {
+            let nodes = &verbatim.empty;
+            &nodes[nodes.partition_point(|node| node.0 < sentences.start)
+                ..nodes.partition_point(|node| node.0 < sentences.end)]
+        });
+        if cuts {
+            let deps = self.columns.as_ref().is_some_and(|columns| {
+                words
+                    .clone()
+                    .any(|word| columns[Column::Deps as usize].get(word).is_some())
+            });
+            if deps || !empty.is_empty() {
+                return Err(DocumentError(
+                    "a part that cuts a sentence cannot hold enhanced dependencies or empty nodes: they refer to \
+                     the IDs of words"
+                        .to_owned(),
+                ));
+            }
+        }
+        let mut heads = if self.heads.is_empty() {
+            Vec::new()
+        } else {
+            self.heads[words.clone()].to_vec()
+        };
+        if cuts && !heads.is_empty() {
+            let mut cut_sentences = vec![sentences.start, sentences.end - 1];
+            cut_sentences.dedup();
+            for sentence in cut_sentences {
+                let all = self.sentence(sentence).words;
+                let kept = all.start.max(words.start)..all.end.min(words.end);
+                let (skipped, count) = ((kept.start - all.start) as u32, kept.len() as u32);
+                for word in kept {
+                    let head = &mut heads[word - words.start];
+                    if let Some(id) = *head
+                        && id > 0
+                    {
+                        if id <= skipped || id - skipped > count {
+                            return Err(DocumentError(format!(
+                                "the head of word {word} is out of the part"
+                            )));
+                        }
+                        *head = Some(id - skipped);
+                    }
+                }
+            }
+        }
+        if heads.iter().all(Option::is_none) {
+            heads = Vec::new();
+        }
+        let tokens: Vec<Span> = self.tokens[first..last]
+            .iter()
+            .map(|token| Span {
+                start: token.start - start,
+                end: token.end - start,
+            })
+            .collect();
+        let (token_words, word_tokens): (Arc<[usize]>, Arc<[usize]>) =
+            if self.word_tokens.is_empty() || words.len() == tokens.len() {
+                (Arc::from([]), Arc::from([]))
+            } else {
+                (
+                    self.token_words[first..=last]
+                        .iter()
+                        .map(|word| word - words.start)
+                        .collect(),
+                    self.word_tokens[words.clone()]
+                        .iter()
+                        .map(|token| token - first)
+                        .collect(),
+                )
+            };
+        // The first sentence and the first paragraph start with the part
+        let sentence_tokens = self.sentence_tokens[sentences.clone()]
+            .iter()
+            .map(|&token| token.max(first) - first)
+            .chain([tokens.len()])
+            .collect();
+        let paragraph_sentences = self.paragraph_sentences[paragraphs]
+            .iter()
+            .map(|&sentence| sentence.max(sentences.start) - sentences.start)
+            .chain([sentences.len()])
+            .collect();
+        let lines = match (tokens.first(), tokens.last()) {
+            (Some(first_token), Some(last_token)) => {
+                let (from, to) = (first_token.start + start, last_token.end + start);
+                let lines = &self.lines[self.lines.partition_point(|line| line.span.end <= from)
+                    ..self.lines.partition_point(|line| line.span.start < to)];
+                lines
+                    .iter()
+                    .enumerate()
+                    .map(|(index, line)| Line {
+                        span: Span {
+                            start: line.span.start.max(from) - start,
+                            end: line.span.end.min(to) - start,
+                        },
+                        break_before: line.break_before.filter(|_| index > 0),
+                    })
+                    .collect()
+            }
+            _ => Vec::new(),
+        };
+        let verbatim = match (&self.verbatim, cuts) {
+            (Some(verbatim), false) => {
+                let multiword = &verbatim.multiword[verbatim
+                    .multiword
+                    .partition_point(|(token, _)| *token < first)
+                    ..verbatim
+                        .multiword
+                        .partition_point(|(token, _)| *token < last)];
+                Some(Box::new(Verbatim {
+                    comments: verbatim.comments.part(sentences.clone()),
+                    multiword: multiword
+                        .iter()
+                        .map(|(token, line)| (token - first, line.clone()))
+                        .collect(),
+                    empty: empty
+                        .iter()
+                        .map(|(sentence, lines, line)| {
+                            (sentence - sentences.start, *lines, line.clone())
+                        })
+                        .collect(),
+                }))
+            }
+            _ => None,
+        };
+        Ok(Document {
+            text: self.text[start..end].to_owned(),
+            tokens,
+            token_words,
+            word_tokens,
+            forms: self.forms.part(words.clone()),
+            columns: self
+                .columns
+                .as_ref()
+                .map(|columns| {
+                    Box::new(columns.each_ref().map(|values| values.part(words.clone())))
+                })
+                .filter(|columns| !columns.iter().all(Values::is_empty)),
+            heads,
+            sentence_tokens,
+            paragraph_sentences,
+            lines,
+            verbatim,
+        })
     }
 
     /// The first sentences of a segmented document, with the text up to `end`: at or after the end of their last token
@@ -1646,5 +1868,314 @@ mod tests {
             .unwrap();
         assert!(doc.columns.is_none());
         assert!(doc.token_words.is_empty() && doc.word_tokens.is_empty());
+    }
+
+    /// A linear congruential generator: the tests need no crate of random numbers
+    struct Random(u64);
+
+    impl Random {
+        fn below(&mut self, bound: usize) -> usize {
+            self.0 = self
+                .0
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            (self.0 >> 33) as usize % bound
+        }
+    }
+
+    /// A document of tokens of a random text, with random sentences, multiword tokens, columns and heads
+    fn random_document(random: &mut Random) -> Document {
+        let pieces = [
+            "ёж", "a", "del", ".", "😀", " ", " ", "\u{a0}", "\n", "\n\n",
+        ];
+        let text: String = (0..random.below(40))
+            .map(|_| pieces[random.below(pieces.len())])
+            .collect();
+        let draft = document(&text, None);
+        let count = draft.tokens().len();
+        let starts: Vec<usize> = (1..count).filter(|_| random.below(3) == 0).collect();
+        let mut doc = document(&text, Some(&starts));
+        let mut multiword: Vec<(usize, Vec<String>)> = Vec::new();
+        for token in 0..count {
+            if random.below(4) == 0 {
+                let forms = (0..2 + random.below(2)).map(|form| format!("w{token}.{form}"));
+                multiword.push((token, forms.collect()));
+            }
+        }
+        doc = doc.with_multiword_tokens(multiword).unwrap();
+        let words = doc.word_count();
+        let upos: Vec<Option<String>> = (0..words)
+            .map(|word| (random.below(3) > 0).then(|| format!("U{word}")))
+            .collect();
+        let heads: Vec<Option<u32>> = (0..words)
+            .map(|word| {
+                let size = doc.sentence(doc.word_sentence(word)).words.len();
+                (random.below(5) > 0).then(|| random.below(size + 1) as u32)
+            })
+            .collect();
+        let heads = (random.below(4) > 0).then_some(heads);
+        doc.set_columns([(Column::Upos, upos)], heads).unwrap();
+        doc
+    }
+
+    /// The part of a document from `start` to `end` that holds some tokens, made the long way: from the tokens, the
+    /// words and the columns, the heads of a cut sentence renumbered from the IDs of the whole document
+    fn assembled(
+        doc: &Document,
+        tokens: Range<usize>,
+        start: usize,
+        end: usize,
+    ) -> Result<Document, DocumentError> {
+        let spans = doc.tokens[tokens.clone()]
+            .iter()
+            .map(|token| Span {
+                start: token.start - start,
+                end: token.end - start,
+            })
+            .collect();
+        let starts: Vec<usize> = (tokens.start + 1..tokens.end)
+            .filter(|&token| doc.sentence_tokens.contains(&token))
+            .map(|token| token - tokens.start)
+            .collect();
+        let mut part =
+            Document::from_tokens(doc.text[start..end].to_owned(), spans, Some(&starts))?;
+        let multiword = tokens.clone().filter_map(|token| {
+            let words = doc.token_words(token);
+            (words.len() > 1).then(|| {
+                let forms: Vec<&str> = words.map(|word| doc.form(word)).collect();
+                (token - tokens.start, forms)
+            })
+        });
+        part = part.with_multiword_tokens(multiword)?;
+        let words = doc.first_word(tokens.start)..doc.first_word(tokens.end);
+        let upos: Vec<Option<&str>> = words
+            .clone()
+            .map(|word| doc.column(Column::Upos, word))
+            .collect();
+        let mut heads = Vec::new();
+        for word in words.clone() {
+            let all = doc.sentence(doc.word_sentence(word)).words;
+            let first = all.start.max(words.start);
+            heads.push(match doc.head(word) {
+                Some(id) if id > 0 => {
+                    let target = all.start + id as usize - 1;
+                    if target < first || target >= all.end.min(words.end) {
+                        return Err(DocumentError(format!(
+                            "the head of word {word} is out of the part"
+                        )));
+                    }
+                    Some((target - first + 1) as u32)
+                }
+                head => head,
+            });
+        }
+        part.set_columns([(Column::Upos, upos)], Some(heads))?;
+        Ok(part)
+    }
+
+    #[test]
+    fn slice_as_assembled() {
+        let mut random = Random(7);
+        let mut parts = 0;
+        for _ in 0..300 {
+            let doc = random_document(&mut random);
+            let count = doc.tokens().len();
+            for first in 0..count {
+                for last in first + 1..=count {
+                    let tight = (doc.tokens[first].start, doc.tokens[last - 1].end);
+                    let loose = (
+                        first
+                            .checked_sub(1)
+                            .map_or(0, |token| doc.tokens[token].end),
+                        doc.tokens
+                            .get(last)
+                            .map_or(doc.text.len(), |token| token.start),
+                    );
+                    for (start, end) in [tight, loose] {
+                        let part = doc.slice(Span { start, end });
+                        assert_eq!(
+                            part,
+                            assembled(&doc, first..last, start, end),
+                            "{doc:?} {start}..{end}"
+                        );
+                        parts += 1;
+                    }
+                }
+            }
+        }
+        assert!(parts > 10_000, "{parts}");
+    }
+
+    #[test]
+    fn slice_of_sentences_and_paragraphs() {
+        let mut doc = document("Ёж идёт. Кот\nспит.\n\n  Утро. Ночь", Some(&[2, 5]));
+        doc.set_columns(
+            [(Column::Upos, (0..6).map(|word| Some(format!("U{word}"))))],
+            Some(vec![Some(2), Some(0), Some(0), Some(1), Some(0), Some(0)]),
+        )
+        .unwrap();
+        let sentence = doc.slice(doc.sentence(1).span).unwrap();
+        assert_eq!(sentence.text(), "Кот\nспит.");
+        assert_eq!(
+            sentence.tokens(),
+            [Span { start: 0, end: 6 }, Span { start: 7, end: 16 }]
+        );
+        assert_eq!(
+            (
+                sentence.sentence_tokens.as_slice(),
+                sentence.paragraph_sentences.as_slice()
+            ),
+            (&[0, 2][..], &[0, 1][..])
+        );
+        assert_eq!(sentence.heads, [Some(0), Some(1)]);
+        assert_eq!(sentence.column(Column::Upos, 0), Some("U2"));
+        let lines: Vec<(&str, Option<LineBreak>)> = sentence
+            .lines()
+            .iter()
+            .map(|line| (line.span.slice(sentence.text()), line.break_before))
+            .collect();
+        assert_eq!(lines, [("Кот", None), ("спит.", Some(LineBreak::Author))]);
+        // A paragraph with the indent before it, as a part of the text
+        let paragraph = doc.paragraph(1).span;
+        let indented = doc
+            .slice(Span {
+                start: paragraph.start - 2,
+                end: paragraph.end,
+            })
+            .unwrap();
+        assert_eq!(
+            (indented.text(), indented.sentence_count()),
+            ("  Утро. Ночь", 2)
+        );
+        assert_eq!(indented.column(Column::Upos, 1), Some("U5"));
+        // Whitespace only, and nothing at all
+        for span in [Span { start: 31, end: 35 }, Span { start: 33, end: 33 }] {
+            let blank = doc.slice(span).unwrap();
+            assert_eq!(blank.text(), span.slice(doc.text()));
+            assert_eq!(
+                (
+                    blank.tokens().len(),
+                    blank.sentence_count(),
+                    blank.paragraph_count(),
+                    blank.lines().len()
+                ),
+                (0, 0, 0, 0)
+            );
+        }
+        assert_eq!(
+            doc.slice(Span {
+                start: 0,
+                end: doc.text().len()
+            })
+            .unwrap(),
+            doc
+        );
+        // The part owns only what it holds
+        assert_eq!(sentence.text.capacity(), sentence.text.len());
+        assert_eq!(sentence.tokens.capacity(), sentence.tokens.len());
+    }
+
+    #[test]
+    fn slice_cuts_sentences() {
+        let mut doc = document("a b c d e", Some(&[3]));
+        doc.set_heads(vec![Some(3), Some(3), Some(0), Some(0), Some(1)])
+            .unwrap();
+        let cut = doc.slice(Span { start: 2, end: 7 }).unwrap();
+        assert_eq!((cut.text(), cut.sentence_count()), ("b c d", 2));
+        assert_eq!(cut.heads, [Some(2), Some(0), Some(0)]);
+        assert_eq!(cut.word_id(2), 1);
+        // «c», the head of «a», and «d», the head of «e», are out of these parts
+        for (start, end, word) in [(0, 3, 0), (8, 9, 4)] {
+            assert_eq!(
+                doc.slice(Span { start, end }).unwrap_err(),
+                DocumentError(format!("the head of word {word} is out of the part"))
+            );
+        }
+    }
+
+    #[test]
+    fn slice_wrong() {
+        let doc = document("Ёж идёт", None);
+        for (start, end, message) in [
+            (3, 2, "the part 3..2 is not within the text of 13 bytes"),
+            (0, 14, "the part 0..14 is not within the text of 13 bytes"),
+            (1, 4, "the part 1..4 is not on character boundaries"),
+            (2, 13, "the part cuts token 0"),
+            (0, 7, "the part cuts token 1"),
+            (7, 7, "the part cuts token 1"),
+        ] {
+            assert_eq!(
+                doc.slice(Span { start, end }).unwrap_err(),
+                DocumentError(message.to_owned())
+            );
+        }
+        let mut enhanced = document("a b", None);
+        enhanced
+            .set_columns([(Column::Deps, [None, Some("0:root")])], None)
+            .unwrap();
+        assert!(enhanced.slice(Span { start: 0, end: 3 }).is_ok());
+        let message = "a part that cuts a sentence cannot hold enhanced dependencies or empty nodes: they refer to \
+                       the IDs of words";
+        assert_eq!(
+            enhanced.slice(Span { start: 2, end: 3 }).unwrap_err(),
+            DocumentError(message.to_owned())
+        );
+        let empty = "# text = a b\n1\ta\t_\t_\t_\t_\t_\t_\t_\t_\n1.1\tz\t_\t_\t_\t_\t_\t_\t_\t_\n\
+                     2\tb\t_\t_\t_\t_\t_\t_\t_\t_\n\n";
+        let empty = crate::read_conllu(empty).unwrap().remove(0);
+        assert_eq!(
+            empty.slice(Span { start: 0, end: 1 }).unwrap_err(),
+            DocumentError(message.to_owned())
+        );
+    }
+
+    /// Two paragraphs read from CoNLL-U, with a multiword token, an empty node and enhanced dependencies
+    const ENHANCED: &str = "\
+# newdoc id = d1
+# sent_id = 1
+# text = Vino del norte.
+1\tVino\tvenir\tVERB\t_\t_\t0\troot\t0:root\t_
+2-3\tdel\t_\t_\t_\t_\t_\t_\t_\t_
+2\tde\tde\tADP\t_\t_\t4\tcase\t4:case\t_
+3\tel\tel\tDET\t_\t_\t4\tdet\t4:det\t_
+4\tnorte\tnorte\tNOUN\t_\t_\t1\tobl\t1:obl\tSpaceAfter=No
+5\t.\t.\tPUNCT\t_\t_\t1\tpunct\t1:punct\t_
+
+# sent_id = 2
+# text = Sí, yo.
+1\tSí\tsí\tINTJ\t_\t_\t3\tdiscourse\t3:discourse\tSpaceAfter=No
+2\t,\t,\tPUNCT\t_\t_\t1\tpunct\t1:punct\t_
+2.1\tes\tser\tAUX\t_\t_\t_\t_\t0:root\t_
+3\tyo\tyo\tPRON\t_\t_\t0\troot\t2.1:nsubj\tSpaceAfter=No
+4\t.\t.\tPUNCT\t_\t_\t3\tpunct\t3:punct\t_
+
+# newpar
+# sent_id = 3
+# text = Al fin.
+1-2\tAl\t_\t_\t_\t_\t_\t_\t_\t_
+1\ta\ta\tADP\t_\t_\t3\tcase\t3:case\t_
+2\tel\tel\tDET\t_\t_\t3\tdet\t3:det\t_
+3\tfin\tfin\tNOUN\t_\t_\t0\troot\t0:root\tSpaceAfter=No
+4\t.\t.\tPUNCT\t_\t_\t3\tpunct\t3:punct\t_
+
+";
+
+    #[test]
+    fn slice_read_from_conllu() {
+        let doc = crate::read_conllu(ENHANCED).unwrap().remove(0);
+        assert_eq!(doc.to_conllu(), ENHANCED);
+        // Every part of whole sentences is written as the document writes them, and read back as it is
+        let blocks: Vec<&str> = ENHANCED.split_inclusive("\n\n").collect();
+        for first in 0..3 {
+            for last in first + 1..=3 {
+                let span = Span {
+                    start: doc.sentence(first).span.start,
+                    end: doc.sentence(last - 1).span.end,
+                };
+                let part = doc.slice(span).unwrap();
+                assert_eq!(part.to_conllu(), blocks[first..last].concat());
+                assert_eq!(crate::read_conllu(&part.to_conllu()).unwrap(), [part]);
+            }
+        }
     }
 }

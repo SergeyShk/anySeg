@@ -1032,6 +1032,7 @@ fn segment_all(segmenter: &anyseg::Segmenter, texts: &[&str], threads: usize) ->
 ///     from_tokens: Document of the tokens of a text
 ///     with_words: Document with other words in some tokens
 ///     with_sentences: Document with other sentences
+///     slice: Document of a part of the text
 ///     to_conllu: Document in CoNLL-U
 #[pyclass(frozen, module = "anyseg")]
 struct Document {
@@ -1250,6 +1251,28 @@ impl Document {
 
     fn cover(&self, tokens: &Range<usize>) -> (usize, usize) {
         (self.tokens[tokens.start].0, self.tokens[tokens.end - 1].1)
+    }
+
+    /// The byte offset in the text of the core of a character offset, counted from the nearest token boundary
+    /// before it, so that the cost is that of the space between tokens
+    fn byte_offset(&self, inner: &anyseg::Document, position: usize) -> usize {
+        let after = self.tokens.partition_point(|&(start, _)| start <= position);
+        let (char, byte) = match after.checked_sub(1) {
+            None => (0, 0),
+            Some(token) => {
+                let ((start, end), span) = (self.tokens[token], inner.tokens()[token]);
+                if end <= position {
+                    (end, span.end)
+                } else {
+                    (start, span.start)
+                }
+            }
+        };
+        let text = inner.text();
+        text[byte..]
+            .char_indices()
+            .nth(position - char)
+            .map_or(text.len(), |(offset, _)| byte + offset)
     }
 
     /// A new document made by a change of the core one, with the same text, tokens and lines
@@ -1670,6 +1693,67 @@ impl Document {
     ) -> PyResult<Bound<'py, Document>> {
         let starts = token_indices(starts)?;
         Self::changed(slf, |inner| inner.with_sentences(&starts))
+    }
+
+    /// Document of a part of the text
+    ///
+    /// Description:
+    ///     The part holds the tokens, the words with their columns, the sentences, the paragraphs
+    ///     and the lines of the document between two positions, which count from its start. A
+    ///     sentence, a paragraph or a line that the part cuts is cut too: the IDs of the words of a
+    ///     sentence and their heads count from its first word in the part. A part of whole
+    ///     sentences of a document read from CoNLL-U keeps their comments and empty nodes; a part
+    ///     that cuts a sentence is written as a segmented document. The start and the end of a
+    ///     sentence or a paragraph give it as a document. The document itself does not change
+    ///
+    /// Arguments:
+    ///     start (int): Position of the first character of the part
+    ///     end (int): Position after its last character
+    ///
+    /// Returns:
+    ///     Document: Document of the part
+    ///
+    /// Raises:
+    ///     ValueError: If the part is not within the text with its start not after its end, cuts a
+    ///         token, cuts a sentence and holds enhanced dependencies or empty nodes, which refer
+    ///         to the IDs of words, or cuts a sentence in which the head of a word is out of the
+    ///         part
+    ///     TypeError: If start or end is not an integer
+    ///
+    /// Example:
+    ///     >>> from anyseg import Segmenter
+    ///     >>> doc = Segmenter("ru").segment("Ёж идёт. Кот спит.")
+    ///     >>> sentence = doc.sentences[1]
+    ///     >>> part = doc.slice(sentence.start, sentence.end)
+    ///     >>> part.text, part.tokens.starts
+    ///     ('Кот спит.', [0, 4, 8])
+    fn slice<'py>(
+        slf: &Bound<'py, Self>,
+        #[pyo3(from_py_with = clamped)] start: isize,
+        #[pyo3(from_py_with = clamped)] end: isize,
+    ) -> PyResult<Bound<'py, Document>> {
+        let py = slf.py();
+        let doc = slf.get();
+        let text = doc.text.bind(py);
+        let size = length(text);
+        if start < 0 || start > end || end as usize > size {
+            return Err(PyValueError::new_err(format!(
+                "the part {start}..{end} is not within the text of {size} characters"
+            )));
+        }
+        let (start, end) = (start as usize, end as usize);
+        let parts = detached(py, end - start > DETACH, || {
+            let part = {
+                let inner = doc.read();
+                inner.slice(anyseg::Span {
+                    start: doc.byte_offset(&inner, start),
+                    end: doc.byte_offset(&inner, end),
+                })
+            };
+            part.map(Parts::new)
+        })
+        .map_err(|error| PyValueError::new_err(error.to_string()))?;
+        untracked(py, Document::new(parts, &substring(text, start, end)?)?)
     }
 
     /// Document in CoNLL-U
